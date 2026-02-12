@@ -164,6 +164,7 @@ def salvar_excel(caminho: Path, itens: List[PdfItem]):
     ws.column_dimensions["E"].width = 30
     
     wb.save(caminho)
+    wb.close()  # Fecha o workbook para liberar o arquivo
     return total_rec, total_desp
 
 # ==========================================
@@ -302,14 +303,29 @@ class AppConciliador(ctk.CTk):
                 itens += processar_lista_arquivos(arquivos_desp, "Despesa", self.log_message)
 
             # Salvar
-            timestamp = datetime.now().strftime("%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             nome_excel = f"Conciliacao_Final_{timestamp}.xlsx"
             
-            # Pergunta onde salvar (precisa ser invocado na thread principal, mas aqui simplificamos)
-            # Vamos salvar na pasta de Downloads ou na pasta do script para evitar travar a thread
+            # Evita sobrescrever arquivo já aberto
+            caminho_base = Path(os.getcwd()) / nome_excel.replace('.xlsx', '')
             caminho_final = Path(os.getcwd()) / nome_excel
+            contador = 1
             
-            self.log_message("Gerando Excel...")
+            while caminho_final.exists():
+                try:
+                    # Testa se pode escrever no arquivo
+                    with open(caminho_final, 'a'):
+                        pass
+                    break
+                except (PermissionError, IOError):
+                    # Arquivo em uso, adiciona número
+                    caminho_final = Path(os.getcwd()) / f"{caminho_base.name}_{contador}.xlsx"
+                    contador += 1
+                    if contador > 100:
+                        caminho_final = Path(os.getcwd()) / f"Conciliacao_Final_{datetime.now().strftime('%Y%m%d_%H%M%S%f')}.xlsx"
+                        break
+            
+            self.log_message(f"Gerando Excel: {caminho_final.name}...")
             tot_rec, tot_desp = salvar_excel(caminho_final, itens)
             
             self.log_message(f"CONCLUÍDO! Salvo em: {caminho_final}")
