@@ -11,6 +11,26 @@ class ExcelHandlerPMPV:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             nome_arquivo = f"Relatorio_PMPV_{timestamp}.xlsx"
         
+        # Evita sobrescrever arquivo já aberto - adiciona número incremental
+        nome_base = nome_arquivo.replace('.xlsx', '')
+        contador = 1
+        nome_final = nome_arquivo
+        
+        while True:
+            try:
+                # Tenta criar/abrir o arquivo para verificar se está disponível
+                with open(nome_final, 'w') as f:
+                    pass
+                os.remove(nome_final)
+                break
+            except (PermissionError, IOError):
+                # Arquivo em uso, tenta próximo número
+                nome_final = f"{nome_base}_{contador}.xlsx"
+                contador += 1
+                if contador > 100:  # Segurança para evitar loop infinito
+                    nome_final = f"{nome_base}_{datetime.now().strftime('%H%M%S%f')}.xlsx"
+                    break
+        
         wb = openpyxl.Workbook()
         if 'Sheet' in wb.sheetnames: wb.remove(wb['Sheet'])
         
@@ -21,10 +41,16 @@ class ExcelHandlerPMPV:
         # Criar aba de resumo
         ExcelHandlerPMPV._criar_aba_resumo(wb, dados_por_mes, resultado)
         
-        wb.save(nome_arquivo)
-        try: os.startfile(nome_arquivo)
-        except: pass
-        return nome_arquivo
+        wb.save(nome_final)
+        wb.close()  # Fecha o workbook antes de tentar abrir
+        
+        # Tenta abrir o arquivo, mas não falha se houver erro
+        try:
+            os.startfile(nome_final)
+        except Exception as e:
+            print(f"Aviso: Não foi possível abrir o arquivo automaticamente: {e}")
+        
+        return nome_final
 
     @staticmethod
     def _criar_aba_mes(wb, nome_aba, dados):

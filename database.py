@@ -11,8 +11,8 @@ class DatabasePMPV:
     
     def _conectar(self):
         self.conn = sqlite3.connect(self.db_path)
-        self.cursor = self.conn.cursor()
         self.conn.row_factory = sqlite3.Row
+        self.cursor = self.conn.cursor()
     
     def _criar_tabelas(self):
         # Tabela de SESSÕES
