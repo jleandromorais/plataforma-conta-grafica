@@ -24,13 +24,50 @@ from openpyxl.styles import Font, PatternFill
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-# Se instalaste na pasta padrão do Windows, tem de ser esta:
-PASTA_INSTALACAO = r'C:\Program Files\Tesseract-OCR'
-CAMINHO_EXECUTAVEL = os.path.join(PASTA_INSTALACAO, 'tesseract.exe')
-pytesseract.pytesseract.tesseract_cmd = CAMINHO_EXECUTAVEL
+# ==========================================
+# DETECÇÃO AUTOMÁTICA DO TESSERACT
+# ==========================================
 
-# Verifica Tesseract
-OCR_ATIVADO = os.path.exists(CAMINHO_EXECUTAVEL)
+def detectar_tesseract():
+    """
+    Procura Tesseract em caminhos comuns do Windows.
+    Retorna: (caminho_encontrado, esta_ativado)
+    """
+    # Lista de caminhos comuns onde Tesseract pode estar instalado
+    caminhos_possiveis = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        r'C:\Tesseract-OCR\tesseract.exe',
+        r'C:\Users\{}\AppData\Local\Tesseract-OCR\tesseract.exe'.format(os.getenv('USERNAME')),
+        r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(os.getenv('USERNAME')),
+    ]
+    
+    # Tenta encontrar tesseract.exe no PATH do sistema
+    try:
+        import shutil
+        caminho_path = shutil.which('tesseract')
+        if caminho_path:
+            caminhos_possiveis.insert(0, caminho_path)  # Prioriza PATH
+    except:
+        pass
+    
+    # Verifica cada caminho
+    for caminho in caminhos_possiveis:
+        if os.path.exists(caminho):
+            print(f"✅ Tesseract encontrado em: {caminho}")
+            return caminho, True
+    
+    print("⚠️ Tesseract OCR não encontrado no sistema")
+    print("   → PDFs digitais funcionarão normalmente")
+    print("   → PDFs escaneados (imagem) NÃO serão processados")
+    print("   → Para instalar: https://github.com/UB-Mannheim/tesseract/wiki")
+    return None, False
+
+# Detecta e configura Tesseract
+CAMINHO_EXECUTAVEL, OCR_ATIVADO = detectar_tesseract()
+
+if OCR_ATIVADO:
+    pytesseract.pytesseract.tesseract_cmd = CAMINHO_EXECUTAVEL
 
 @dataclass(frozen=True)
 class PdfItem:
@@ -181,8 +218,14 @@ class AppConciliador(ctk.CTk):
         # Variáveis de Estado
         self.path_rec = tk.StringVar()
         self.path_desp = tk.StringVar()
-        self.status_ocr_txt = "✅ MOTOR OCR ATIVO" if OCR_ATIVADO else "❌ OCR NÃO ENCONTRADO"
-        self.cor_ocr = "#27ae60" if OCR_ATIVADO else "#c0392b"
+        
+        # Status OCR
+        if OCR_ATIVADO:
+            self.status_ocr_txt = "✅ OCR ATIVO"
+            self.cor_ocr = "#27ae60"  # Verde
+        else:
+            self.status_ocr_txt = "⚠️ APENAS PDFs DIGITAIS"
+            self.cor_ocr = "#f39c12"  # Laranja
 
         self._setup_ui()
 

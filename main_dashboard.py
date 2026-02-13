@@ -4,11 +4,11 @@ from tkinter import messagebox
 from PIL import Image
 import os
 
-# Importando os teus módulos (vamos adaptar eles no passo 4)
-# Nota: Estou assumindo que renomeaste os arquivos originais
+# Importando os módulos
 try:
     from modulo_pmpv import CalculadoraTrimestralPMPV
     from modulo_concilia import AppConciliador
+    from modulo_ret import SistemaRET
 except ImportError as e:
     print(f"Erro de importação: {e}")
 
@@ -31,7 +31,7 @@ class PlataformaFinanceira(ctk.CTk):
         # === 1. MENU LATERAL ESQUERDO ===
         self.sidebar_frame = ctk.CTkFrame(self, width=250, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(4, weight=1)
+        self.sidebar_frame.grid_rowconfigure(5, weight=1)  # Linha APÓS os botões expande
 
         # Título do Menu
         self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="FINANÇAS PRO", 
@@ -47,9 +47,13 @@ class PlataformaFinanceira(ctk.CTk):
                                     command=self.abrir_pmpv)
         self.btn_pmpv.grid(row=2, column=0, padx=20, pady=10)
 
-        self.btn_ocr = ctk.CTkButton(self.sidebar_frame, text="📄 Conciliação PDF", 
+        self.btn_ocr = ctk.CTkButton(self.sidebar_frame, text="📄 Conciliação RP", 
                                    command=self.abrir_ocr)
         self.btn_ocr.grid(row=3, column=0, padx=20, pady=10)
+
+        self.btn_ret = ctk.CTkButton(self.sidebar_frame, text="⚡ Sistema RET", 
+                                    command=self.abrir_ret)
+        self.btn_ret.grid(row=4, column=0, padx=20, pady=10)
 
         # === 2. ÁREA PRINCIPAL (DIREITA) ===
         self.main_area = ctk.CTkFrame(self, corner_radius=10, fg_color="transparent")
@@ -75,9 +79,14 @@ class PlataformaFinanceira(ctk.CTk):
                         self.abrir_pmpv, "left")
         
         # Card OCR
-        self._criar_card(frame_cards, "Leitor de PDF", 
+        self._criar_card(frame_cards, "Concilia RP", 
                         "Extração automática de valores\nde faturas via OCR e IA.", 
-                        self.abrir_ocr, "right")
+                        self.abrir_ocr, "left")
+        
+        # Card RET
+        self._criar_card(frame_cards, "Sistema RET", 
+                        "Processamento automatizado\nde encargos e notas fiscais.", 
+                        self.abrir_ret, "right")
 
     def _criar_card(self, parent, titulo, desc, comando, lado):
         card = ctk.CTkFrame(parent, width=300, height=150)
@@ -114,6 +123,18 @@ class PlataformaFinanceira(ctk.CTk):
             app.mainloop()
         except NameError:
             messagebox.showerror("Erro", "Módulo OCR não encontrado/importado.")
+    
+    def abrir_ret(self):
+        """Abre o Sistema RET de processamento de PDFs"""
+        nova_janela = ctk.CTkToplevel(self)
+        nova_janela.title("Sistema RET - Processamento de Encargos")
+        nova_janela.geometry("1400x900")
+        nova_janela.attributes('-topmost', True)
+        
+        try:
+            app = SistemaRET(nova_janela)
+        except NameError:
+            messagebox.showerror("Erro", "Módulo RET não encontrado/importado.")
 
 if __name__ == "__main__":
     app = PlataformaFinanceira()
