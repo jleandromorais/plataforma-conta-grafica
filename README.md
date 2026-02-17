@@ -31,7 +31,14 @@ Sistema integrado de gestão financeira com funcionalidades de cálculo PMPV (Pr
 - Geração de relatório consolidado em Excel
 - Interface gráfica moderna
 
-### 3. **Dashboard Principal**
+### 3. **Auditoria XML (NF-e / CT-e)**
+- Leitura recursiva de XMLs fiscais em múltiplas empresas
+- Parse automático de NF-e e CT-e
+- Comparação com planilha Excel de referência
+- Detecção de divergências em valores e volumes
+- Geração de relatório completo com status colorido
+
+### 4. **Dashboard Principal**
 - Interface centralizada
 - Acesso rápido aos módulos
 - Design moderno com CustomTkinter
@@ -45,6 +52,7 @@ plataforma-conta-grafica/
 │   ├── main_dashboard.py          # Dashboard principal
 │   ├── modulo_pmpv.py             # Módulo de cálculo PMPV
 │   ├── modulo_concilia.py         # Módulo de conciliação PDF
+│   ├── modulo_auditoria.py        # Módulo de auditoria XML (NF-e/CT-e)
 │   ├── database.py                # Gerenciamento do banco de dados
 │   └── excel_handler.py           # Exportação para Excel
 │
@@ -121,6 +129,14 @@ python main_dashboard.py
 4. Clique em "⚡ PROCESSAR E CONCILIAR"
 5. Aguarde o processamento
 6. Excel será gerado automaticamente
+
+### Módulo Auditoria XML
+1. No dashboard, clique em "🔍 Auditoria XML"
+2. Selecione a pasta PAI contendo subpastas de empresas
+3. Marque as empresas que deseja auditar
+4. Selecione o Excel de referência (com dados esperados)
+5. Clique em "⚡ INICIAR AUDITORIA"
+6. Gere o relatório em Excel com divergências identificadas
 
 ## 🧪 Testes
 

@@ -1,6 +1,7 @@
 import sqlite3
 from typing import Dict, List
 
+
 class DatabasePMPV:
     def __init__(self, db_path: str = "pmpv_data.db"):
         self.db_path = db_path
@@ -55,6 +56,34 @@ class DatabasePMPV:
                 FOREIGN KEY (sessao_id) REFERENCES sessoes (id) ON DELETE CASCADE
             )
         """)
+        
+        self.cursor.execute("""
+                            
+                            CREATE TABLE IF NOT EXISTS  consolidacao(
+                                id INTEGER PRIMARY KEY  AUTOINCREMENT,
+                                periodo TEXT NOT NULL,
+                                
+                                
+                                --TOATIS DE  CADA MODULO
+                                
+                                cgr REAL DEFAULT 0,
+                                ret REAL DEFAULT 0,
+                                rp REAL DEFAULT 0,
+                                
+                                
+                                --VALORES PARA FORMULA FINAL
+                                rpv REAL DEFAULT 0,
+                                cgf REAL DEFAULT 0,
+                                
+                                --RESULTADO FINAL
+                                scg REAL DEFAULT 0,
+                                
+                                
+                                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                observacoes TEXT
+                            )
+                        """)
         self.conn.commit()
     
     def criar_sessao(self, nome: str, observacoes: str = "") -> int:
@@ -99,6 +128,94 @@ class DatabasePMPV:
     def carregar_dados_mes(self, sessao_id: int, mes: int) -> List[Dict]:
         self.cursor.execute("SELECT * FROM dados_mes WHERE sessao_id = ? AND mes = ?", (sessao_id, mes))
         return [dict(row) for row in self.cursor.fetchall()]
-
+    
+    # ==========================================
+    # FUNÇÕES DE CONSOLIDAÇÃO
+    # ==========================================
+    
+    def criar_periodo_consolidacao(self, periodo: str, obs: str = "") -> int:
+        """Cria um novo período de consolidação"""
+        self.cursor.execute(
+            "INSERT INTO consolidacao (periodo, observacoes) VALUES (?, ?)", 
+            (periodo, obs)
+        )
+        self.conn.commit()
+        return self.cursor.lastrowid
+    
+    def atualizar_cgr(self, periodo: str, valor: float):
+        """Atualiza o CGR (Auditoria XML)"""
+        self.cursor.execute("""
+            UPDATE consolidacao
+            SET cgr = ?, data_atualizacao = CURRENT_TIMESTAMP
+            WHERE periodo = ?
+        """, (valor, periodo))
+        self.conn.commit()
+    
+    def atualizar_ret(self, periodo: str, valor: float):
+        """Atualiza o RET (Módulo RET)"""
+        self.cursor.execute("""
+            UPDATE consolidacao
+            SET ret = ?, data_atualizacao = CURRENT_TIMESTAMP
+            WHERE periodo = ?
+        """, (valor, periodo))
+        self.conn.commit()
+    
+    def atualizar_rp(self, periodo: str, valor: float):
+        """Atualiza o RP (Conciliação)"""
+        self.cursor.execute("""
+            UPDATE consolidacao
+            SET rp = ?, data_atualizacao = CURRENT_TIMESTAMP
+            WHERE periodo = ?
+        """, (valor, periodo))
+        self.conn.commit()
+            
+    def atualizar_rpv_cgf(self, periodo: str, rpv: float, cgf: float):
+        """Atualiza RPV e CGF (valores manuais)"""
+        self.cursor.execute("""
+            UPDATE consolidacao
+            SET rpv = ?, cgf = ?, data_atualizacao = CURRENT_TIMESTAMP
+            WHERE periodo = ?
+        """, (rpv, cgf, periodo))
+        self.conn.commit()
+        
+    def calcular_scg(self, periodo: str) -> float:
+        """Calcula o SCG e salva"""
+        self.cursor.execute("SELECT * FROM consolidacao WHERE periodo = ?", (periodo,))
+        row = self.cursor.fetchone()
+        
+        if not row:
+            return 0.0
+        
+        dados = dict(row)
+        cgr = dados.get('cgr', 0)
+        cgf = dados.get('cgf', 0)
+        rpv = dados.get('rpv', 0)
+        ret = dados.get('ret', 0)
+        rp = dados.get('rp', 0)
+        
+        # Fórmula: SCG = RPV(CGR + CGF) + RET + RP
+        scg = rpv * (cgr + cgf) + ret + rp
+        
+        self.cursor.execute("""
+            UPDATE consolidacao
+            SET scg = ?, data_atualizacao = CURRENT_TIMESTAMP
+            WHERE periodo = ?
+        """, (scg, periodo))
+        self.conn.commit()
+        return scg
+    
+    def buscar_consolidacao(self, periodo: str) -> dict:
+        """Busca dados de consolidação de um período"""
+        self.cursor.execute("SELECT * FROM consolidacao WHERE periodo = ?", (periodo,))
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+    
+    def listar_periodos(self) -> List:
+        """Lista todos os períodos de consolidação"""
+        self.cursor.execute("SELECT periodo, scg, data_atualizacao FROM consolidacao ORDER BY data_criacao DESC")
+        return [dict(row) for row in self.cursor.fetchall()]
+        
+        
+        
     def fechar(self):
         if self.conn: self.conn.close()
