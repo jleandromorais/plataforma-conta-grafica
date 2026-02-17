@@ -202,6 +202,25 @@ def salvar_excel(caminho: Path, itens: List[PdfItem]):
     
     wb.save(caminho)
     wb.close()  # Fecha o workbook para liberar o arquivo
+    
+    # ===== SALVAR RP NO BANCO =====
+    from tkinter import simpledialog
+    rp_valor = total_rec - total_desp
+    
+    periodo = simpledialog.askstring("Período RP", 
+                                    "Digite o período (ex: Q1 2026):",
+                                    initialvalue="Q1 2026")
+    if periodo:
+        from database import DatabasePMPV
+        db = DatabasePMPV()
+        if not db.buscar_consolidacao(periodo):
+            db.criar_periodo_consolidacao(periodo, "Conciliação")
+        db.atualizar_rp(periodo, rp_valor)
+        db.fechar()
+        
+        rp_fmt = f"R$ {rp_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        messagebox.showinfo("RP Salvo", f"RP: {rp_fmt}\nPeríodo: {periodo}")
+    
     return total_rec, total_desp
 
 # ==========================================

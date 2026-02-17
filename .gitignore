@@ -1,0 +1,9 @@
+# Ignorar bases de dados locais
+*.db
+*.sqlite
+*.sqlite3
+
+# Ignorar ficheiros de dados e Excel
+*.csv
+*.xlsx
+dados_reais_empresa.json

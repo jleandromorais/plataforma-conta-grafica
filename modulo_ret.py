@@ -192,6 +192,16 @@ class SistemaRET(ctk.CTkToplevel):
             fg_color="#FF9800",
             hover_color="#F57C00"
         ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            btn_frame,
+            text="💾 Salvar RET",
+            command=self._salvar_ret_scg,
+            width=140,
+            height=35,
+            fg_color="#27ae60",
+            hover_color="#229954"
+        ).pack(side="left", padx=5)
     
     def log(self, mensagem):
         """Adiciona mensagem ao log"""
@@ -699,6 +709,31 @@ RESUMO POR TIPO:
         except Exception as e:
             self.log(f"[ERRO] Falha ao exportar: {e}")
             messagebox.showerror("Erro", f"Erro ao exportar: {e}")
+    
+    def _salvar_ret_scg(self):
+        """Salva o total RET na consolidação"""
+        if not hasattr(self, 'dados_processados') or not self.dados_processados:
+            messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
+            return
+        
+        from tkinter import simpledialog
+        
+        total_geral = sum(d['valor_total'] for d in self.dados_processados)
+        total_geral_brl = total_geral * TAXA_EUR_BRL
+        
+        periodo = simpledialog.askstring("Período RET", 
+                                        "Digite o período (ex: Q1 2026):",
+                                        initialvalue="Q1 2026")
+        if periodo:
+            from database import DatabasePMPV
+            db = DatabasePMPV()
+            if not db.buscar_consolidacao(periodo):
+                db.criar_periodo_consolidacao(periodo, "RET")
+            db.atualizar_ret(periodo, total_geral_brl)
+            db.fechar()
+            
+            total_fmt = f"R$ {total_geral_brl:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            messagebox.showinfo("RET Salvo", f"RET: {total_fmt}\nPeríodo: {periodo}")
 
 if __name__ == "__main__":
     root = ctk.CTk()
