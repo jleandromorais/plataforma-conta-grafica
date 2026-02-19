@@ -92,15 +92,15 @@ class PlataformaFinanceira(ctk.CTk):
                             self.abrir_pmpv, 0, 0)
         
         self._criar_card_grid(frame_cards, "📄 Conciliação RP", 
-                            "Extração automática\nde PDFs via OCR", 
+                            "Subrtação entre  \n  Recceita - Dispesa das penalalidades \nde PDFs via OCR", 
                             self.abrir_ocr, 0, 1)
         
         self._criar_card_grid(frame_cards, "⚡ Sistema RET", 
-                            "Processamento\nde encargos e NFs", 
+                            "Processamento\nde encargos e NFs \n Soma de encargos ", 
                             self.abrir_ret, 0, 2)
         
         # Linha 1
-        self._criar_card_grid(frame_cards, "🔍 Auditoria XML", 
+        self._criar_card_grid(frame_cards, "🔍 Auditoria XML e soma  \n das notas fiscais  e vlume", 
                             "NF-e e CT-e\ncomparação com Excel", 
                             self.abrir_auditoria, 1, 0)
         
