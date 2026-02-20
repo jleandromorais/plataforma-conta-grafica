@@ -219,7 +219,17 @@ class AppConciliador(ctk.CTkToplevel):
                                    command=self.iniciar_thread,
                                    font=("Roboto", 16, "bold"),
                                    height=50, fg_color="#2980b9", hover_color="#3498db")
-        self.btn_run.pack(fill="x", padx=40, pady=20)
+        self.btn_run.pack(fill="x", padx=40, pady=(20, 5))
+
+        self.btn_salvar_scg = ctk.CTkButton(
+            self, text="💾 SALVAR SALDO (RP) NO SCG",
+            command=self._salvar_rp_scg,
+            font=("Roboto", 13, "bold"),
+            height=38,
+            fg_color="#27ae60", hover_color="#1e8449",
+            state="disabled",
+        )
+        self.btn_salvar_scg.pack(fill="x", padx=40, pady=(0, 15))
 
         # --- LOG / CONSOLE ---
         ctk.CTkLabel(self, text="Log de Processamento:", anchor="w").pack(fill="x", padx=20)
@@ -325,12 +335,44 @@ class AppConciliador(ctk.CTkToplevel):
             
             messagebox.showinfo("Sucesso", msg_final)
 
+            # Guarda saldo para o botão Salvar no SCG
+            self._ultimo_saldo_rp = saldo
+            self.btn_salvar_scg.configure(state="normal")
+
         except Exception as e:
             self.log_message(f"ERRO CRÍTICO: {e}")
             messagebox.showerror("Erro", str(e))
         
         finally:
             self.restaurar_interface()
+
+    def _salvar_rp_scg(self):
+        """Salva o saldo RP (Receita − Despesa) no banco de consolidação SCG."""
+        from tkinter import simpledialog
+        from database import DatabasePMPV
+
+        if not hasattr(self, '_ultimo_saldo_rp'):
+            messagebox.showwarning("Aviso", "Execute o processamento antes de salvar.")
+            return
+
+        periodo = simpledialog.askstring(
+            "Salvar RP no SCG",
+            "Digite o período (ex: Dez/2025):",
+            initialvalue="Dez/2025",
+        )
+        if not periodo:
+            return
+
+        db = DatabasePMPV()
+        db.atualizar_rp(periodo, self._ultimo_saldo_rp)
+        db.fechar()
+
+        messagebox.showinfo(
+            "RP Salvo ✅",
+            f"Período : {periodo}\n"
+            f"RP salvo: R$ {format_br(self._ultimo_saldo_rp)}\n\n"
+            f"Acesse o módulo SCG para ver o resultado final.",
+        )
 
     def restaurar_interface(self):
         self.progress.stop()

@@ -84,8 +84,9 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         # Direita: Botões
         right = ctk.CTkFrame(foot, fg_color="transparent")
         right.pack(side="right", padx=20)
-        ctk.CTkButton(right, text="💾 Salvar Sessão", command=self.salvar, fg_color="#8e44ad").pack(pady=5)
-        ctk.CTkButton(right, text="📊 Exportar Excel", command=self.exportar, fg_color="#2980b9").pack(pady=5)
+        ctk.CTkButton(right, text="💾 Salvar Sessão",       command=self.salvar,               fg_color="#8e44ad").pack(pady=5)
+        ctk.CTkButton(right, text="📅 Salvar PMPV Mensal",  command=self._salvar_pmpv_mensal,  fg_color="#16a085").pack(pady=5)
+        ctk.CTkButton(right, text="📊 Exportar Excel",      command=self.exportar,             fg_color="#2980b9").pack(pady=5)
 
     def _criar_aba(self, parent):
         # Cabeçalho Tabela
@@ -251,6 +252,39 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         d_fmt = {f"Mês {i+1}": v for i, v in enumerate(dados.values())}
         ExcelHandlerPMPV.exportar_trimestre(d_fmt, self.res_final)
         messagebox.showinfo("Sucesso", "Excel Gerado!")
+
+    def _salvar_pmpv_mensal(self):
+        """Salva o PMPV calculado no banco de dados associado a um período mensal."""
+        if not hasattr(self, 'res_final'):
+            messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
+            return
+
+        pmpv = self.res_final['pmpv']
+
+        periodo = simpledialog.askstring(
+            "Salvar PMPV Mensal",
+            f"PMPV calculado: R$ {pmpv:.4f}/m³\n\nDigite o período mensal (ex: Jan/2026):",
+            parent=self,
+        )
+        if not periodo or not periodo.strip():
+            return
+
+        periodo = periodo.strip()
+        self.db.salvar_pmpv_mensal(periodo, pmpv)
+
+        # Exibe histórico atualizado
+        historico = self.db.listar_pmpv_mensal()
+        linhas = "\n".join(
+            f"  {r['periodo']:<15}  R$ {r['pmpv']:.4f}/m³"
+            for r in historico[:8]
+        )
+        messagebox.showinfo(
+            "PMPV Mensal Salvo ✅",
+            f"Período  : {periodo}\n"
+            f"PMPV     : R$ {pmpv:.4f}/m³\n\n"
+            f"Disponível automaticamente no módulo CGF.\n\n"
+            f"Últimos registros:\n{linhas}",
+        )
 
 if __name__ == "__main__":
     # Truque para rodar sozinho como Toplevel

@@ -306,7 +306,18 @@ class AppAuditoriaXML(ctk.CTkToplevel):
                                            fg_color="#2980b9", hover_color="#3498db",
                                            state="disabled")
         self.btn_somatorio.pack(side="left", expand=True, fill="x", padx=(8, 0))
-        
+
+        # Botão 3: Salvar resultado no SCG (habilitado após auditoria ou somatório)
+        self.btn_salvar_scg = ctk.CTkButton(
+            container, text="💾 SALVAR RESULTADO NO SCG",
+            command=self._salvar_cgr_scg,
+            font=("Roboto", 13, "bold"),
+            height=40,
+            fg_color="#27ae60", hover_color="#1e8449",
+            state="disabled",
+        )
+        self.btn_salvar_scg.pack(fill="x", pady=(0, 5))
+
         # ========== ÁREA DE RESULTADOS ==========
         frame_resultados = ctk.CTkFrame(container)
         frame_resultados.pack(fill="both", expand=True, pady=10)
@@ -449,6 +460,7 @@ class AppAuditoriaXML(ctk.CTkToplevel):
         self.text_resultados.insert("end", f"📊 TOTAL → Valor: R$ {self.valor_total_geral:,.2f}  |  Volume: {self.volume_total_geral:,.0f}\n")
         
         self.btn_auditar.configure(state="normal")
+        self.btn_salvar_scg.configure(state="normal")
 
         # Perguntar se quer gerar relatório
         if messagebox.askyesno("Concluído", "Deseja gerar o relatório em Excel?"):
@@ -499,6 +511,7 @@ class AppAuditoriaXML(ctk.CTkToplevel):
         self.volume_total_geral = vol_nfe + vol_cte
 
         self.lbl_status.configure(text="Somatório calculado!", text_color="#27ae60")
+        self.btn_salvar_scg.configure(state="normal")
 
         aviso_erros = f"\n\n⚠️ {erros} arquivo(s) não puderam ser lidos." if erros else ""
 
@@ -553,6 +566,39 @@ class AppAuditoriaXML(ctk.CTkToplevel):
             volume_total=vol_total
         )
     
+    # ------------------------------------------------------------------
+    def _salvar_cgr_scg(self):
+        """Salva o valor total CGR no banco de consolidação SCG."""
+        from tkinter import simpledialog
+        from database import DatabasePMPV
+
+        if self.valor_total_geral == 0.0:
+            messagebox.showwarning("Aviso", "Execute a auditoria ou o somatório antes de salvar.")
+            return
+
+        periodo = simpledialog.askstring(
+            "Salvar CGR no SCG",
+            "Digite o período (ex: Dez/2025):",
+            initialvalue="Dez/2025",
+        )
+        if not periodo:
+            return
+
+        db = DatabasePMPV()
+        db.atualizar_cgr(periodo, self.valor_total_geral)
+        rpv = db.calcular_e_salvar_rpv(periodo)
+        db.fechar()
+
+        val_fmt = f"R$ {self.valor_total_geral:,.2f}"
+        rpv_fmt = f"R$ {rpv:,.2f}"
+        messagebox.showinfo(
+            "CGR Salvo ✅",
+            f"Período  : {periodo}\n"
+            f"CGR salvo: {val_fmt}\n"
+            f"RPV = CGR − CGF = {rpv_fmt}\n\n"
+            f"Acesse o módulo SCG para ver o resultado final.",
+        )
+
     # ==========================================
     # GETTERS — use estes em outros cálculos
     # ==========================================

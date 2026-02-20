@@ -57,6 +57,15 @@ class DatabasePMPV:
             )
         """)
         
+        # Tabela de PMPV MENSAL — valor R$/m³ por período
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pmpv_mensal (
+                periodo           TEXT PRIMARY KEY,
+                pmpv              REAL NOT NULL,
+                data_atualizacao  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         self.cursor.execute("""
                             
                             CREATE TABLE IF NOT EXISTS  consolidacao(
@@ -133,6 +142,12 @@ class DatabasePMPV:
     # FUNÇÕES DE CONSOLIDAÇÃO
     # ==========================================
     
+    def _garantir_periodo(self, periodo: str):
+        """Cria o período na tabela consolidacao se ainda não existir."""
+        self.cursor.execute("SELECT id FROM consolidacao WHERE periodo = ?", (periodo,))
+        if not self.cursor.fetchone():
+            self.criar_periodo_consolidacao(periodo)
+
     def criar_periodo_consolidacao(self, periodo: str, obs: str = "") -> int:
         """Cria um novo período de consolidação"""
         self.cursor.execute(
@@ -143,6 +158,7 @@ class DatabasePMPV:
         return self.cursor.lastrowid
     
     def atualizar_cgr(self, periodo: str, valor: float):
+        self._garantir_periodo(periodo)
         """Atualiza o CGR (Auditoria XML)"""
         self.cursor.execute("""
             UPDATE consolidacao
@@ -152,6 +168,7 @@ class DatabasePMPV:
         self.conn.commit()
     
     def atualizar_ret(self, periodo: str, valor: float):
+        self._garantir_periodo(periodo)
         """Atualiza o RET (Módulo RET)"""
         self.cursor.execute("""
             UPDATE consolidacao
@@ -161,6 +178,7 @@ class DatabasePMPV:
         self.conn.commit()
     
     def atualizar_rp(self, periodo: str, valor: float):
+        self._garantir_periodo(periodo)
         """Atualiza o RP (Conciliação)"""
         self.cursor.execute("""
             UPDATE consolidacao
@@ -169,6 +187,33 @@ class DatabasePMPV:
         """, (valor, periodo))
         self.conn.commit()
             
+    def atualizar_cgf(self, periodo: str, valor: float):
+        """Atualiza somente o CGF (Volume Faturado)."""
+        self._garantir_periodo(periodo)
+        self.cursor.execute("""
+            UPDATE consolidacao
+            SET cgf = ?, data_atualizacao = CURRENT_TIMESTAMP
+            WHERE periodo = ?
+        """, (valor, periodo))
+        self.conn.commit()
+
+    def calcular_e_salvar_rpv(self, periodo: str) -> float:
+        """Calcula RPV = CGR − CGF, salva no banco e retorna o valor."""
+        self._garantir_periodo(periodo)
+        self.cursor.execute("SELECT cgr, cgf FROM consolidacao WHERE periodo = ?", (periodo,))
+        row = self.cursor.fetchone()
+        if not row:
+            return 0.0
+        dados = dict(row)
+        rpv = (dados.get('cgr') or 0.0) - (dados.get('cgf') or 0.0)
+        self.cursor.execute("""
+            UPDATE consolidacao
+            SET rpv = ?, data_atualizacao = CURRENT_TIMESTAMP
+            WHERE periodo = ?
+        """, (rpv, periodo))
+        self.conn.commit()
+        return rpv
+
     def atualizar_rpv_cgf(self, periodo: str, rpv: float, cgf: float):
         """Atualiza RPV e CGF (valores manuais)"""
         self.cursor.execute("""
@@ -217,5 +262,32 @@ class DatabasePMPV:
         
         
         
+    # ==========================================
+    # PMPV MENSAL
+    # ==========================================
+
+    def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
+        """Grava (ou substitui) o PMPV em R$/m³ para um período mensal."""
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO pmpv_mensal (periodo, pmpv, data_atualizacao)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        """, (periodo, pmpv))
+        self.conn.commit()
+
+    def buscar_pmpv_mensal(self, periodo: str):
+        """Retorna o PMPV em R$/m³ para o período, ou None se não encontrado."""
+        self.cursor.execute(
+            "SELECT pmpv FROM pmpv_mensal WHERE periodo = ?", (periodo,)
+        )
+        row = self.cursor.fetchone()
+        return float(row["pmpv"]) if row else None
+
+    def listar_pmpv_mensal(self) -> List[Dict]:
+        """Lista todos os PMPVs mensais salvos, do mais recente ao mais antigo."""
+        self.cursor.execute(
+            "SELECT periodo, pmpv, data_atualizacao FROM pmpv_mensal ORDER BY data_atualizacao DESC"
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
     def fechar(self):
         if self.conn: self.conn.close()
