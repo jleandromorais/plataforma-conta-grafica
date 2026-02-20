@@ -24,50 +24,13 @@ from openpyxl.styles import Font, PatternFill
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-# ==========================================
-# DETECÇÃO AUTOMÁTICA DO TESSERACT
-# ==========================================
+# Se instalaste na pasta padrão do Windows, tem de ser esta:
+PASTA_INSTALACAO = r'C:\Program Files\Tesseract-OCR'
+CAMINHO_EXECUTAVEL = os.path.join(PASTA_INSTALACAO, 'tesseract.exe')
+pytesseract.pytesseract.tesseract_cmd = CAMINHO_EXECUTAVEL
 
-def detectar_tesseract():
-    """
-    Procura Tesseract em caminhos comuns do Windows.
-    Retorna: (caminho_encontrado, esta_ativado)
-    """
-    # Lista de caminhos comuns onde Tesseract pode estar instalado
-    caminhos_possiveis = [
-        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-        r'C:\Tesseract-OCR\tesseract.exe',
-        r'C:\Users\{}\AppData\Local\Tesseract-OCR\tesseract.exe'.format(os.getenv('USERNAME')),
-        r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(os.getenv('USERNAME')),
-    ]
-    
-    # Tenta encontrar tesseract.exe no PATH do sistema
-    try:
-        import shutil
-        caminho_path = shutil.which('tesseract')
-        if caminho_path:
-            caminhos_possiveis.insert(0, caminho_path)  # Prioriza PATH
-    except:
-        pass
-    
-    # Verifica cada caminho
-    for caminho in caminhos_possiveis:
-        if os.path.exists(caminho):
-            print(f"✅ Tesseract encontrado em: {caminho}")
-            return caminho, True
-    
-    print("⚠️ Tesseract OCR não encontrado no sistema")
-    print("   → PDFs digitais funcionarão normalmente")
-    print("   → PDFs escaneados (imagem) NÃO serão processados")
-    print("   → Para instalar: https://github.com/UB-Mannheim/tesseract/wiki")
-    return None, False
-
-# Detecta e configura Tesseract
-CAMINHO_EXECUTAVEL, OCR_ATIVADO = detectar_tesseract()
-
-if OCR_ATIVADO:
-    pytesseract.pytesseract.tesseract_cmd = CAMINHO_EXECUTAVEL
+# Verifica Tesseract
+OCR_ATIVADO = os.path.exists(CAMINHO_EXECUTAVEL)
 
 @dataclass(frozen=True)
 class PdfItem:
@@ -201,35 +164,15 @@ def salvar_excel(caminho: Path, itens: List[PdfItem]):
     ws.column_dimensions["E"].width = 30
     
     wb.save(caminho)
-    wb.close()  # Fecha o workbook para liberar o arquivo
-    
-    # ===== SALVAR RP NO BANCO =====
-    from tkinter import simpledialog
-    rp_valor = total_rec - total_desp
-    
-    periodo = simpledialog.askstring("Período RP", 
-                                    "Digite o período (ex: Q1 2026):",
-                                    initialvalue="Q1 2026")
-    if periodo:
-        from database import DatabasePMPV
-        db = DatabasePMPV()
-        if not db.buscar_consolidacao(periodo):
-            db.criar_periodo_consolidacao(periodo, "Conciliação")
-        db.atualizar_rp(periodo, rp_valor)
-        db.fechar()
-        
-        rp_fmt = f"R$ {rp_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        messagebox.showinfo("RP Salvo", f"RP: {rp_fmt}\nPeríodo: {periodo}")
-    
     return total_rec, total_desp
 
 # ==========================================
 # 2. INTERFACE GRÁFICA MODERNA (CustomTkinter)
 # ==========================================
 
-class AppConciliador(ctk.CTk):
-    def __init__(self):
-        super().__init__()
+class AppConciliador(ctk.CTkToplevel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
         
         self.title("ConciliaPDF 2.0 - Automação Financeira")
         self.geometry("900x700")
@@ -237,14 +180,8 @@ class AppConciliador(ctk.CTk):
         # Variáveis de Estado
         self.path_rec = tk.StringVar()
         self.path_desp = tk.StringVar()
-        
-        # Status OCR
-        if OCR_ATIVADO:
-            self.status_ocr_txt = "✅ OCR ATIVO"
-            self.cor_ocr = "#27ae60"  # Verde
-        else:
-            self.status_ocr_txt = "⚠️ APENAS PDFs DIGITAIS"
-            self.cor_ocr = "#f39c12"  # Laranja
+        self.status_ocr_txt = "✅ MOTOR OCR ATIVO" if OCR_ATIVADO else "❌ OCR NÃO ENCONTRADO"
+        self.cor_ocr = "#27ae60" if OCR_ATIVADO else "#c0392b"
 
         self._setup_ui()
 
@@ -365,29 +302,14 @@ class AppConciliador(ctk.CTk):
                 itens += processar_lista_arquivos(arquivos_desp, "Despesa", self.log_message)
 
             # Salvar
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%H%M%S")
             nome_excel = f"Conciliacao_Final_{timestamp}.xlsx"
             
-            # Evita sobrescrever arquivo já aberto
-            caminho_base = Path(os.getcwd()) / nome_excel.replace('.xlsx', '')
+            # Pergunta onde salvar (precisa ser invocado na thread principal, mas aqui simplificamos)
+            # Vamos salvar na pasta de Downloads ou na pasta do script para evitar travar a thread
             caminho_final = Path(os.getcwd()) / nome_excel
-            contador = 1
             
-            while caminho_final.exists():
-                try:
-                    # Testa se pode escrever no arquivo
-                    with open(caminho_final, 'a'):
-                        pass
-                    break
-                except (PermissionError, IOError):
-                    # Arquivo em uso, adiciona número
-                    caminho_final = Path(os.getcwd()) / f"{caminho_base.name}_{contador}.xlsx"
-                    contador += 1
-                    if contador > 100:
-                        caminho_final = Path(os.getcwd()) / f"Conciliacao_Final_{datetime.now().strftime('%Y%m%d_%H%M%S%f')}.xlsx"
-                        break
-            
-            self.log_message(f"Gerando Excel: {caminho_final.name}...")
+            self.log_message("Gerando Excel...")
             tot_rec, tot_desp = salvar_excel(caminho_final, itens)
             
             self.log_message(f"CONCLUÍDO! Salvo em: {caminho_final}")
