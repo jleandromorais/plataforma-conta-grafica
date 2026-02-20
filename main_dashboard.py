@@ -12,6 +12,7 @@ try:
     from modulo_auditoria_CGR import AppAuditoriaXML
     from modulo_scg import ModuloSCG
     from modulo_cgf import CGFApp
+    from modulo_rpv import ModuloRPV
 except ImportError as e:
     print(f"Erro de importação: {e}")
 
@@ -34,7 +35,7 @@ class PlataformaFinanceira(ctk.CTk):
         # === 1. MENU LATERAL ESQUERDO ===
         self.sidebar_frame = ctk.CTkFrame(self, width=250, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(7, weight=1)  # Linha APÓS os botões expande
+        self.sidebar_frame.grid_rowconfigure(9, weight=1)  # Linha APÓS os botões expande
 
         # Título do Menu
         self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="FINANÇAS PRO", 
@@ -65,6 +66,17 @@ class PlataformaFinanceira(ctk.CTk):
         self.btn_cgf = ctk.CTkButton(self.sidebar_frame, text="📋 Volume CGF",
                                      command=self.abrir_cgf)
         self.btn_cgf.grid(row=6, column=0, padx=20, pady=10)
+
+        self.btn_rpv = ctk.CTkButton(self.sidebar_frame, text="🧾 RPV (CGR − CGF)",
+                                     command=self.abrir_rpv,
+                                     fg_color="#f59e0b", hover_color="#d97706",
+                                     text_color="black")
+        self.btn_rpv.grid(row=7, column=0, padx=20, pady=10)
+
+        self.btn_scg = ctk.CTkButton(self.sidebar_frame, text="💼 Consolidação SCG",
+                                     command=self.abrir_scg,
+                                     fg_color="#8b5cf6", hover_color="#7c3aed")
+        self.btn_scg.grid(row=8, column=0, padx=20, pady=10)
 
         # === 2. ÁREA PRINCIPAL (DIREITA) ===
         self.main_area = ctk.CTkFrame(self, corner_radius=10, fg_color="transparent")
@@ -118,9 +130,9 @@ class PlataformaFinanceira(ctk.CTk):
                             self.abrir_cgf, 1, 2)
         
         # Linha 2
-        self._criar_card_grid(frame_cards, "🎯 Módulo 7", 
-                            "Descrição do\nsétimo módulo", 
-                            None, 2, 0)
+        self._criar_card_grid(frame_cards, "🧾 RPV",
+                            "Requisição de\nPequeno Valor\nCGR − CGF",
+                            self.abrir_rpv, 2, 0)
         
         self._criar_card_grid(frame_cards, "⚙️ Módulo 8", 
                             "Descrição do\noitavo módulo", 
@@ -171,57 +183,55 @@ class PlataformaFinanceira(ctk.CTk):
     # --- INTEGRAÇÃO COM SEUS CÓDIGOS ANTIGOS ---
     
     def abrir_pmpv(self):
-        """Abre o teu código de PMPV dentro de uma nova janela"""
-        nova_janela = ctk.CTkToplevel(self)
-        nova_janela.title("Gestão PMPV - Trimestral")
-        nova_janela.geometry("1300x800")
-        nova_janela.attributes('-topmost', True) # Mantém na frente
-        
-        # Aqui chamamos a TUA classe antiga, passando a nova janela como 'root'
         try:
-            app = CalculadoraTrimestralPMPV(nova_janela)
-        except NameError:
-            messagebox.showerror("Erro", "Módulo PMPV não encontrado/importado.")
+            self._janela_pmpv = CalculadoraTrimestralPMPV(self)
+            self._janela_pmpv.geometry("1300x800")
+            self._janela_pmpv.lift()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Módulo PMPV não encontrado/importado.\n{e}")
 
     def abrir_ocr(self):
-        """Abre o módulo de Conciliação PDF"""
         try:
-            app = AppConciliador(self)
+            self._janela_ocr = AppConciliador(self)
+            self._janela_ocr.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Módulo Conciliação não encontrado/importado.\n{e}")
-    
+
     def abrir_ret(self):
-        """Abre o Sistema RET de processamento de PDFs"""
-        nova_janela = ctk.CTkToplevel(self)
-        nova_janela.title("Sistema RET - Processamento de Encargos")
-        nova_janela.geometry("1400x900")
-        nova_janela.attributes('-topmost', True)
-        
         try:
-            app = SistemaRET(nova_janela)
-        except NameError:
-            messagebox.showerror("Erro", "Módulo RET não encontrado/importado.")
+            self._janela_ret = SistemaRET(self)
+            self._janela_ret.geometry("1400x900")
+            self._janela_ret.lift()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Módulo RET não encontrado/importado.\n{e}")
 
     def abrir_auditoria(self):
-        """Abre o módulo de Auditoria XML"""
         try:
-            app = AppAuditoriaXML(self)
-        except NameError:
-            messagebox.showerror("Erro", "Módulo Auditoria não encontrado/importado.")
-    
+            self._janela_auditoria = AppAuditoriaXML(self)
+            self._janela_auditoria.lift()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Módulo Auditoria não encontrado/importado.\n{e}")
+
     def abrir_scg(self):
-        """Abre o módulo de Consolidação SCG"""
         try:
-            app = ModuloSCG(self)
+            self._janela_scg = ModuloSCG(self)
+            self._janela_scg.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir SCG: {e}")
 
     def abrir_cgf(self):
-        """Abre o módulo CGF - Somatório de Volume Faturado"""
         try:
-            app = CGFApp(self)
+            self._janela_cgf = CGFApp(self)
+            self._janela_cgf.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir CGF: {e}")
+
+    def abrir_rpv(self):
+        try:
+            self._janela_rpv = ModuloRPV(self)
+            self._janela_rpv.lift()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao abrir RPV: {e}")
 
 if __name__ == "__main__":
     app = PlataformaFinanceira()
