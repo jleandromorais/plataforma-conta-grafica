@@ -7,10 +7,11 @@ import os
 # Importando os módulos
 try:
     from modulo_pmpv import CalculadoraTrimestralPMPV
-    from modulo_concilia import AppConciliador
+    from modulo_concilia_RP import AppConciliador
     from modulo_ret import SistemaRET
-    from modulo_auditoria import AppAuditoriaXML
+    from modulo_auditoria_CGR import AppAuditoriaXML
     from modulo_scg import ModuloSCG
+    from modulo_cgf import CGFApp
 except ImportError as e:
     print(f"Erro de importação: {e}")
 
@@ -33,7 +34,7 @@ class PlataformaFinanceira(ctk.CTk):
         # === 1. MENU LATERAL ESQUERDO ===
         self.sidebar_frame = ctk.CTkFrame(self, width=250, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(6, weight=1)  # Linha APÓS os botões expande
+        self.sidebar_frame.grid_rowconfigure(7, weight=1)  # Linha APÓS os botões expande
 
         # Título do Menu
         self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="FINANÇAS PRO", 
@@ -60,6 +61,10 @@ class PlataformaFinanceira(ctk.CTk):
         self.btn_auditoria = ctk.CTkButton(self.sidebar_frame, text="🔍 Auditoria XML", 
                                     command=self.abrir_auditoria)
         self.btn_auditoria.grid(row=5, column=0, padx=20, pady=10)
+
+        self.btn_cgf = ctk.CTkButton(self.sidebar_frame, text="📋 Volume CGF",
+                                     command=self.abrir_cgf)
+        self.btn_cgf.grid(row=6, column=0, padx=20, pady=10)
 
         # === 2. ÁREA PRINCIPAL (DIREITA) ===
         self.main_area = ctk.CTkFrame(self, corner_radius=10, fg_color="transparent")
@@ -108,9 +113,9 @@ class PlataformaFinanceira(ctk.CTk):
                             "Cálculo final\nSCG = RPV(CGR+CGF)+RET+RP", 
                             self.abrir_scg, 1, 1)
         
-        self._criar_card_grid(frame_cards, "📈 Módulo 6", 
-                            "Descrição do\nsexto módulo", 
-                            None, 1, 2)
+        self._criar_card_grid(frame_cards, "📋 Volume CGF",
+                            "Somatório de volume\nFaturada - Canceladas\n- Devoluções",
+                            self.abrir_cgf, 1, 2)
         
         # Linha 2
         self._criar_card_grid(frame_cards, "🎯 Módulo 7", 
@@ -179,13 +184,11 @@ class PlataformaFinanceira(ctk.CTk):
             messagebox.showerror("Erro", "Módulo PMPV não encontrado/importado.")
 
     def abrir_ocr(self):
-        """Abre o teu código de Conciliação PDF"""
+        """Abre o módulo de Conciliação PDF"""
         try:
-            # Instancia a tua classe de OCR (adaptada)
-            app = AppConciliador()
-            app.mainloop()
-        except NameError:
-            messagebox.showerror("Erro", "Módulo OCR não encontrado/importado.")
+            app = AppConciliador(self)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Módulo Conciliação não encontrado/importado.\n{e}")
     
     def abrir_ret(self):
         """Abre o Sistema RET de processamento de PDFs"""
@@ -212,6 +215,13 @@ class PlataformaFinanceira(ctk.CTk):
             app = ModuloSCG(self)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir SCG: {e}")
+
+    def abrir_cgf(self):
+        """Abre o módulo CGF - Somatório de Volume Faturado"""
+        try:
+            app = CGFApp(self)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao abrir CGF: {e}")
 
 if __name__ == "__main__":
     app = PlataformaFinanceira()
