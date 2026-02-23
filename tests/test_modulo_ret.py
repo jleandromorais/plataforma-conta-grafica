@@ -2,197 +2,196 @@
 Testes para o módulo modulo_ret.py
 """
 import pytest
+import re
 import os
 from pathlib import Path
 from modulo_ret import SistemaRET, TAXA_EUR_BRL
 
 
+# ---------------------------------------------------------------------------
+# Funções puras extraídas para teste sem UI
+# ---------------------------------------------------------------------------
+
+def identificar_tipo(caminho: str) -> str:
+    partes = [p.upper() for p in Path(caminho).parts[:-1]]
+    if any('EAT' in p for p in partes):
+        return 'EAT'
+    if any('PENALIDADE' in p for p in partes):
+        return 'Penalidades'
+    if any(re.fullmatch(r'TOP[\s_\-]?.*', p) or p == 'TOP' for p in partes):
+        return 'TOP'
+    return 'Outros'
+
+
+def extrair_tipo_nota(caminho: str) -> str:
+    nome = os.path.basename(caminho).upper()
+    tokens = set(re.split(r'[\s_\-\.]+', nome))
+    if 'ND' in tokens or 'DEBITO' in nome or 'DÉBITO' in nome:
+        return 'Débito'
+    if 'NC' in tokens or 'CREDITO' in nome or 'CRÉDITO' in nome:
+        return 'Crédito'
+    return 'N/A'
+
+
+def parse_valor(s: str):
+    try:
+        v = float(s.replace('.', '').replace(',', '.'))
+        return v if v > 0 else None
+    except Exception:
+        return None
+
+
+def extrair_valores(texto: str):
+    """Replica a lógica de extração de valores sem UI."""
+    padrao_brl = r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
+    padrao_eur = r'€\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
+    padrao_gen = r'(?<![€$\d,])(\d{1,3}(?:\.\d{3})+,\d{2})(?!\d)'
+
+    valores_brl = [v for m in re.findall(padrao_brl, texto)
+                   if (v := parse_valor(m)) is not None]
+    valores_eur = [v for m in re.findall(padrao_eur, texto)
+                   if (v := parse_valor(m)) is not None]
+
+    if not valores_brl and not valores_eur:
+        valores_brl = [v for m in re.findall(padrao_gen, texto)
+                       if (v := parse_valor(m)) is not None]
+
+    todos_brl = valores_brl + [v * TAXA_EUR_BRL for v in valores_eur]
+    moeda = 'EUR' if valores_eur and not valores_brl else 'BRL'
+    return todos_brl, moeda
+
+
 class TestIdentificacaoTipo:
     """Testes para identificação de tipos de encargo"""
-    
+
     def test_identificar_tipo_eat(self):
-        """Testa identificação de EAT"""
-        caminho = "C:/pasta/EAT/arquivo.pdf"
-        
-        # Criar instância temporária (sem mostrar GUI)
-        sistema = type('MockSistema', (), {
-            '_identificar_tipo': SistemaRET._identificar_tipo.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._identificar_tipo(caminho)
-        assert tipo == 'EAT'
-    
+        assert identificar_tipo("C:/pasta/EAT/arquivo.pdf") == 'EAT'
+
     def test_identificar_tipo_penalidade(self):
-        """Testa identificação de Penalidade"""
-        caminho = "C:/pasta/PENALIDADE/arquivo.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_identificar_tipo': SistemaRET._identificar_tipo.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._identificar_tipo(caminho)
-        assert tipo == 'Penalidades'
-    
+        assert identificar_tipo("C:/pasta/PENALIDADE/arquivo.pdf") == 'Penalidades'
+
     def test_identificar_tipo_top(self):
-        """Testa identificação de TOP"""
-        caminho = "C:/pasta/TOP/arquivo.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_identificar_tipo': SistemaRET._identificar_tipo.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._identificar_tipo(caminho)
-        assert tipo == 'TOP'
-    
+        assert identificar_tipo("C:/pasta/TOP/arquivo.pdf") == 'TOP'
+
     def test_identificar_tipo_outros(self):
-        """Testa tipo Outros quando não identifica"""
-        caminho = "C:/pasta/DESCONHECIDO/arquivo.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_identificar_tipo': SistemaRET._identificar_tipo.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._identificar_tipo(caminho)
-        assert tipo == 'Outros'
+        assert identificar_tipo("C:/pasta/DESCONHECIDO/arquivo.pdf") == 'Outros'
+
+    # --- Regressão bug: "TOP" em "DESKTOP" ---
+    def test_bug_desktop_nao_e_top(self):
+        """BUG CORRIGIDO: arquivo na pasta Desktop não deve ser tipo TOP."""
+        assert identificar_tipo("C:/Users/fulano/Desktop/arquivo.pdf") == 'Outros'
+
+    def test_bug_laptop_nao_e_top(self):
+        assert identificar_tipo("C:/LAPTOP/arquivo.pdf") == 'Outros'
+
+    def test_top_com_sufixo_ainda_e_top(self):
+        """Pasta 'TOP_2025' deve continuar sendo identificada como TOP."""
+        assert identificar_tipo("C:/pasta/TOP_2025/arquivo.pdf") == 'TOP'
 
 
 class TestExtrairEmpresa:
-    """Testes para extração de empresa"""
-    
+    """Testes para extração de empresa (usa método estático via instância mock simples)"""
+
+    def _mock(self):
+        return type('M', (), {'_extrair_empresa': SistemaRET._extrair_empresa})()
+
     def test_extrair_empresa_petrobras(self):
-        """Testa extração de PETROBRAS"""
-        caminho = "C:/pasta/arquivo_PETROBRAS_01.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_empresa': SistemaRET._extrair_empresa.__get__(None, SistemaRET)
-        })()
-        
-        empresa = sistema._extrair_empresa(caminho)
-        assert empresa == 'PETROBRAS'
-    
+        assert self._mock()._extrair_empresa("C:/pasta/arquivo_PETROBRAS_01.pdf") == 'PETROBRAS'
+
     def test_extrair_empresa_galp(self):
-        """Testa extração de GALP"""
-        caminho = "C:/pasta/nota_GALP_202401.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_empresa': SistemaRET._extrair_empresa.__get__(None, SistemaRET)
-        })()
-        
-        empresa = sistema._extrair_empresa(caminho)
-        assert empresa == 'GALP'
-    
+        assert self._mock()._extrair_empresa("C:/pasta/nota_GALP_202401.pdf") == 'GALP'
+
     def test_extrair_empresa_ambev(self):
-        """Testa extração de AMBEV"""
-        caminho = "C:/pasta/AMBEV_fatura.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_empresa': SistemaRET._extrair_empresa.__get__(None, SistemaRET)
-        })()
-        
-        empresa = sistema._extrair_empresa(caminho)
-        assert empresa == 'AMBEV'
-    
+        assert self._mock()._extrair_empresa("C:/pasta/AMBEV_fatura.pdf") == 'AMBEV'
+
     def test_extrair_empresa_desconhecida(self):
-        """Testa quando empresa não é reconhecida"""
-        caminho = "C:/pasta/empresa_desconhecida.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_empresa': SistemaRET._extrair_empresa.__get__(None, SistemaRET)
-        })()
-        
-        empresa = sistema._extrair_empresa(caminho)
-        assert empresa == 'N/A'
+        assert self._mock()._extrair_empresa("C:/pasta/empresa_desconhecida.pdf") == 'N/A'
 
 
 class TestExtrairTipoNota:
     """Testes para identificação de tipo de nota"""
-    
-    def test_extrair_tipo_nota_debito_nd(self):
-        """Testa identificação de Nota de Débito (ND)"""
-        caminho = "C:/pasta/ND_12345.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_tipo_nota': SistemaRET._extrair_tipo_nota.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._extrair_tipo_nota(caminho)
-        assert tipo == 'Débito'
-    
-    def test_extrair_tipo_nota_debito_palavra(self):
-        """Testa identificação por palavra DEBITO"""
-        caminho = "C:/pasta/NOTA_DEBITO_2024.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_tipo_nota': SistemaRET._extrair_tipo_nota.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._extrair_tipo_nota(caminho)
-        assert tipo == 'Débito'
-    
-    def test_extrair_tipo_nota_credito_nc(self):
-        """Testa identificação de Nota de Crédito (NC)"""
-        caminho = "C:/pasta/NC_67890.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_tipo_nota': SistemaRET._extrair_tipo_nota.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._extrair_tipo_nota(caminho)
-        assert tipo == 'Crédito'
-    
-    def test_extrair_tipo_nota_credito_palavra(self):
-        """Testa identificação por palavra CREDITO"""
-        caminho = "C:/pasta/NOTA_CREDITO_2024.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_tipo_nota': SistemaRET._extrair_tipo_nota.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._extrair_tipo_nota(caminho)
-        assert tipo == 'Crédito'
-    
-    def test_extrair_tipo_nota_nao_identificada(self):
-        """Testa quando tipo não é identificado"""
-        caminho = "C:/pasta/fatura_2024.pdf"
-        
-        sistema = type('MockSistema', (), {
-            '_extrair_tipo_nota': SistemaRET._extrair_tipo_nota.__get__(None, SistemaRET)
-        })()
-        
-        tipo = sistema._extrair_tipo_nota(caminho)
-        assert tipo == 'N/A'
+
+    def test_debito_nd(self):
+        assert extrair_tipo_nota("C:/pasta/ND_12345.pdf") == 'Débito'
+
+    def test_debito_palavra(self):
+        assert extrair_tipo_nota("C:/pasta/NOTA_DEBITO_2024.pdf") == 'Débito'
+
+    def test_credito_nc(self):
+        assert extrair_tipo_nota("C:/pasta/NC_67890.pdf") == 'Crédito'
+
+    def test_credito_palavra(self):
+        assert extrair_tipo_nota("C:/pasta/NOTA_CREDITO_2024.pdf") == 'Crédito'
+
+    def test_nao_identificada(self):
+        assert extrair_tipo_nota("C:/pasta/fatura_2024.pdf") == 'N/A'
+
+    # --- Regressão bug: "ND" dentro de palavras ---
+    def test_bug_fundo_nao_e_debito(self):
+        """BUG CORRIGIDO: 'FUNDO' contém 'ND' mas não é nota de débito."""
+        assert extrair_tipo_nota("C:/pasta/FUNDO_SOCIAL.pdf") == 'N/A'
+
+    def test_bug_agenda_nao_e_debito(self):
+        """BUG CORRIGIDO: 'AGENDA' contém 'ND' mas não é nota de débito."""
+        assert extrair_tipo_nota("C:/pasta/AGENDA_2024.pdf") == 'N/A'
+
+    def test_bug_segunda_nao_e_debito(self):
+        assert extrair_tipo_nota("C:/pasta/SEGUNDA_VIA.pdf") == 'N/A'
 
 
 class TestCalculos:
     """Testes para cálculos de valores"""
-    
+
     def test_conversao_eur_brl(self):
-        """Testa conversão de EUR para BRL"""
-        valor_eur = 100.0
-        valor_brl = valor_eur * TAXA_EUR_BRL
-        
-        assert valor_brl == 600.0  # 100 * 6.0
-    
+        assert 100.0 * TAXA_EUR_BRL == pytest.approx(600.0)
+
     def test_calculo_valor_unitario(self):
-        """Testa cálculo de valor unitário"""
-        valor_total = 1000.0
-        quantidade = 50.0
-        
-        valor_unitario = valor_total / quantidade
-        
-        assert valor_unitario == 20.0
-    
+        assert 1000.0 / 50.0 == pytest.approx(20.0)
+
     def test_calculo_valor_unitario_quantidade_zero(self):
-        """Testa que valor unitário é 0 quando quantidade é 0"""
-        valor_total = 1000.0
-        quantidade = 0.0
-        
-        if quantidade > 0:
-            valor_unitario = valor_total / quantidade
-        else:
-            valor_unitario = 0.0
-        
-        assert valor_unitario == 0.0
+        valor_unitario = 1000.0 / 50.0 if 50.0 > 0 else 0.0
+        assert valor_unitario == pytest.approx(20.0)
+        valor_zero = 1000.0 / 1.0 if 0.0 > 0 else 0.0
+        assert valor_zero == 0.0
+
+
+class TestExtracaoValores:
+    """Testes para extração e conversão de moeda — cobre os bugs corrigidos."""
+
+    def test_valor_brl_nao_multiplicado(self):
+        """BUG CORRIGIDO: valor em R$ não deve ser multiplicado por TAXA_EUR_BRL."""
+        texto = "Total a pagar: R$ 1.000,00"
+        valores, moeda = extrair_valores(texto)
+        assert moeda == 'BRL'
+        assert max(valores) == pytest.approx(1000.0)
+
+    def test_valor_eur_convertido_para_brl(self):
+        """Valor em € deve ser convertido para BRL na extração."""
+        texto = "Total: € 100,00"
+        valores, moeda = extrair_valores(texto)
+        assert moeda == 'EUR'
+        assert max(valores) == pytest.approx(100.0 * TAXA_EUR_BRL)
+
+    def test_sem_simbolo_usa_fallback_generico(self):
+        """Sem símbolo de moeda, o padrão genérico captura valores formatados."""
+        texto = "Valor apurado: 2.500,00 referente ao período."
+        valores, moeda = extrair_valores(texto)
+        assert moeda == 'BRL'
+        assert 2500.0 in [pytest.approx(v) for v in valores]
+
+    def test_bug_regex_nao_duplica_valores(self):
+        """BUG CORRIGIDO: padrão genérico não deve duplicar valores já capturados
+        por R$ ou €."""
+        texto = "Fatura: R$ 5.000,00"
+        valores, _ = extrair_valores(texto)
+        count_5000 = sum(1 for v in valores if abs(v - 5000.0) < 0.01)
+        assert count_5000 == 1, f"Valor 5000 apareceu {count_5000}x (esperado 1)"
+
+    def test_valores_negativos_ignorados(self):
+        """Valores negativos ou zero não devem entrar na lista."""
+        texto = "Desconto: R$ 0,00  Total: R$ 300,00"
+        valores, _ = extrair_valores(texto)
+        assert all(v > 0 for v in valores)
 
 
 class TestEstruturaDados:

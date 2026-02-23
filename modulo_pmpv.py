@@ -123,6 +123,8 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         
         e_vol = ctk.CTkEntry(row, width=120, height=30, text_color="#f39c12", font=("Roboto", 12, "bold"))
         e_vol.pack(side="left", padx=2)
+        e_vol._entry.bind("<FocusOut>",  lambda _e, w=e_vol: self._sanitizar_vol(w))
+        e_vol._entry.bind("<<Paste>>",   lambda _e, w=e_vol: self.after(10, lambda: self._sanitizar_vol(w)))
 
         ctk.CTkButton(row, text="📋", width=40, command=lambda: self._popup_copy(dados), fg_color="#8e44ad").pack(side="left", padx=2)
         ctk.CTkButton(row, text="🗑️", width=40, command=lambda: self._del_linha(row, dados, lista), fg_color="#c0392b").pack(side="left", padx=2)
@@ -142,6 +144,38 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
     def _val(self, e):
         try: return float(e.get().replace(',', '.'))
         except: return 0.0
+
+    @staticmethod
+    def _limpar_str_volume(val: str) -> str:
+        """Sanitiza uma string de volume (função pura, sem UI).
+
+        Regras:
+          - Troca vírgula por ponto.
+          - Mantém apenas dígitos e pontos.
+          - Múltiplos pontos → separa o último segmento:
+              * 3 dígitos → separador de milhar → remove todos os pontos.
+              * outro tamanho → ponto decimal → une os demais e preserva o último.
+        """
+        limpo = val.replace(",", ".")
+        limpo = "".join(c for c in limpo if c.isdigit() or c == ".")
+        partes = limpo.split(".")
+        if len(partes) > 2:
+            ultimo = partes[-1]
+            if len(ultimo) == 3:
+                limpo = "".join(partes)
+            else:
+                limpo = "".join(partes[:-1]) + "." + ultimo
+        return limpo
+
+    def _sanitizar_vol(self, entry):
+        """Remove qualquer caractere inválido do campo Volume (aceita colagem)."""
+        val = entry.get()
+        limpo = self._limpar_str_volume(val)
+        if limpo != val:
+            cursor = entry._entry.index(tk.INSERT)
+            entry.delete(0, "end")
+            entry.insert(0, limpo)
+            entry._entry.icursor(min(cursor, len(limpo)))
 
     def _add_nova(self, parent, lista):
         novo = self._add_linha(parent, "Nova Empresa", lista)
@@ -163,15 +197,30 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
             nome = f"Mês {i}"
             ctk.CTkButton(top, text=nome, command=lambda n=nome: self._exec_copy(origem, n, top)).pack(pady=5)
 
+    def _linha_disponivel(self, d):
+        """Uma linha está disponível como destino de cópia se todos os campos
+        de dados (mol, trans, log, vol) estiverem em branco.
+        Nome vazio é sempre disponível; 'Nova Empresa' com dados já preenchidos
+        não é sobrescrito."""
+        nome = d['nome'].get().strip()
+        campos_dados = [d['mol'], d['trans'], d['log'], d['vol']]
+        todos_vazios = all(not c.get().strip() for c in campos_dados)
+        if nome == "":
+            return True
+        return todos_vazios
+
     def _exec_copy(self, orig, dest_key, win):
         win.destroy()
-        # Procura linha vazia ou cria nova
         target_list = self.dados_meses[dest_key]
-        dest = next((d for d in target_list if d['nome'].get() in ["", "Nova Empresa"]), None)
-        
-        if not dest: 
-             messagebox.showinfo("Ops", "Crie uma linha vazia no destino antes.")
-             return
+        dest = next((d for d in target_list if self._linha_disponivel(d)), None)
+
+        if not dest:
+            messagebox.showinfo(
+                "Destino cheio",
+                "Não há linha disponível no destino.\n"
+                "Clique em '➕ Adicionar' no mês de destino para criar uma linha vazia."
+            )
+            return
 
         for k in ['nome', 'mol', 'trans', 'log', 'vol']:
             dest[k].delete(0, "end")
@@ -193,26 +242,59 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
     def calcular(self):
         c_tot = v_tot = 0.0
         cg = self._val(self.entry_cg)
-        
-        for k, linhas in self.dados_meses.items():
+        avisos = []
+
+        idx_start = self.lista_meses.index(self.combo_mes.get())
+
+        for i, (k, linhas) in enumerate(self.dados_meses.items()):
             dias = self.dias_config.get(k, 30)
+            mes_nome = self.lista_meses[(idx_start + i) % 12]
+
             for l in linhas:
                 vol = self._val(l['vol'])
-                if vol > 0:
-                    v_mes = vol * dias
-                    pr = self._val(l['mol']) + self._val(l['trans']) + self._val(l['log'])
-                    c_tot += pr * v_mes
-                    v_tot += v_mes
-        
-        if v_tot == 0: return messagebox.showwarning("Erro", "Volume Zero")
-        
-        pmpv = c_tot / v_tot
+                if vol <= 0:
+                    continue
+
+                mol   = self._val(l['mol'])
+                trans = self._val(l['trans'])
+                log   = self._val(l['log'])
+                pr    = mol + trans + log
+
+                v_mes  = vol * dias
+                c_tot += pr * v_mes
+                v_tot += v_mes
+
+                # Registra parâmetros de preço que estavam vazios (tratados como 0)
+                campos_vazios = []
+                if not l['mol'].get().strip():   campos_vazios.append("Molécula")
+                if not l['trans'].get().strip(): campos_vazios.append("Transporte")
+                if not l['log'].get().strip():   campos_vazios.append("Logística")
+
+                if campos_vazios:
+                    empresa = l['nome'].get().strip() or "(sem nome)"
+                    avisos.append(f"  • {mes_nome} | {empresa}: {', '.join(campos_vazios)} → 0")
+
+        if v_tot == 0:
+            return messagebox.showwarning("Erro", "Volume Zero — nenhuma linha com volume preenchido.")
+
+        pmpv  = c_tot / v_tot
         final = pmpv + cg
-        
+
         self.lbl_pmpv.configure(text=f"PMPV: R$ {pmpv:.4f}")
         self.lbl_final.configure(text=f"PREÇO FINAL: R$ {final:.4f}")
-        
-        self.res_final = {'volume_total': v_tot, 'custo_total': c_tot, 'pmpv': pmpv, 'conta_grafica': cg, 'preco_final': final}
+
+        self.res_final = {
+            'volume_total': v_tot, 'custo_total': c_tot,
+            'pmpv': pmpv, 'conta_grafica': cg, 'preco_final': final,
+        }
+
+        if avisos:
+            messagebox.showinfo(
+                "PMPV Calculado ✅  —  Parâmetros vazios",
+                f"PMPV = R$ {pmpv:.4f}   |   Preço Final = R$ {final:.4f}\n\n"
+                f"Os campos abaixo estavam vazios e foram considerados 0:\n\n"
+                + "\n".join(avisos)
+            )
 
     def _get_data_dict(self):
         idx_start = self.lista_meses.index(self.combo_mes.get())

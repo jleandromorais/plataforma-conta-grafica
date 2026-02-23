@@ -26,12 +26,8 @@ ACCENT_GREEN_HOVER = "#059669"
 ACCENT_RED   = "#ef4444"
 ACCENT_RED_HOVER = "#dc2626"
 
-# Caminhos padrão
-DEFAULT_FILES = [
-    r"z:\COPERGAS\VENDAS_TARIFAS_ MARGEM_ MÉDIA\2025\total mensal 12-2025\NF Faturada e complementar.xlsx",
-    r"z:\COPERGAS\VENDAS_TARIFAS_ MARGEM_ MÉDIA\2025\total mensal 12-2025\NF canceladas e denegadas.xlsx",
-    r"z:\COPERGAS\VENDAS_TARIFAS_ MARGEM_ MÉDIA\2025\total mensal 12-2025\NF devolução dez.25.xlsx",
-]
+# Caminhos padrão (deixar vazio; usuário seleciona via interface)
+DEFAULT_FILES: list[str] = []
 
 class CGFApp(ctk.CTkToplevel):
     def __init__(self, parent=None):

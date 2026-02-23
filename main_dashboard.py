@@ -117,7 +117,7 @@ class PlataformaFinanceira(ctk.CTk):
                             self.abrir_ret, 0, 2)
         
         # Linha 1
-        self._criar_card_grid(frame_cards, "🔍 Auditoria XML e soma  \n das notas fiscais  e vlume", 
+        self._criar_card_grid(frame_cards, "🔍 Auditoria XML e soma  CGR", 
                             "NF-e e CT-e\ncomparação com Excel", 
                             self.abrir_auditoria, 1, 0)
         

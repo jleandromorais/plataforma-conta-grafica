@@ -1,4 +1,5 @@
 import os
+import sys
 import sqlite3
 import pandas as pd
 import customtkinter as ctk
@@ -6,6 +7,7 @@ from tkinter import filedialog, messagebox
 import pdfplumber
 import re
 from datetime import datetime
+from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -16,6 +18,10 @@ ctk.set_default_color_theme("blue")
 
 # Taxa de câmbio EUR → BRL (ajuste conforme a cotação desejada)
 TAXA_EUR_BRL = 6.0
+
+# Diretório base da aplicação (funciona tanto em .py quanto em .exe)
+_APP_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
+           else os.path.dirname(os.path.abspath(__file__))
 
 class SistemaRET(ctk.CTkToplevel):
     def __init__(self, parent=None):
@@ -232,10 +238,11 @@ class SistemaRET(ctk.CTkToplevel):
             'nota_tipo': self._extrair_tipo_nota(caminho_pdf),
             'numero_nd': '',
             'data_vencimento': '',
-            'valor_total': 0.0,
+            'valor_total': 0.0,       # sempre em BRL
             'quantidade': 0.0,
             'valor_unitario': 0.0,
-            'valores_encontrados': []
+            'moeda_detectada': 'BRL', # 'BRL' ou 'EUR'
+            'valores_encontrados': []  # todos já convertidos para BRL
         }
         
         try:
@@ -257,33 +264,43 @@ class SistemaRET(ctk.CTkToplevel):
                 if data_match:
                     dados['data_vencimento'] = data_match.group(1)
                 
-                # Extrair valores
-                padroes_valores = [
-                    r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',
-                    r'€\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)',
-                    r'(\d{1,3}(?:\.\d{3})*,\d{2})',
-                ]
-                
-                for padrao in padroes_valores:
-                    matches = re.findall(padrao, texto_completo)
-                    for match in matches:
-                        valor_str = match.replace('.', '').replace(',', '.')
-                        try:
-                            valor = float(valor_str)
-                            if valor > 0:
-                                dados['valores_encontrados'].append(valor)
-                        except:
-                            pass
-                
-                # Calcular valores principais
-                if dados['valores_encontrados']:
-                    dados['valor_total'] = max(dados['valores_encontrados'])
-                    
-                    # Tentar encontrar quantidade
-                    qt_match = re.search(r'(?:QT|Quantidade)[:\s]*(\d+(?:[.,]\d+)?)', texto_completo, re.IGNORECASE)
+                # Extrair valores separando moeda para evitar conversão dupla
+                # Padrões com símbolo explícito têm prioridade; o genérico só é
+                # usado como fallback quando nenhum símbolo é encontrado.
+                padrao_brl = r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
+                padrao_eur = r'€\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
+                padrao_gen = r'(?<![€$\d,])(\d{1,3}(?:\.\d{3})+,\d{2})(?!\d)'
+
+                def _parse(s):
+                    try:
+                        v = float(s.replace('.', '').replace(',', '.'))
+                        return v if v > 0 else None
+                    except Exception:
+                        return None
+
+                valores_brl = [v for m in re.findall(padrao_brl, texto_completo)
+                               if (v := _parse(m)) is not None]
+                valores_eur = [v for m in re.findall(padrao_eur, texto_completo)
+                               if (v := _parse(m)) is not None]
+
+                # Fallback genérico apenas quando nenhum símbolo foi detectado
+                if not valores_brl and not valores_eur:
+                    valores_brl = [v for m in re.findall(padrao_gen, texto_completo)
+                                   if (v := _parse(m)) is not None]
+
+                # Converter EUR→BRL na extração; armazenar tudo em BRL
+                todos_brl = valores_brl + [v * TAXA_EUR_BRL for v in valores_eur]
+                dados['valores_encontrados'] = todos_brl
+                dados['moeda_detectada']     = 'EUR' if valores_eur and not valores_brl else 'BRL'
+
+                if todos_brl:
+                    dados['valor_total'] = max(todos_brl)
+
+                    qt_match = re.search(r'(?:QT|Quantidade)[:\s]*(\d+(?:[.,]\d+)?)',
+                                         texto_completo, re.IGNORECASE)
                     if qt_match:
                         dados['quantidade'] = float(qt_match.group(1).replace(',', '.'))
-                    
+
                     if dados['quantidade'] > 0:
                         dados['valor_unitario'] = dados['valor_total'] / dados['quantidade']
                 
@@ -293,12 +310,15 @@ class SistemaRET(ctk.CTkToplevel):
         return dados
     
     def _identificar_tipo(self, caminho):
-        """Identifica tipo de encargo pela pasta"""
-        if 'EAT' in caminho.upper():
+        """Identifica tipo de encargo verificando os nomes das PASTAS do caminho
+        (exclui o nome do arquivo para evitar falsos positivos)."""
+        partes = [p.upper() for p in Path(caminho).parts[:-1]]  # ignora o arquivo
+        if any('EAT' in p for p in partes):
             return 'EAT'
-        elif 'PENALIDADE' in caminho.upper():
+        if any('PENALIDADE' in p for p in partes):
             return 'Penalidades'
-        elif 'TOP' in caminho.upper():
+        # Verifica TOP como palavra inteira ou início de componente (evita DESKTOP, LAPTOP)
+        if any(re.fullmatch(r'TOP[\s_\-]?.*', p) or p == 'TOP' for p in partes):
             return 'TOP'
         return 'Outros'
     
@@ -318,14 +338,17 @@ class SistemaRET(ctk.CTkToplevel):
         return 'N/A'
     
     def _extrair_tipo_nota(self, caminho):
-        """Identifica se é Nota Débito ou Crédito"""
+        """Identifica se é Nota Débito ou Crédito.
+        Tokeniza o nome do arquivo por separadores (espaço, _, -, .) para
+        verificar 'ND' e 'NC' como tokens isolados, evitando falsos positivos
+        em palavras como FUNDO, AGENDA, SEGUNDA (que contêm 'ND' internamente)."""
         nome = os.path.basename(caminho).upper()
-        
-        if 'ND' in nome or 'DEBITO' in nome or 'DÉBITO' in nome:
+        tokens = set(re.split(r'[\s_\-\.]+', nome))
+
+        if 'ND' in tokens or 'DEBITO' in nome or 'DÉBITO' in nome:
             return 'Débito'
-        elif 'NC' in nome or 'CREDITO' in nome or 'CRÉDITO' in nome:
+        if 'NC' in tokens or 'CREDITO' in nome or 'CRÉDITO' in nome:
             return 'Crédito'
-        
         return 'N/A'
     
     def processar(self):
@@ -371,17 +394,14 @@ class SistemaRET(ctk.CTkToplevel):
             messagebox.showwarning("Aviso", "Nenhum PDF foi processado! Verifique a pasta e os tipos de encargo selecionados.")
             return
         
-        # Calcular estatísticas
+        # Calcular estatísticas (valor_total já está em BRL desde a extração)
         total_geral = sum(d['valor_total'] for d in self.dados_processados)
         com_valores = len([d for d in self.dados_processados if d['valor_total'] > 0])
-        
-        # Converter para Reais (BRL)
-        total_geral_brl = total_geral * TAXA_EUR_BRL
-        
-        # Atualizar total
-        self.lbl_total.configure(text=f"R$ {total_geral_brl:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        
-        # Resumo por tipo
+
+        self.lbl_total.configure(
+            text=f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+
         resumo_tipos = {}
         for d in self.dados_processados:
             tipo = d['tipo_encargo']
@@ -389,25 +409,22 @@ class SistemaRET(ctk.CTkToplevel):
                 resumo_tipos[tipo] = {'count': 0, 'total': 0}
             resumo_tipos[tipo]['count'] += 1
             resumo_tipos[tipo]['total'] += d['valor_total']
-        
-        # Atualizar aba resumo
+
         for widget in self.frame_resumo.winfo_children():
             widget.destroy()
-        
-        total_brl_fmt = f"R$ {total_geral_brl:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         stats_text = f"""
 ESTATÍSTICAS DO PROCESSAMENTO
 
 Total de PDFs: {total_arquivos}
 PDFs com valores: {com_valores}
-Valor Total: {total_brl_fmt}
+Valor Total (R$): {total_fmt}
 
 RESUMO POR TIPO:
 """
-        
         for tipo, stats in resumo_tipos.items():
-            total_tipo_brl = stats['total'] * TAXA_EUR_BRL
-            total_tipo_fmt = f"R$ {total_tipo_brl:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            total_tipo_fmt = f"R$ {stats['total']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             stats_text += f"\n{tipo}:\n"
             stats_text += f"  - Arquivos: {stats['count']}\n"
             stats_text += f"  - Total: {total_tipo_fmt}\n"
@@ -425,8 +442,8 @@ RESUMO POR TIPO:
         self.log("="*60)
         self.log(f"PROCESSAMENTO CONCLUÍDO - {total_arquivos} arquivos")
         self.log("="*60)
-        
-        total_msg = f"R$ {total_geral_brl:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        total_msg = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         messagebox.showinfo("Sucesso", f"Processados {total_arquivos} PDFs!\nTotal: {total_msg}")
     
     def _mostrar_dados_detalhados(self):
@@ -452,21 +469,24 @@ RESUMO POR TIPO:
                 font=("Roboto", 11, "bold")
             ).pack(side="left", padx=2)
         
-        # Dados (valores em Reais na exibição)
-        for d in self.dados_processados[:50]:  # Limitar para não sobrecarregar
+        total_regs = len(self.dados_processados)
+        if total_regs > 500:
+            ctk.CTkLabel(self.frame_dados, text=f"⚠ Exibindo 500 de {total_regs} registros.",
+                         text_color="#f39c12", font=("Roboto", 11)).pack(anchor="w", padx=10)
+
+        # Dados já em BRL (conversão feita na extração)
+        for d in self.dados_processados[:500]:
             row = ctk.CTkFrame(self.frame_dados, fg_color="#34495e")
             row.pack(fill="x", pady=1)
-            v_total_brl = d['valor_total'] * TAXA_EUR_BRL
-            v_unit_brl = d['valor_unitario'] * TAXA_EUR_BRL
             valores = [
-                (d['tipo_encargo'], 80),
-                (d['empresa'], 150),
-                (d['nota_tipo'], 80),
-                (d['numero_nd'], 100),
-                (d['data_vencimento'], 100),
-                (f"{v_total_brl:.2f}", 120),
-                (f"{d['quantidade']:.2f}", 80),
-                (f"{v_unit_brl:.2f}", 100)
+                (d['tipo_encargo'],          80),
+                (d['empresa'],              150),
+                (d['nota_tipo'],             80),
+                (d['numero_nd'],            100),
+                (d['data_vencimento'],      100),
+                (f"{d['valor_total']:.2f}", 120),
+                (f"{d['quantidade']:.2f}",   80),
+                (f"{d['valor_unitario']:.2f}", 100),
             ]
             
             for val, w in valores:
@@ -506,7 +526,7 @@ RESUMO POR TIPO:
             return
         
         try:
-            db_path = os.path.join(self.pasta_selecionada, 'RET_dados.db')
+            db_path = os.path.join(_APP_DIR, 'RET_dados.db')
             conexao = sqlite3.connect(db_path)
             cursor = conexao.cursor()
             
@@ -664,18 +684,17 @@ RESUMO POR TIPO:
             # ABA RESUMO GERAL
             ws_geral = wb.create_sheet("Resumo Geral")
             
-            total_geral = df['Valor Total'].sum()
+            total_geral = df['Valor Total'].sum()   # já em BRL
             total_qt = df['QT'].sum()
             total_arquivos = len(df)
-            
-            total_geral_brl = total_geral * TAXA_EUR_BRL
+
             dados_geral = [
                 ['RESUMO GERAL DO PROCESSAMENTO', ''],
                 ['', ''],
                 ['Métrica', 'Valor'],
                 ['Total de PDFs Processados', total_arquivos],
                 ['Quantidade Total (QT)', total_qt],
-                ['Valor Total (R$)', total_geral_brl],
+                ['Valor Total (R$)', total_geral],
                 ['', ''],
                 ['Data do Processamento', datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
             ]
@@ -718,21 +737,20 @@ RESUMO POR TIPO:
         
         from tkinter import simpledialog
         
-        total_geral = sum(d['valor_total'] for d in self.dados_processados)
-        total_geral_brl = total_geral * TAXA_EUR_BRL
-        
-        periodo = simpledialog.askstring("Período RET", 
-                                        "Digite o período (ex: Q1 2026):",
-                                        initialvalue="Q1 2026")
+        total_geral = sum(d['valor_total'] for d in self.dados_processados)  # já em BRL
+
+        periodo = simpledialog.askstring("Período RET",
+                                         "Digite o período (ex: Q1 2026):",
+                                         initialvalue="Q1 2026")
         if periodo:
             from database import DatabasePMPV
             db = DatabasePMPV()
             if not db.buscar_consolidacao(periodo):
                 db.criar_periodo_consolidacao(periodo, "RET")
-            db.atualizar_ret(periodo, total_geral_brl)
+            db.atualizar_ret(periodo, total_geral)
             db.fechar()
-            
-            total_fmt = f"R$ {total_geral_brl:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+            total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             messagebox.showinfo("RET Salvo", f"RET: {total_fmt}\nPeríodo: {periodo}")
 
 if __name__ == "__main__":

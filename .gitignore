@@ -1,9 +1,44 @@
-# Ignorar bases de dados locais
+# ── Banco de dados locais ─────────────────────────────────────
 *.db
 *.sqlite
 *.sqlite3
 
-# Ignorar ficheiros de dados e Excel
+# ── Dados e Excel (arquivos com dados reais da empresa) ───────
 *.csv
 *.xlsx
+*.xls
 dados_reais_empresa.json
+_dados_referencia/
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+*.egg
+
+# ── PyInstaller (build e distribuição) ────────────────────────
+build/
+dist/
+*.spec
+
+# ── Ambientes virtuais ────────────────────────────────────────
+venv/
+.venv/
+env/
+.env
+
+# ── Cobertura de testes ───────────────────────────────────────
+htmlcov/
+.coverage
+coverage.xml
+.pytest_cache/
+
+# ── IDEs e editores ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
