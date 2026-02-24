@@ -12,12 +12,38 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
 
+# ── OCR (Tesseract) ──────────────────────────────────────────────────────────
+# Usado como fallback quando pdfplumber não consegue extrair texto do PDF
+# (PDFs com texto renderizado como vetores/curvas, ex.: NDPFP, TOPNREC).
+try:
+    import pytesseract
+    _TESSERACT_CANDIDATOS = [
+        r'C:\Users\jose.demorais\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+    ]
+    _tess_path = next(
+        (p for p in _TESSERACT_CANDIDATOS if os.path.exists(p)), None
+    )
+    if _tess_path:
+        pytesseract.pytesseract.tesseract_cmd = _tess_path
+    OCR_ATIVADO = _tess_path is not None
+except ImportError:
+    pytesseract = None  # type: ignore
+    OCR_ATIVADO = False
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Configuração Visual
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 # Taxa de câmbio EUR → BRL (ajuste conforme a cotação desejada)
 TAXA_EUR_BRL = 6.0
+
+# Alíquota PIS/COFINS usada no cálculo regulatório do EC:
+#   EC = Σ(pasta EAT) × (1 − PIS_COFINS_RATE)
+# Validado contra os PDFs de Dezembro/2025: resultado = R$ 154.768,562025 (exato).
+PIS_COFINS_RATE = 0.0925
 
 # Diretório base da aplicação (funciona tanto em .py quanto em .exe)
 _APP_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
@@ -242,38 +268,55 @@ class SistemaRET(ctk.CTkToplevel):
             'quantidade': 0.0,
             'valor_unitario': 0.0,
             'moeda_detectada': 'BRL', # 'BRL' ou 'EUR'
-            'valores_encontrados': []  # todos já convertidos para BRL
+            'valores_encontrados': [], # todos já convertidos para BRL
+            'periodo_doc': '',         # MM/AAAA extraído do texto do PDF
+            'contrib_ec': 'OUTROS',    # classificação para fórmula EC
         }
         
         try:
             with pdfplumber.open(caminho_pdf) as pdf:
                 texto_completo = ''
-                
+
                 for pagina in pdf.pages:
-                    texto = pagina.extract_text()
-                    if texto:
-                        texto_completo += texto + '\n'
-                
+                    texto = pagina.extract_text() or ''
+                    if not texto.strip() and OCR_ATIVADO and pytesseract is not None:
+                        # Fallback OCR: PDF com texto renderizado como vetor
+                        try:
+                            img = pagina.to_image(resolution=200).original
+                            texto = pytesseract.image_to_string(
+                                img, lang='eng', config='--psm 6'
+                            )
+                            dados['ocr_usado'] = True
+                        except Exception:
+                            texto = ''
+                    texto_completo += texto + '\n'
+
                 # Extrair número ND
                 nd_match = re.search(r'ND\s*[:\-]?\s*(\d+)', texto_completo, re.IGNORECASE)
                 if nd_match:
                     dados['numero_nd'] = nd_match.group(1)
-                
+
                 # Extrair data
                 data_match = re.search(r'(\d{2}[/-]\d{2}[/-]\d{4})', texto_completo)
                 if data_match:
                     dados['data_vencimento'] = data_match.group(1)
-                
-                # Extrair valores separando moeda para evitar conversão dupla
-                # Padrões com símbolo explícito têm prioridade; o genérico só é
-                # usado como fallback quando nenhum símbolo é encontrado.
-                padrao_brl = r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
-                padrao_eur = r'€\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
-                padrao_gen = r'(?<![€$\d,])(\d{1,3}(?:\.\d{3})+,\d{2})(?!\d)'
 
-                def _parse(s):
+                # ── Extração de valores ──────────────────────────────────────
+                # padrao_brl: R$ com ou sem separador de milhar
+                #   Testa \d{4,} ANTES de \d{1,3} para capturar "R$139789,99"
+                #   sem separador de milhar, evitando truncagem em "139".
+                #   ex.: R$ 142.029,44  /  R$ 2 524,85  /  R$139789,99
+                padrao_brl = r'R\$\s*((?:\d{4,}|\d{1,3}(?:[.\s]\d{3})*)(?:,\d{2})?)'
+                padrao_eur = r'€\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)'
+                # padrao_gen: número com pelo menos um grupo de milhar (ponto/espaço)
+                padrao_gen = r'(?<![€$\d,])(\d{1,3}(?:[.\s]\d{3})+,\d{2})(?!\d)'
+                # padrao_small: valores pequenos sem separador de milhar
+                #   ex.: 37,88  (min R$10 para evitar unit-prices)
+                padrao_small = r'(?<![€$\d,.])(\d{1,5},\d{2})(?!\d)'
+
+                def _parse(s: str) -> 'float | None':
                     try:
-                        v = float(s.replace('.', '').replace(',', '.'))
+                        v = float(s.replace(' ', '').replace('.', '').replace(',', '.'))
                         return v if v > 0 else None
                     except Exception:
                         return None
@@ -283,10 +326,15 @@ class SistemaRET(ctk.CTkToplevel):
                 valores_eur = [v for m in re.findall(padrao_eur, texto_completo)
                                if (v := _parse(m)) is not None]
 
-                # Fallback genérico apenas quando nenhum símbolo foi detectado
+                # Fallback 1: números com separador de milhar sem símbolo
                 if not valores_brl and not valores_eur:
                     valores_brl = [v for m in re.findall(padrao_gen, texto_completo)
                                    if (v := _parse(m)) is not None]
+
+                # Fallback 2: valores pequenos (ex.: 37,88 da Eneva Garanhuns)
+                if not valores_brl and not valores_eur:
+                    valores_brl = [v for m in re.findall(padrao_small, texto_completo)
+                                   if (v := _parse(m)) is not None and v >= 10]
 
                 # Converter EUR→BRL na extração; armazenar tudo em BRL
                 todos_brl = valores_brl + [v * TAXA_EUR_BRL for v in valores_eur]
@@ -294,7 +342,12 @@ class SistemaRET(ctk.CTkToplevel):
                 dados['moeda_detectada']     = 'EUR' if valores_eur and not valores_brl else 'BRL'
 
                 if todos_brl:
-                    dados['valor_total'] = max(todos_brl)
+                    # Prefere cálculo exato (vol × taxa) para evitar arredondamento
+                    calc_exato = self._extrair_calc_exato(texto_completo)
+                    if calc_exato > 0:
+                        dados['valor_total'] = calc_exato
+                    else:
+                        dados['valor_total'] = max(todos_brl)
 
                     qt_match = re.search(r'(?:QT|Quantidade)[:\s]*(\d+(?:[.,]\d+)?)',
                                          texto_completo, re.IGNORECASE)
@@ -303,54 +356,201 @@ class SistemaRET(ctk.CTkToplevel):
 
                     if dados['quantidade'] > 0:
                         dados['valor_unitario'] = dados['valor_total'] / dados['quantidade']
-                
+
+                # ── Período do documento ──────────────────────────────────
+                # Extrai "Novembro/2025" → "11/2025" para filtrar TOPs por período
+                _MESES = {
+                    'JANEIRO': 1, 'FEVEREIRO': 2, 'MARCO': 3, 'MARÇO': 3,
+                    'ABRIL': 4, 'MAIO': 5, 'JUNHO': 6, 'JULHO': 7,
+                    'AGOSTO': 8, 'SETEMBRO': 9, 'OUTUBRO': 10,
+                    'NOVEMBRO': 11, 'DEZEMBRO': 12,
+                }
+                per_match = re.search(
+                    r'(?:PERIODO|PER[IÍ]ODO)\s+\d+\s+[AÀ]\s+\d+\s+DE\s+([A-Z\u00C0-\u00FF]+)/(\d{4})',
+                    texto_completo.upper()
+                )
+                if per_match:
+                    mes_nome = per_match.group(1).strip()
+                    mes_num = _MESES.get(mes_nome, 0)
+                    if mes_num:
+                        dados['periodo_doc'] = f"{mes_num:02d}/{per_match.group(2)}"
+
         except Exception as e:
             self.log(f"Erro ao processar {caminho_pdf}: {e}")
-        
+
+        # ── Sub-classificação informativa (não usada no cálculo EC) ──────
+        tipo  = dados['tipo_encargo']
+        arq_u = dados['arquivo'].upper()
+        if tipo == 'Penalidades (Receita)' and 'NDPFP' in arq_u:
+            dados['contrib_ec'] = 'NDPFP'
+        elif tipo == 'EAT' and 'OAC' in arq_u:
+            dados['contrib_ec'] = 'EAT_OAC'
+        elif tipo == 'Penalidades (Despesa)' and ('OAC' in arq_u or 'VARIA' in arq_u):
+            dados['contrib_ec'] = 'PFP_DESP_OAC'
+        elif tipo == 'EAT':
+            dados['contrib_ec'] = 'EAT_ND'
+        elif tipo == 'Penalidades (Despesa)':
+            dados['contrib_ec'] = 'PFP_DESP_ND'
+        elif tipo == 'TOP':
+            dados['contrib_ec'] = 'TOP'
+
         return dados
     
     def _identificar_tipo(self, caminho):
         """Identifica tipo de encargo verificando os nomes das PASTAS do caminho
-        (exclui o nome do arquivo para evitar falsos positivos)."""
-        partes = [p.upper() for p in Path(caminho).parts[:-1]]  # ignora o arquivo
-        if any('EAT' in p for p in partes):
-            return 'EAT'
-        if any('PENALIDADE' in p for p in partes):
-            return 'Penalidades'
-        # Verifica TOP como palavra inteira ou início de componente (evita DESKTOP, LAPTOP)
-        if any(re.fullmatch(r'TOP[\s_\-]?.*', p) or p == 'TOP' for p in partes):
-            return 'TOP'
-        return 'Outros'
-    
-    def _extrair_empresa(self, caminho):
-        """Extrai nome da empresa do nome do arquivo"""
-        nome = os.path.basename(caminho).upper()
-        empresas_conhecidas = [
-            'COPERGAS', 'AMBEV', 'CBA', 'CERVEJARIA', 'DEXCO', 'GERDAU',
-            'INDORAMA', 'INGREDION', 'KLABIN', 'MONDELEZ', 'NISSIN', 'VETRUS',
-            'M DIAS BRANCO', 'PETROBRAS', 'GALP'
-        ]
-        
-        for empresa in empresas_conhecidas:
-            if empresa in nome:
-                return empresa
-        
-        return 'N/A'
-    
-    def _extrair_tipo_nota(self, caminho):
-        """Identifica se é Nota Débito ou Crédito.
-        Tokeniza o nome do arquivo por separadores (espaço, _, -, .) para
-        verificar 'ND' e 'NC' como tokens isolados, evitando falsos positivos
-        em palavras como FUNDO, AGENDA, SEGUNDA (que contêm 'ND' internamente)."""
-        nome = os.path.basename(caminho).upper()
-        tokens = set(re.split(r'[\s_\-\.]+', nome))
+        (exclui o nome do arquivo para evitar falsos positivos).
 
-        if 'ND' in tokens or 'DEBITO' in nome or 'DÉBITO' in nome:
+        Itera das pastas mais profundas para as mais rasas para que a pasta
+        específica (ex: 'TOP Não recuperável') tenha prioridade sobre a pasta
+        raiz genérica (ex: 'Penalidades').
+
+        Categorias reconhecidas (estrutura real COPERGAS/ARPE):
+          - EAT                   → pasta contém 'EAT'
+          - EC                    → pasta é exatamente 'EC' (começa com 'EC ')
+          - TOP                   → pasta começa com 'TOP' (evita DESKTOP/LAPTOP)
+          - Penalidades (Despesa) → pasta contém 'PENALIDADE' e 'DESPESA'
+          - Penalidades (Receita) → pasta contém 'PENALIDADE' e 'RECEITA'
+          - Penalidades           → pasta contém 'PENALIDADE'
+          - Notas Fiscais         → pasta contém 'NOTAS FISCAIS' ou 'NOTA FISCAL'
+        """
+        partes = [p.upper() for p in Path(caminho).parts[:-1]]
+        for p in reversed(partes):  # mais profunda primeiro → maior especificidade
+            if 'EAT' in p:
+                return 'EAT'
+            if p == 'EC' or p.startswith('EC ') or p.startswith('EC_'):
+                return 'EC'
+            if 'PENALIDADE' in p:
+                if 'DESPESA' in p:
+                    return 'Penalidades (Despesa)'
+                if 'RECEITA' in p:
+                    return 'Penalidades (Receita)'
+                return 'Penalidades'
+            if re.fullmatch(r'TOP[\s_\-]?.*', p) or p == 'TOP':
+                return 'TOP'
+        return 'Outros'
+
+    def _extrair_empresa(self, caminho):
+        """Extrai nome da empresa do nome do arquivo ou da pasta pai."""
+        nome = os.path.basename(caminho).upper()
+        # Também verifica a pasta pai direta (ex: Notas Fiscais\Petrobras\arquivo.pdf)
+        pasta_pai = Path(caminho).parent.name.upper()
+
+        empresas_conhecidas = [
+            # Fornecedores de gás
+            'PETROBRAS', 'GALP', 'BRAVA', 'ENEVA', 'MASTERGAS',
+            'PETRORECONCAVO', 'PETRO RECONCAVO', 'TAG', 'GEB',
+            'ORIZON', 'VECTOR',
+            # Clientes industriais
+            'AMBEV', 'ALPEK', 'CBA', 'CERVEJARIA', 'DEXCO', 'FIAT',
+            'GERDAU', 'GYPSUM', 'INDORAMA', 'INGREDION', 'KLABIN',
+            'M DIAS BRANCO', 'MONDELEZ', 'NISSIN', 'OWENS', 'ROCA',
+            'TERPHANE', 'VETRUS',
+            # Própria empresa
+            'COPERGAS',
+        ]
+
+        for empresa in empresas_conhecidas:
+            if empresa in nome or empresa in pasta_pai:
+                return empresa
+
+        return 'N/A'
+
+    def _extrair_calc_exato(self, texto: str) -> float:
+        """Tenta extrair o produto exato VOLUME × TAXA do texto do PDF.
+
+        Padrão típico nos NDPFPs e TOPNRECs da COPERGAS:
+          '49.779,00 m³ X R$2,8532 = R$142.029,44'
+          '36.674,00 X R$2,8532 = R$104.638,26'
+          '50400,1988 m³ X R$ 2,7736 = R$139789,99'
+
+        Calcula VOLUME × TAXA internamente (sem arredondar para 2 casas),
+        eliminando o erro de arredondamento do PDF (ex.: diferença de ~R$0,003).
+        Retorna 0.0 se o padrão não for encontrado.
+        """
+        # Aceita:  NUM  [qualquer unidade opcional, ex.: m³, m?, mmbtu]  X  R$NUM
+        # Nota: OCR frequentemente converte m³ em m?, m3, mÂ³ — por isso a
+        # unidade é tratada como "0 ou mais caracteres não-numéricos antes do X".
+        m = re.search(
+            r'((?:\d{1,3}(?:[.\s]\d{3})*|\d{4,})(?:,\d+)?)'   # volume
+            r'\s*[^\d\sxX×R]{0,6}\s*[xX×]\s*'                  # unidade (OCR-tolerante)
+            r'R\$\s*((?:\d{4,}|\d{1,3}(?:[.\s]\d{3})*)(?:[,.]\d+)?)',  # taxa
+            texto,
+        )
+        if not m:
+            return 0.0
+        try:
+            vol  = float(m.group(1).replace(' ', '').replace('.', '').replace(',', '.'))
+            taxa = float(m.group(2).replace(' ', '').replace('.', '').replace(',', '.'))
+            if vol > 0 and taxa > 0:
+                return vol * taxa
+        except ValueError:
+            pass
+        return 0.0
+
+    def _extrair_tipo_nota(self, caminho):
+        """Identifica se é Nota Débito, Crédito ou Nota Fiscal.
+
+        Regras (por ordem de prioridade):
+          1. Palavras explícitas 'DEBITO'/'DÉBITO' ou 'CREDITO'/'CRÉDITO'.
+          2. Prefixo 'NDPFP' (Nota de Débito – Penalidade Falha de Programação).
+          3. Sigla 'ND' seguida ou não de números (ex: ND001, ND-123, ND_PENALIDADE).
+          4. Sigla 'NC' seguida ou não de números.
+          5. Arquivo de Nota Fiscal (NFE, NF como palavra, CT-e, DANFE) → 'NF'.
+        """
+        nome = os.path.basename(caminho).upper()
+
+        if re.search(r'D[ÉE]BITO', nome):
             return 'Débito'
-        if 'NC' in tokens or 'CREDITO' in nome or 'CRÉDITO' in nome:
+        if re.search(r'CR[ÉE]DITO', nome):
             return 'Crédito'
+        if 'NDPFP' in nome:
+            return 'Débito'
+        if re.search(r'\bND[\d\-\_]*', nome):
+            return 'Débito'
+        if re.search(r'\bNC[\d\-\_]*', nome):
+            return 'Crédito'
+        if re.search(r'\b(NFE|NF|DANFE|CT-?E)\b', nome):
+            return 'NF'
         return 'N/A'
     
+    def _calcular_ret(self):
+        """Calcula EC e RET a partir dos documentos processados.
+
+        Fórmula regulatória validada (ARPE/Pernambuco, Dezembro 2025):
+
+            eat_bruto = Σ(todos os documentos na pasta EAT)
+            EC        = eat_bruto × (1 − PIS_COFINS_RATE)   ← 0,0925 = 9,25 %
+            EC_docs   = Σ(documentos na pasta EC, se houver)
+            RET       = EC + EC_docs
+
+        Verificação:  170.543,87 × (1 − 0,0925) = 154.768,562025  (exato ao Excel AX16)
+
+        Returns:
+            dict com chaves: eat_bruto, eat_docs, ec_docs_total, ec_docs,
+                             ec, ret, pis_cofins_rate, outros_docs
+        """
+        eat_docs    = [d for d in self.dados_processados if d['tipo_encargo'] == 'EAT']
+        ec_docs     = [d for d in self.dados_processados if d['tipo_encargo'] == 'EC']
+        outros_docs = [d for d in self.dados_processados
+                       if d['tipo_encargo'] not in ('EAT', 'EC')]
+
+        eat_bruto    = sum(d['valor_total'] for d in eat_docs)
+        ec_docs_total = sum(d['valor_total'] for d in ec_docs)
+
+        ec  = eat_bruto * (1.0 - PIS_COFINS_RATE) + ec_docs_total
+        ret = ec
+
+        return {
+            'eat_bruto':       eat_bruto,
+            'eat_docs':        eat_docs,
+            'ec_docs_total':   ec_docs_total,
+            'ec_docs':         ec_docs,
+            'outros_docs':     outros_docs,
+            'ec':              ec,
+            'ret':             ret,
+            'pis_cofins_rate': PIS_COFINS_RATE,
+        }
+
     def processar(self):
         """Processa todos os PDFs da pasta selecionada"""
         if not self.pasta_selecionada:
@@ -364,23 +564,41 @@ class SistemaRET(ctk.CTkToplevel):
         self.dados_processados = []
         arquivos_processados = 0
         
+        ignorados_nf = 0
+
         for raiz, _, ficheiros in os.walk(self.pasta_selecionada):
+            # Ignorar toda a árvore dentro de pastas "Notas Fiscais"
+            partes_raiz = [p.upper() for p in Path(raiz).parts]
+            if any('NOTAS FISCAIS' in p or 'NOTA FISCAL' in p for p in partes_raiz):
+                ignorados_nf += len([f for f in ficheiros if f.lower().endswith('.pdf')])
+                continue
+
             for ficheiro in ficheiros:
                 if ficheiro.lower().endswith('.pdf'):
                     caminho_completo = os.path.join(raiz, ficheiro)
-                    
+
+                    # Ignorar Notas Fiscais (CT-e, NF) — apenas NDs e similares entram no RET
+                    tipo_nota = self._extrair_tipo_nota(caminho_completo)
+                    if tipo_nota == 'NF':
+                        ignorados_nf += 1
+                        self.log(f"   [NF] Ignorado (Nota Fiscal): {ficheiro}")
+                        continue
+
                     self.log(f"[PDF] Processando: {ficheiro}")
-                    
+
                     dados_pdf = self.extrair_dados_pdf(caminho_completo)
-                    
+
                     if dados_pdf['valores_encontrados']:
                         self.dados_processados.append(dados_pdf)
                         self.log(f"   [OK] {len(dados_pdf['valores_encontrados'])} valores")
                     else:
                         self.dados_processados.append(dados_pdf)
                         self.log(f"   [AVISO] Sem valores")
-                    
+
                     arquivos_processados += 1
+
+        if ignorados_nf:
+            self.log(f"\n[INFO] {ignorados_nf} PDF(s) em 'Notas Fiscais' ignorados (fora do escopo do RET).")
         
         # Processar resultados
         self._mostrar_resultados(arquivos_processados)
@@ -394,13 +612,13 @@ class SistemaRET(ctk.CTkToplevel):
             messagebox.showwarning("Aviso", "Nenhum PDF foi processado! Verifique a pasta e os tipos de encargo selecionados.")
             return
         
-        # Calcular estatísticas (valor_total já está em BRL desde a extração)
-        total_geral = sum(d['valor_total'] for d in self.dados_processados)
+        # Calcular RET primeiro — é o valor oficial que aparece em toda a UI
+        calc = self._calcular_ret()
         com_valores = len([d for d in self.dados_processados if d['valor_total'] > 0])
 
-        self.lbl_total.configure(
-            text=f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
+        # Label principal mostra EC = RET (valor já multiplicado por (1 − PIS/COFINS))
+        ret_fmt2 = f"R$ {calc['ret']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        self.lbl_total.configure(text=ret_fmt2)
 
         resumo_tipos = {}
         for d in self.dados_processados:
@@ -413,13 +631,14 @@ class SistemaRET(ctk.CTkToplevel):
         for widget in self.frame_resumo.winfo_children():
             widget.destroy()
 
-        total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        eat_bruto_fmt = f"R$ {calc['eat_bruto']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         stats_text = f"""
 ESTATÍSTICAS DO PROCESSAMENTO
 
 Total de PDFs: {total_arquivos}
 PDFs com valores: {com_valores}
-Valor Total (R$): {total_fmt}
+Σ EAT (bruto): {eat_bruto_fmt}
+EC = RET (líquido): {ret_fmt2}
 
 RESUMO POR TIPO:
 """
@@ -428,7 +647,48 @@ RESUMO POR TIPO:
             stats_text += f"\n{tipo}:\n"
             stats_text += f"  - Arquivos: {stats['count']}\n"
             stats_text += f"  - Total: {total_tipo_fmt}\n"
-        
+
+        def brl6(v):
+            """Formata com 6 casas decimais, removendo zeros à direita (mín. 2)."""
+            partes = f"{v:,.6f}".split('.')
+            dec = partes[1].rstrip('0')
+            dec = dec if len(dec) >= 2 else dec.ljust(2, '0')
+            inteiro = partes[0].replace(',', 'X').replace('.', ',').replace('X', '.')
+            return f"R$ {inteiro},{dec}"
+
+        aliq_pct = calc['pis_cofins_rate'] * 100
+        ret_text = f"""
+{'='*56}
+CÁLCULO EC / RET  [precisão: 6 casas decimais]
+{'='*56}
+
+  Σ pasta EAT (bruto)           {brl6(calc['eat_bruto']):>22s}
+  × (1 − {aliq_pct:.2f}% PIS/COFINS)            × {1 - calc['pis_cofins_rate']:.4f}
+  {'─'*56}
+  EC  (pasta EAT líquida)       {brl6(calc['eat_bruto'] * (1 - calc['pis_cofins_rate'])):>22s}
+"""
+        if calc['ec_docs_total'] > 0:
+            ret_text += f"  (+) Σ pasta EC (docs.)        {brl6(calc['ec_docs_total']):>22s}\n"
+            ret_text += f"  {'─'*56}\n"
+
+        ret_text += f"""  EC  =  RET                    {brl6(calc['ret']):>22s}
+{'='*56}
+"""
+        if calc['outros_docs']:
+            ret_text += f"\n  [INFO] Documentos fora das pastas EAT/EC ({len(calc['outros_docs'])}):\n"
+            for d in calc['outros_docs'][:10]:
+                ret_text += f"    • {d['arquivo']}  tipo={d['tipo_encargo']}\n"
+            if len(calc['outros_docs']) > 10:
+                ret_text += f"    ... e mais {len(calc['outros_docs']) - 10} arquivo(s)\n"
+
+        # Detalhe por arquivo na pasta EAT
+        if calc['eat_docs']:
+            ret_text += f"\n  DETALHES PASTA EAT ({len(calc['eat_docs'])} docs):\n"
+            for d in calc['eat_docs']:
+                ret_text += f"    • {d['arquivo']:<45s}  {brl6(d['valor_total'])}\n"
+
+        stats_text += ret_text
+
         ctk.CTkLabel(
             self.frame_resumo,
             text=stats_text,
@@ -443,8 +703,12 @@ RESUMO POR TIPO:
         self.log(f"PROCESSAMENTO CONCLUÍDO - {total_arquivos} arquivos")
         self.log("="*60)
 
-        total_msg = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        messagebox.showinfo("Sucesso", f"Processados {total_arquivos} PDFs!\nTotal: {total_msg}")
+        messagebox.showinfo(
+            "Sucesso",
+            f"Processados {total_arquivos} PDFs!\n"
+            f"Σ EAT (bruto): {eat_bruto_fmt}\n"
+            f"EC = RET:       {ret_fmt2}"
+        )
     
     def _mostrar_dados_detalhados(self):
         """Mostra tabela com dados detalhados"""
@@ -520,17 +784,21 @@ RESUMO POR TIPO:
         self.txt_sem_valores.see("1.0")
     
     def salvar_db(self):
-        """Salva dados no banco de dados SQLite"""
+        """Salva dados no banco de dados SQLite.
+
+        O arquivo principal (RET_dados.db) é sempre mantido em _APP_DIR para
+        que o programa funcione corretamente.  Após salvar, o usuário pode
+        opcionalmente gerar uma cópia de backup em qualquer pasta.
+        """
         if not self.dados_processados:
             messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
             return
-        
+
         try:
             db_path = os.path.join(_APP_DIR, 'RET_dados.db')
             conexao = sqlite3.connect(db_path)
             cursor = conexao.cursor()
-            
-            # Criar tabela
+
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS dados_ret (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -547,8 +815,7 @@ RESUMO POR TIPO:
                     data_processamento TEXT
                 )
             ''')
-            
-            # Inserir dados
+
             for d in self.dados_processados:
                 cursor.execute('''
                     INSERT INTO dados_ret (
@@ -561,43 +828,63 @@ RESUMO POR TIPO:
                     d['data_vencimento'], d['valor_total'], d['quantidade'], d['valor_unitario'],
                     d['arquivo'], d['caminho'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 ))
-            
+
             conexao.commit()
             conexao.close()
-            
+
             self.log(f"[OK] Dados salvos em: {db_path}")
-            messagebox.showinfo("Sucesso", f"Dados salvos no banco!\n{db_path}")
-            
+
+            # ── Oferecer cópia de backup em pasta escolhida pelo usuário ──
+            resposta = messagebox.askyesno(
+                "Backup do Banco de Dados",
+                f"Dados salvos com sucesso!\nLocal do banco: {db_path}\n\n"
+                "Deseja salvar uma cópia de backup em outra pasta?"
+            )
+            if resposta:
+                from tkinter import filedialog
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_path = filedialog.asksaveasfilename(
+                    title="Salvar cópia do banco de dados",
+                    initialfile=f"RET_dados_backup_{timestamp}.db",
+                    defaultextension=".db",
+                    filetypes=[("Banco de dados SQLite", "*.db"), ("Todos os arquivos", "*.*")],
+                    initialdir=self.pasta_selecionada or os.path.expanduser("~"),
+                )
+                if backup_path:
+                    import shutil
+                    shutil.copy2(db_path, backup_path)
+                    self.log(f"[OK] Backup salvo em: {backup_path}")
+                    messagebox.showinfo("Backup Salvo", f"Cópia salva em:\n{backup_path}")
+            else:
+                messagebox.showinfo("Sucesso", f"Dados salvos no banco!\n{db_path}")
+
         except Exception as e:
             self.log(f"[ERRO] Falha ao salvar: {e}")
             messagebox.showerror("Erro", f"Erro ao salvar: {e}")
     
     def exportar_excel(self):
-        """Exporta dados para Excel formatado"""
+        """Exporta dados para Excel formatado.
+
+        Abre um diálogo para o usuário escolher onde salvar o arquivo.
+        A pasta sugerida é a pasta de PDFs selecionada (ou a pasta pessoal
+        caso nenhuma pasta tenha sido selecionada ainda).
+        """
         if not self.dados_processados:
             messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
             return
-        
+
         try:
-            # Nome único com timestamp
+            from tkinter import filedialog
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            excel_base = f'RET_Relatorio_{timestamp}.xlsx'
-            excel_path = os.path.join(self.pasta_selecionada, excel_base)
-            
-            # Verificar se arquivo está em uso e adicionar número se necessário
-            contador = 1
-            while True:
-                try:
-                    with open(excel_path, 'w') as f:
-                        pass
-                    os.remove(excel_path)
-                    break
-                except (PermissionError, IOError):
-                    excel_path = os.path.join(self.pasta_selecionada, f'RET_Relatorio_{timestamp}_{contador}.xlsx')
-                    contador += 1
-                    if contador > 100:
-                        excel_path = os.path.join(self.pasta_selecionada, f'RET_Relatorio_{datetime.now().strftime("%Y%m%d_%H%M%S%f")}.xlsx')
-                        break
+            excel_path = filedialog.asksaveasfilename(
+                title="Salvar relatório Excel",
+                initialfile=f"RET_Relatorio_{timestamp}.xlsx",
+                defaultextension=".xlsx",
+                filetypes=[("Planilha Excel", "*.xlsx"), ("Todos os arquivos", "*.*")],
+                initialdir=self.pasta_selecionada or os.path.expanduser("~"),
+            )
+            if not excel_path:
+                return   # usuário cancelou
             
             # Criar DataFrame
             df = pd.DataFrame([{
@@ -683,39 +970,53 @@ RESUMO POR TIPO:
             
             # ABA RESUMO GERAL
             ws_geral = wb.create_sheet("Resumo Geral")
-            
-            total_geral = df['Valor Total'].sum()   # já em BRL
-            total_qt = df['QT'].sum()
-            total_arquivos = len(df)
+
+            calc_ret = self._calcular_ret()
+            eat_bruto_xls = calc_ret['eat_bruto']
+            pis_rate      = calc_ret['pis_cofins_rate']
+            ec_ret_xls    = calc_ret['ret']
+            total_qt      = df['QT'].sum()
+            total_arqs    = len(df)
+
+            # Estilo para linha de resultado em destaque
+            ret_fill = PatternFill(start_color="1F4788", end_color="1F4788", fill_type="solid")
+            ret_font = Font(bold=True, color="FFFFFF", size=12)
 
             dados_geral = [
-                ['RESUMO GERAL DO PROCESSAMENTO', ''],
-                ['', ''],
-                ['Métrica', 'Valor'],
-                ['Total de PDFs Processados', total_arquivos],
-                ['Quantidade Total (QT)', total_qt],
-                ['Valor Total (R$)', total_geral],
-                ['', ''],
-                ['Data do Processamento', datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+                ['RESUMO GERAL DO PROCESSAMENTO', ''],        # 1 – título
+                ['', ''],                                      # 2
+                ['Métrica', 'Valor'],                          # 3 – cabeçalho
+                ['Total de PDFs Processados', total_arqs],    # 4
+                ['Quantidade Total (QT)', total_qt],           # 5
+                ['', ''],                                      # 6
+                ['Σ EAT bruto (R$)', eat_bruto_xls],          # 7
+                [f'× (1 − {pis_rate*100:.2f}% PIS/COFINS)', 1.0 - pis_rate],  # 8
+                ['EC = RET  (R$)', ec_ret_xls],                # 9 – RESULTADO FINAL
+                ['', ''],                                      # 10
+                ['Data do Processamento', datetime.now().strftime('%Y-%m-%d %H:%M:%S')]  # 11
             ]
-            
+
             for r_idx, row in enumerate(dados_geral, 1):
                 for c_idx, value in enumerate(row, 1):
                     cell = ws_geral.cell(row=r_idx, column=c_idx, value=value)
+                    cell.alignment = Alignment(horizontal='left', vertical='center')
                     if r_idx == 1:
                         cell.font = Font(bold=True, size=16, color="1F4788")
                     elif r_idx == 3:
                         cell.fill = header_fill
                         cell.font = header_font
+                    elif r_idx == 9:   # linha EC = RET em destaque
+                        cell.fill = ret_fill
+                        cell.font = ret_font
+                        if c_idx == 2:
+                            cell.number_format = '#,##0.000000'
                     else:
-                        cell.alignment = Alignment(horizontal='left', vertical='center')
                         if c_idx == 2 and isinstance(value, (int, float)):
-                            cell.number_format = '#,##0.00'
-                # Mesclar célula do título só depois de escrever toda a linha (evita MergedCell read-only)
+                            cell.number_format = '#,##0.000000'
                 if r_idx == 1:
                     ws_geral.merge_cells('A1:B1')
-            
-            ws_geral.column_dimensions['A'].width = 30
+
+            ws_geral.column_dimensions['A'].width = 35
             ws_geral.column_dimensions['B'].width = 25
             
             # Salvar e fechar
@@ -737,7 +1038,8 @@ RESUMO POR TIPO:
         
         from tkinter import simpledialog
         
-        total_geral = sum(d['valor_total'] for d in self.dados_processados)  # já em BRL
+        calc = self._calcular_ret()
+        total_geral = calc['ret']   # RET = EC = Σ(EAT) × (1 − PIS_COFINS)
 
         periodo = simpledialog.askstring("Período RET",
                                          "Digite o período (ex: Q1 2026):",

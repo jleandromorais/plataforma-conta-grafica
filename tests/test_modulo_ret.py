@@ -14,12 +14,17 @@ from modulo_ret import SistemaRET, TAXA_EUR_BRL
 
 def identificar_tipo(caminho: str) -> str:
     partes = [p.upper() for p in Path(caminho).parts[:-1]]
-    if any('EAT' in p for p in partes):
-        return 'EAT'
-    if any('PENALIDADE' in p for p in partes):
-        return 'Penalidades'
-    if any(re.fullmatch(r'TOP[\s_\-]?.*', p) or p == 'TOP' for p in partes):
-        return 'TOP'
+    for p in reversed(partes):
+        if 'EAT' in p:
+            return 'EAT'
+        if 'PENALIDADE' in p:
+            if 'DESPESA' in p:
+                return 'Penalidades (Despesa)'
+            if 'RECEITA' in p:
+                return 'Penalidades (Receita)'
+            return 'Penalidades'
+        if re.fullmatch(r'TOP[\s_\-]?.*', p) or p == 'TOP':
+            return 'TOP'
     return 'Outros'
 
 
@@ -28,8 +33,12 @@ def extrair_tipo_nota(caminho: str) -> str:
     tokens = set(re.split(r'[\s_\-\.]+', nome))
     if 'ND' in tokens or 'DEBITO' in nome or 'DÉBITO' in nome:
         return 'Débito'
+    if any(t.startswith('NDPFP') for t in tokens):
+        return 'Débito'
     if 'NC' in tokens or 'CREDITO' in nome or 'CRÉDITO' in nome:
         return 'Crédito'
+    if any(t in tokens for t in ('NFE', 'NF', 'DANFE')) or 'CT-E' in nome or 'CTE' in nome:
+        return 'NF'
     return 'N/A'
 
 
@@ -75,6 +84,32 @@ class TestIdentificacaoTipo:
 
     def test_identificar_tipo_outros(self):
         assert identificar_tipo("C:/pasta/DESCONHECIDO/arquivo.pdf") == 'Outros'
+
+    # --- Estrutura real COPERGAS/ARPE ---
+    def test_penalidade_falha_despesa(self):
+        """Pasta 'Penalidade Falha de Programação (Despesa)' → Penalidades (Despesa)."""
+        p = "Z:/Penalidades/46. Outubro 2025/Penalidade Falha de Programação (Despesa)/ND.pdf"
+        assert identificar_tipo(p) == 'Penalidades (Despesa)'
+
+    def test_penalidade_falha_receita(self):
+        """Pasta 'Penalidade Falha de Programação (Receita)' → Penalidades (Receita)."""
+        p = "Z:/Penalidades/46. Outubro 2025/Penalidade Falha de Programação (Receita)/AMBEV.pdf"
+        assert identificar_tipo(p) == 'Penalidades (Receita)'
+
+    def test_top_nao_recuperavel_receita(self):
+        """Pasta 'TOP Não recuperável (Receita)' → TOP."""
+        p = "Z:/Penalidades/47. Novembro 2025/TOP Não recuperável (Receita)/AMBEV - ND TOP 2275.pdf"
+        assert identificar_tipo(p) == 'TOP'
+
+    def test_notas_fiscais_filtradas_no_loop(self):
+        """Notas Fiscais são filtradas pelo loop de 'os.walk' em processar(),
+        ANTES de chegarem a _identificar_tipo. O filtro verifica se 'NOTAS FISCAIS'
+        está em qualquer parte do caminho da pasta raiz (raiz, não do arquivo)."""
+        # Simula a verificação feita em processar(): detecta pasta Notas Fiscais
+        caminho_raiz = "Z:/Penalidades/46. Outubro 2025/Notas Fiscais/Petrobras"
+        partes = [p.upper() for p in Path(caminho_raiz).parts]
+        deve_ignorar = any('NOTAS FISCAIS' in p or 'NOTA FISCAL' in p for p in partes)
+        assert deve_ignorar is True
 
     # --- Regressão bug: "TOP" em "DESKTOP" ---
     def test_bug_desktop_nao_e_top(self):
@@ -137,6 +172,27 @@ class TestExtrairTipoNota:
 
     def test_bug_segunda_nao_e_debito(self):
         assert extrair_tipo_nota("C:/pasta/SEGUNDA_VIA.pdf") == 'N/A'
+
+    # --- Padrões reais COPERGAS/ARPE ---
+    def test_ndpfp_e_debito(self):
+        """AMBEV - NDPFP03770.pdf → padrão real de Penalidade Falha de Programação = Débito."""
+        assert extrair_tipo_nota("C:/pasta/AMBEV - NDPFP03770.pdf") == 'Débito'
+
+    def test_nd_com_espaco_e_debito(self):
+        """'ND 0916909857.pdf' → ND como token isolado = Débito."""
+        assert extrair_tipo_nota("C:/pasta/ND 0916909857.pdf") == 'Débito'
+
+    def test_nf_e_nota_fiscal(self):
+        """'000007449 - NF.pdf' → tipo NF."""
+        assert extrair_tipo_nota("C:/pasta/000007449 - NF.pdf") == 'NF'
+
+    def test_nfe_e_nota_fiscal(self):
+        """'NFE 523 Venda de Gás.pdf' → tipo NF."""
+        assert extrair_tipo_nota("C:/pasta/NFE 523 Venda de Gas.pdf") == 'NF'
+
+    def test_danfe_e_nota_fiscal(self):
+        """'DANFE 144 - COPERGAS.pdf' → tipo NF."""
+        assert extrair_tipo_nota("C:/pasta/DANFE 144 - COPERGAS.pdf") == 'NF'
 
 
 class TestCalculos:

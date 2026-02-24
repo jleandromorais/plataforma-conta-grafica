@@ -24,13 +24,19 @@ from openpyxl.styles import Font, PatternFill
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-# Se instalaste na pasta padrão do Windows, tem de ser esta:
-PASTA_INSTALACAO = r'C:\Program Files\Tesseract-OCR'
-CAMINHO_EXECUTAVEL = os.path.join(PASTA_INSTALACAO, 'tesseract.exe')
-pytesseract.pytesseract.tesseract_cmd = CAMINHO_EXECUTAVEL
+# Detecção automática do Tesseract em múltiplos caminhos comuns no Windows
+_TESSERACT_CANDIDATOS = [
+    r'C:\Users\jose.demorais\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
+    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+    r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+    os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Tesseract-OCR', 'tesseract.exe'),
+]
+CAMINHO_EXECUTAVEL = next((p for p in _TESSERACT_CANDIDATOS if os.path.exists(p)), None)
+if CAMINHO_EXECUTAVEL:
+    pytesseract.pytesseract.tesseract_cmd = CAMINHO_EXECUTAVEL
 
 # Verifica Tesseract
-OCR_ATIVADO = os.path.exists(CAMINHO_EXECUTAVEL)
+OCR_ATIVADO = CAMINHO_EXECUTAVEL is not None
 
 @dataclass(frozen=True)
 class PdfItem:

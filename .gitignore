@@ -7,6 +7,9 @@
 *.csv
 *.xlsx
 *.xls
+*.zip
+*.rar
+*.7z
 dados_reais_empresa.json
 _dados_referencia/
 
