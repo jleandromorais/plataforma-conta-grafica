@@ -27,7 +27,8 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         }
         self.lista_meses = list(self.mapa_dias.keys())
         self.dias_config = {"Mês 1": 30, "Mês 2": 30, "Mês 3": 30}
-        self.dados_meses = {} 
+        self.dados_meses  = {}
+        self.scroll_frames = {}   # {tab_nome: CTkScrollableFrame}
 
         self._setup_ui()
 
@@ -56,7 +57,7 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         for i in range(1, 4):
             nome = f"Mês {i}"
             self.tabview.add(nome)
-            self.dados_meses[nome] = self._criar_aba(self.tabview.tab(nome))
+            self.dados_meses[nome] = self._criar_aba(self.tabview.tab(nome), nome)
         
         self._atualizar_trimestre()
 
@@ -84,11 +85,12 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         # Direita: Botões
         right = ctk.CTkFrame(foot, fg_color="transparent")
         right.pack(side="right", padx=20)
+        ctk.CTkButton(right, text="📥 Importar Memória MC",  command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=5)
         ctk.CTkButton(right, text="💾 Salvar Sessão",       command=self.salvar,               fg_color="#8e44ad").pack(pady=5)
         ctk.CTkButton(right, text="📅 Salvar PMPV Mensal",  command=self._salvar_pmpv_mensal,  fg_color="#16a085").pack(pady=5)
         ctk.CTkButton(right, text="📊 Exportar Excel",      command=self.exportar,             fg_color="#2980b9").pack(pady=5)
 
-    def _criar_aba(self, parent):
+    def _criar_aba(self, parent, tab_nome: str = ""):
         # Cabeçalho Tabela
         head = ctk.CTkFrame(parent, height=30, fg_color="#2c3e50")
         head.pack(fill="x", pady=5)
@@ -99,11 +101,13 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         # Scroll
         scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
         scroll.pack(fill="both", expand=True)
-        
+        if tab_nome:
+            self.scroll_frames[tab_nome] = scroll
+
         linhas = []
         for emp in self.empresas_padrao:
             linhas.append(self._add_linha(scroll, emp, linhas))
-            
+
         ctk.CTkButton(parent, text="➕ Adicionar", command=lambda: self._add_nova(scroll, linhas), fg_color="transparent", border_width=1).pack(pady=5)
         return linhas
 
@@ -129,7 +133,7 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         ctk.CTkButton(row, text="📋", width=40, command=lambda: self._popup_copy(dados), fg_color="#8e44ad").pack(side="left", padx=2)
         ctk.CTkButton(row, text="🗑️", width=40, command=lambda: self._del_linha(row, dados, lista), fg_color="#c0392b").pack(side="left", padx=2)
 
-        dados = {'nome': e_nom, 'mol': e_mol, 'trans': e_tra, 'log': e_log, 'tot': l_tot, 'vol': e_vol}
+        dados = {'nome': e_nom, 'mol': e_mol, 'trans': e_tra, 'log': e_log, 'tot': l_tot, 'vol': e_vol, '_frame': row}
         
         # Bind Cálculo
         for e in [e_mol, e_tra, e_log]:
@@ -185,6 +189,187 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         if messagebox.askyesno("Remover", "Apagar linha?"):
             row.destroy()
             if dados in lista: lista.remove(dados)
+
+    # ------------------------------------------------------------------
+    # Importar dados da Memória de Cálculo (aba "Custo médio ponderado")
+    # ------------------------------------------------------------------
+    def _importar_memoria_calculo(self):
+        """Lê a Memória de Cálculo e preenche a aba corrente com volumes e preços."""
+        from tkinter import filedialog
+        import pandas as pd
+
+        path = filedialog.askopenfilename(
+            title="Selecione a Memória de Cálculo (Excel)",
+            filetypes=[("Excel", "*.xlsx *.xls")],
+        )
+        if not path:
+            return
+
+        # ── Carregar aba de cálculo (tenta vários nomes conhecidos) ──────
+        _ABAS_CANDIDATAS = ["PMPV", "Custo médio ponderado", "Custo medio ponderado"]
+        df = None
+        aba_usada = None
+        try:
+            xl_tmp = pd.ExcelFile(path)
+            for candidata in _ABAS_CANDIDATAS:
+                if candidata in xl_tmp.sheet_names:
+                    df = pd.read_excel(xl_tmp, sheet_name=candidata, header=None)
+                    aba_usada = candidata
+                    break
+            if df is None:
+                # Última chance: primeira aba disponível
+                df = pd.read_excel(xl_tmp, sheet_name=xl_tmp.sheet_names[0], header=None)
+                aba_usada = xl_tmp.sheet_names[0]
+        except Exception as exc:
+            messagebox.showerror("Erro", f"Não foi possível ler o arquivo:\n{exc}")
+            return
+
+        # ── Detectar colunas de meses (datetime na 1ª linha de empresa) ──
+        _PT = {"Jan": "Jan", "Feb": "Fev", "Mar": "Mar", "Apr": "Abr",
+               "May": "Mai", "Jun": "Jun", "Jul": "Jul", "Aug": "Ago",
+               "Sep": "Set", "Oct": "Out", "Nov": "Nov", "Dec": "Dez"}
+
+        meses_cols: dict[int, str] = {}
+        first_header_row = None
+
+        for ri in range(min(15, len(df))):
+            for ci in range(2, len(df.columns)):
+                cell = df.iloc[ri, ci]
+                if pd.notna(cell) and hasattr(cell, "strftime"):
+                    first_header_row = ri
+                    for ci2 in range(2, len(df.columns)):
+                        c2 = df.iloc[ri, ci2]
+                        if pd.notna(c2) and hasattr(c2, "strftime"):
+                            eng = c2.strftime("%b/%y")          # e.g. "May/25"
+                            p   = eng.split("/")
+                            lbl = _PT.get(p[0], p[0]) + "/" + p[1]  # "Mai/25"
+                            meses_cols[ci2] = lbl
+                    break
+            if first_header_row is not None:
+                break
+
+        if not meses_cols:
+            messagebox.showwarning(
+                "Aviso",
+                f"Nenhuma coluna de mês encontrada na aba '{aba_usada}'.\n"
+                "Verifique se o arquivo tem a aba 'PMPV' ou 'Custo médio ponderado'.",
+            )
+            return
+
+        # ── Pedir mês ao usuário ──────────────────────────────────────────
+        meses_list = list(meses_cols.values())
+        opcoes     = "  •  ".join(meses_list)
+        sel = simpledialog.askstring(
+            "Selecionar Mês",
+            f"Meses disponíveis:\n  {opcoes}\n\n"
+            f"Digite o mês (ex: {meses_list[-1]}):",
+            initialvalue=meses_list[-1],
+        )
+        if not sel:
+            return
+
+        col_dados = next(
+            (ci for ci, lbl in meses_cols.items()
+             if lbl.lower() == sel.strip().lower()
+             or sel.strip().lower() in lbl.lower()),
+            None,
+        )
+        if col_dados is None:
+            messagebox.showerror(
+                "Erro",
+                f"Mês '{sel}' não encontrado.\n"
+                f"Disponíveis: {', '.join(meses_list)}",
+            )
+            return
+
+        first_month_col = min(meses_cols.keys())
+
+        # ── Parsear seções de empresa ─────────────────────────────────────
+        # Cada seção começa quando col1=NaN e col_mês=datetime (cabeçalho de empresa)
+        # Linhas de dados têm col1 em {A, B, C, E}
+        empresas: dict[str, dict] = {}
+        empresa_atual: str | None = None
+
+        for ri in range(len(df)):
+            col1 = df.iloc[ri, 1]
+            col2 = df.iloc[ri, 2]
+            first_m_cell = df.iloc[ri, first_month_col]
+
+            col1_str = str(col1).strip() if pd.notna(col1) else ""
+            col2_str = str(col2).strip() if pd.notna(col2) else ""
+            is_date  = pd.notna(first_m_cell) and hasattr(first_m_cell, "strftime")
+
+            # Linha de cabeçalho de empresa
+            if (not col1_str or col1_str == "nan") and col2_str and col2_str != "nan" and is_date:
+                empresa_atual = col2_str
+                empresas.setdefault(empresa_atual, {"mol": 0.0, "trans": 0.0, "log": 0.0, "volume": 0.0})
+                continue
+
+            if empresa_atual is None:
+                continue
+
+            val_raw = df.iloc[ri, col_dados]
+            val     = float(val_raw) if pd.notna(val_raw) and str(val_raw).strip() not in ("", "nan") else 0.0
+
+            if col1_str == "A":
+                empresas[empresa_atual]["mol"]    = val
+            elif col1_str == "B":
+                empresas[empresa_atual]["trans"]  = val
+            elif col1_str == "C" and val:
+                empresas[empresa_atual]["log"]    = val
+            elif col1_str == "E":
+                empresas[empresa_atual]["volume"] = val
+
+        # Remover empresas sem volume
+        empresas = {k: v for k, v in empresas.items() if v["volume"] > 0}
+
+        if not empresas:
+            messagebox.showwarning(
+                "Sem dados",
+                f"Nenhuma empresa com volume encontrada para o mês '{sel}'.\n"
+                "Verifique se os dados de dezembro foram adicionados ao Excel.",
+            )
+            return
+
+        # ── Preencher a aba corrente ──────────────────────────────────────
+        mes_nome = self.tabview.get()
+        linhas   = self.dados_meses[mes_nome]
+        scroll   = self.scroll_frames.get(mes_nome)
+
+        if scroll is None:
+            messagebox.showerror("Erro interno", "Scroll frame não encontrado.")
+            return
+
+        # Limpar linhas existentes
+        for d in linhas[:]:
+            try:
+                d["_frame"].destroy()
+            except Exception:
+                pass
+        linhas.clear()
+
+        # Adicionar linhas importadas
+        for emp_nome, dados in empresas.items():
+            d = self._add_linha(scroll, emp_nome, linhas)
+            linhas.append(d)
+            for campo in ("mol", "trans", "log"):
+                v = dados[campo]
+                d[campo].delete(0, "end")
+                if v:
+                    d[campo].insert(0, f"{v:.4f}")
+            d["vol"].delete(0, "end")
+            d["vol"].insert(0, f"{dados['volume']:.0f}")
+            self._calc_row(d)
+
+        resumo = "\n".join(
+            f"  • {n:<35} vol = {v['volume']:>15,.0f}  |  total = {v['mol']+v['trans']+v['log']:.4f} R$/m³"
+            for n, v in empresas.items()
+        )
+        messagebox.showinfo(
+            "Importado ✅",
+            f"Mês: {sel}  →  {len(empresas)} empresa(s) carregada(s) em '{mes_nome}'\n\n"
+            + resumo,
+        )
 
     def _popup_copy(self, origem):
         top = ctk.CTkToplevel(self)

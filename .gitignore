@@ -10,8 +10,38 @@
 *.zip
 *.rar
 *.7z
+*.pdf
 dados_reais_empresa.json
 _dados_referencia/
+
+# Arquivos de NF e dados operacionais
+NF*/
+NF *.xlsx
+*devolucao*.xlsx
+*faturada*.xlsx
+*cancelada*.xlsx
+*Memoria*Calculo*.xlsx
+Relatorio_PMPV_*.xlsx
+
+# ── Credenciais e segredos ────────────────────────────────────
+.env
+.env.*
+*.env
+secrets.py
+config_local.py
+credenciais.py
+credenciais.json
+credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+
+# Caminhos de rede e configurações internas
+config_paths.py
+caminhos_rede.py
+DEFAULT_FILES*
 
 # ── Python ────────────────────────────────────────────────────
 __pycache__/
@@ -31,7 +61,13 @@ dist/
 venv/
 .venv/
 env/
-.env
+
+# ── Logs e temporários ────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+*.backup
+_*.py
 
 # ── Cobertura de testes ───────────────────────────────────────
 htmlcov/
@@ -45,3 +81,4 @@ coverage.xml
 *.swp
 *.swo
 Thumbs.db
+desktop.ini

@@ -367,14 +367,18 @@ class CGFApp(ctk.CTkToplevel):
                     total_devolucoes += float(vol_dev)
                     self._log(f"   - Devoluções: {vol_dev:,.2f}\n")
 
-        volume_final = total_faturado - total_canceladas - total_devolucoes - total_consumo_proprio
+        # VF = Faturado (já excluindo consumo próprio) − Canceladas − Devoluções
+        # O consumo próprio NÃO entra no VF pois as linhas já foram removidas do
+        # total_faturado durante a leitura; subtraí-lo novamente causaria dupla contagem.
+        volume_final = total_faturado - total_canceladas - total_devolucoes
 
         self._log("-" * 40 + "\n📊 RESUMO GERAL:")
-        self._log(f" (+) Faturado:          {total_faturado:,.2f}")
-        self._log(f" (-) Canceladas:        {total_canceladas:,.2f}")
-        self._log(f" (-) Devoluções:        {total_devolucoes:,.2f}")
-        self._log(f" (-) Consumo Próprio:   {total_consumo_proprio:,.2f}")
-        self._log(f"\n  => VOLUME FINAL CGF:  {volume_final:,.2f}")
+        self._log(f" (+) Faturado (s/ cons. próprio): {total_faturado:,.4f}")
+        if total_consumo_proprio:
+            self._log(f"   ↳ Consumo Próprio excluído:   {total_consumo_proprio:,.4f}  (já retirado do faturado acima)")
+        self._log(f" (-) Canceladas:                  {total_canceladas:,.4f}")
+        self._log(f" (-) Devoluções:                  {total_devolucoes:,.4f}")
+        self._log(f"\n  => VOLUME FINAL CGF (VF):       {volume_final:,.4f}")
 
         self.result_label.configure(text=f"Volume Final CGF: {volume_final:,.2f} m³")
         self.volume_final_cgf = volume_final
