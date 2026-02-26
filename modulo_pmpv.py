@@ -436,20 +436,25 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
             self.dias_config[f"Mês {i+1}"] = dias
 
     def calcular(self):
-        c_tot = v_tot = 0.0
+        c_tot = 0.0
+        v_tot_vf = 0.0  # Soma dos Volumes Faturados (VP * dias) para calcular o PMPV
+        vp_total = 0.0  # Soma dos Volumes Prospectos (apenas os volumes inseridos)
+        
         cg = self._val(self.entry_cg)
         avisos = []
-        vp_por_mes: dict[str, float] = {}   # mes_nome → volume total daquele mês
+        vp_por_mes: dict[str, float] = {} 
+        vf_por_mes: dict[str,float]  ={}# mes_nome → VP daquele mês (soma direta)
 
         idx_start = self.lista_meses.index(self.combo_mes.get())
 
         for i, (k, linhas) in enumerate(self.dados_meses.items()):
             dias = self.dias_config.get(k, 30)
             mes_nome = self.lista_meses[(idx_start + i) % 12]
-            v_mes_total = 0.0
+            vp_mes = 0.0  # Soma de VP apenas para este mês
+            vf_mes=0.0
 
             for l in linhas:
-                vol = self._val(l['vol'])
+                vol = self._val(l['vol'])  # Este é o VP (Volume Prospecto) da empresa
                 if vol <= 0:
                     continue
 
@@ -458,10 +463,17 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
                 log   = self._val(l['log'])
                 pr    = mol + trans + log
 
-                v_mes  = vol * dias
-                c_tot += pr * v_mes
-                v_tot += v_mes
-                v_mes_total += v_mes
+                # Cálculo do Volume Faturado (VF = VP * dias mensais)
+                vf = vol * dias
+                
+                # Ponderação financeira usa o VF
+                c_tot += pr * vf
+                v_tot_vf += vf
+                vf_mes += vf
+                
+                # Mas a soma de VP usa apenas o volume original inserido
+                vp_mes += vol
+                vp_total += vol
 
                 # Registra parâmetros de preço que estavam vazios (tratados como 0)
                 campos_vazios = []
@@ -473,24 +485,32 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
                     empresa = l['nome'].get().strip() or "(sem nome)"
                     avisos.append(f"  • {mes_nome} | {empresa}: {', '.join(campos_vazios)} → 0")
 
-            if v_mes_total > 0:
-                vp_por_mes[mes_nome] = v_mes_total
+            if vp_mes > 0:
+                vp_por_mes[mes_nome] = vp_mes
+                vf_por_mes[mes_nome]=vf_mes
 
-        if v_tot == 0:
+        if v_tot_vf == 0:
             return messagebox.showwarning("Erro", "Volume Zero — nenhuma linha com volume preenchido.")
 
-        pmpv  = c_tot / v_tot
+        # O PMPV é o Custo Total dividido pelo Volume Faturado (VF)
+        pmpv  = c_tot / v_tot_vf
         final = pmpv + cg
 
         self.lbl_pmpv.configure(text=f"PMPV: R$ {pmpv:.4f}")
         self.lbl_final.configure(text=f"PREÇO FINAL: R$ {final:.4f}")
-        self.lbl_vp.configure(text=f"VP Total: {v_tot:,.0f} m³")
+        
+        # O ecrã mostra a soma real do VP (sem multiplicar por dias)
+        self.lbl_vp.configure(text=f"VP Total: {vp_total:,.0f} m³")
 
         self.res_final = {
-            'volume_total': v_tot, 'custo_total': c_tot,
-            'pmpv': pmpv, 'conta_grafica': cg, 'preco_final': final,
-            'vp_mensal': v_tot,
-            'vp_por_mes': vp_por_mes,   # {mes: volume} para uso no módulo SR
+            'volume_total': v_tot_vf,  # Mantemos o VF total para salvaguardar a coerência do custo e relatórios Excel
+            'custo_total': c_tot,
+            'pmpv': pmpv, 
+            'conta_grafica': cg, 
+            'preco_final': final,
+            'vp_mensal': vp_total,      # Soma pura dos VPs
+            'vp_por_mes': vp_por_mes,
+            'vf_por_mes': vf_por_mes,   # Dicionário de VPs puros por mês (usado no botão "▼ por mês")
         }
 
         if avisos:
@@ -500,49 +520,55 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
                 f"Os campos abaixo estavam vazios e foram considerados 0:\n\n"
                 + "\n".join(avisos)
             )
-
     def _popup_vp(self):
-        """Exibe janela com VP discriminado por mês."""
+        """Exibe janela com VP e VF discriminados por mês."""
         vp_por_mes: dict = (self.res_final or {}).get('vp_por_mes', {})
-        v_tot: float     = (self.res_final or {}).get('vp_mensal', 0.0)
+        vf_por_mes: dict = (self.res_final or {}).get('vf_por_mes', {})
+        vp_tot: float    = (self.res_final or {}).get('vp_mensal', 0.0)
+        vf_tot: float    = (self.res_final or {}).get('vf_mensal', 0.0)
 
         win = ctk.CTkToplevel(self)
-        win.title("VP — Volume Prospecto por Mês")
-        win.geometry("360x300")
+        win.title("Volumes por Mês")
+        win.geometry("450x300")
         win.grab_set()
 
-        ctk.CTkLabel(win, text="Volume Prospecto (VP) por Mês",
-                     font=("Roboto", 15, "bold")).pack(pady=(16, 8))
+        ctk.CTkLabel(win, text="Volumes (VP) vs (VF) por Mês", font=("Roboto", 15, "bold")).pack(pady=(16, 8))
 
         frame = ctk.CTkFrame(win, fg_color="#1e1e2e")
         frame.pack(fill="both", expand=True, padx=16, pady=4)
 
         if not vp_por_mes:
-            ctk.CTkLabel(frame, text="Calcule primeiro o PMPV.",
-                         text_color="#aaa").pack(pady=20)
+            ctk.CTkLabel(frame, text="Calcule primeiro o PMPV.", text_color="#aaa").pack(pady=20)
         else:
-            for mes, vol in vp_por_mes.items():
+            # Cabeçalho da tabela do popup
+            head = ctk.CTkFrame(frame, fg_color="transparent")
+            head.pack(fill="x", padx=12, pady=5)
+            ctk.CTkLabel(head, text="Mês", font=("Roboto", 12, "bold"), width=120, anchor="w").pack(side="left")
+            ctk.CTkLabel(head, text="VF (Faturado)", font=("Roboto", 12, "bold"), width=100, anchor="e").pack(side="right")
+            ctk.CTkLabel(head, text="VP (Prospecto)", font=("Roboto", 12, "bold"), width=100, anchor="e").pack(side="right", padx=10)
+
+            # Linhas com os valores de cada mês
+            for mes in vp_por_mes.keys():
+                vp_val = vp_por_mes[mes]
+                vf_val = vf_por_mes.get(mes, 0.0)
+                
                 row = ctk.CTkFrame(frame, fg_color="transparent")
                 row.pack(fill="x", padx=12, pady=3)
-                ctk.CTkLabel(row, text=mes, font=("Roboto", 13),
-                             anchor="w", width=120).pack(side="left")
-                ctk.CTkLabel(row, text=f"{vol:,.0f} m³",
-                             font=("Roboto", 13, "bold"),
-                             text_color="#3498db", anchor="e").pack(side="right")
+                ctk.CTkLabel(row, text=mes, font=("Roboto", 13), width=120, anchor="w").pack(side="left")
+                ctk.CTkLabel(row, text=f"{vf_val:,.0f} m³", font=("Roboto", 13), text_color="#e67e22", width=100, anchor="e").pack(side="right")
+                ctk.CTkLabel(row, text=f"{vp_val:,.0f} m³", font=("Roboto", 13, "bold"), text_color="#3498db", width=100, anchor="e").pack(side="right", padx=10)
 
+            # Linha de separação e Totais
             sep = ctk.CTkFrame(frame, height=1, fg_color="#444")
             sep.pack(fill="x", padx=12, pady=6)
+            
             row_tot = ctk.CTkFrame(frame, fg_color="transparent")
             row_tot.pack(fill="x", padx=12, pady=2)
-            ctk.CTkLabel(row_tot, text="TOTAL", font=("Roboto", 13, "bold"),
-                         anchor="w", width=120).pack(side="left")
-            ctk.CTkLabel(row_tot, text=f"{v_tot:,.0f} m³",
-                         font=("Roboto", 13, "bold"),
-                         text_color="#1abc9c", anchor="e").pack(side="right")
+            ctk.CTkLabel(row_tot, text="TOTAL", font=("Roboto", 13, "bold"), width=120, anchor="w").pack(side="left")
+            ctk.CTkLabel(row_tot, text=f"{vf_tot:,.0f} m³", font=("Roboto", 13, "bold"), text_color="#d35400", width=100, anchor="e").pack(side="right")
+            ctk.CTkLabel(row_tot, text=f"{vp_tot:,.0f} m³", font=("Roboto", 13, "bold"), text_color="#1abc9c", width=100, anchor="e").pack(side="right", padx=10)
 
-        ctk.CTkButton(win, text="Fechar", command=win.destroy,
-                      width=100).pack(pady=12)
-
+        ctk.CTkButton(win, text="Fechar", command=win.destroy, width=100).pack(pady=12)
     def _get_data_dict(self):
         idx_start = self.lista_meses.index(self.combo_mes.get())
         export = {}
