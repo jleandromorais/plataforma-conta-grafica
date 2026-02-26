@@ -68,8 +68,39 @@ class LinhaValor(ctk.CTkFrame):
             self.badge.configure(text="🔢 Calc", fg_color=COR_ROXO)
 
     def get_valor_entry(self) -> float:
-        """Lê o valor do Entry (modo manual)."""
-        txt = self.entry.get().strip().replace(",", ".")
+        """Lê o valor do Entry, aceitando formatos brasileiro e americano.
+
+        Exemplos aceitos:
+          90.750.924,96  →  90750924.96   (BR: ponto=milhar, vírgula=decimal)
+          90750924,96    →  90750924.96   (BR sem milhar)
+          90750924.96    →  90750924.96   (EN)
+          90.750.924     →  90750924.0    (BR inteiro)
+        """
+        txt = self.entry.get().strip()
+        if not txt:
+            return 0.0
+
+        last_dot   = txt.rfind(".")
+        last_comma = txt.rfind(",")
+
+        if last_comma > last_dot:
+            # Formato BR: vírgula é o separador decimal, pontos são milhares
+            txt = txt.replace(".", "").replace(",", ".")
+        elif last_dot > last_comma and last_comma >= 0:
+            # Formato EN mas com vírgulas como milhares: 90,750,924.96
+            txt = txt.replace(",", "")
+        else:
+            # Apenas pontos — verifica se é milhar (segmento final = 3 dígitos)
+            if last_dot >= 0:
+                after = txt[last_dot + 1:]
+                if len(after) == 3 and after.isdigit():
+                    txt = txt.replace(".", "")   # ponto de milhar, sem decimal
+
+        # Remove qualquer caractere que não seja dígito, ponto decimal ou sinal negativo
+        negativo = txt.startswith("-")
+        txt = "".join(c for c in txt if c.isdigit() or c == ".")
+        if negativo:
+            txt = "-" + txt
         try:
             return float(txt)
         except ValueError:
@@ -77,7 +108,9 @@ class LinhaValor(ctk.CTkFrame):
 
     def set_entry_value(self, valor: float):
         self.entry.delete(0, "end")
-        self.entry.insert(0, f"{valor:.2f}".replace(".", ","))
+        # Exibe no formato BR: 90.750.924,96
+        txt = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        self.entry.insert(0, txt)
 
     def mostrar_modo_auto(self):
         self.entry.pack_forget()

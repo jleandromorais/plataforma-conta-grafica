@@ -239,7 +239,7 @@ class DatabasePMPV:
         rp = dados.get('rp', 0)
         
         # Fórmula: SCG = RPV(CGR + CGF) + RET + RP
-        scg = rpv * (cgr + cgf) + ret + rp
+        scg = rpv + ret + rp
         
         self.cursor.execute("""
             UPDATE consolidacao

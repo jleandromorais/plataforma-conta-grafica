@@ -519,9 +519,31 @@ class AppAuditoriaXML(ctk.CTkToplevel):
         )
         self.btn_salvar_scg.pack(fill="x", pady=(0, 5))
 
+        # ========== PAINEL CGR — resultado persistente ==========
+        frame_cgr = ctk.CTkFrame(container, fg_color="#0d1b2a", corner_radius=10)
+        frame_cgr.pack(fill="x", pady=(8, 2))
+
+        ctk.CTkLabel(frame_cgr, text="CGR APURADO",
+                     font=("Roboto", 11, "bold"), text_color="#7fb3d3").pack(side="left", padx=(14, 6), pady=8)
+
+        self.lbl_cgr_bruto = ctk.CTkLabel(frame_cgr,
+                     text="Σ Bruto: —",
+                     font=("Consolas", 12), text_color="#aaaaaa")
+        self.lbl_cgr_bruto.pack(side="left", padx=10, pady=8)
+
+        self.lbl_cgr_icms = ctk.CTkLabel(frame_cgr,
+                     text="ICMS: —",
+                     font=("Consolas", 12), text_color="#e67e22")
+        self.lbl_cgr_icms.pack(side="left", padx=10, pady=8)
+
+        self.lbl_cgr_liquido = ctk.CTkLabel(frame_cgr,
+                     text="CGR Líquido: —",
+                     font=("Roboto", 14, "bold"), text_color="#2ecc71")
+        self.lbl_cgr_liquido.pack(side="right", padx=18, pady=8)
+
         # ========== ÁREA DE RESULTADOS ==========
         frame_resultados = ctk.CTkFrame(container)
-        frame_resultados.pack(fill="both", expand=True, pady=10)
+        frame_resultados.pack(fill="both", expand=True, pady=(4, 10))
         
         ctk.CTkLabel(frame_resultados, text="📋 Resultados da Auditoria",
                      font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
@@ -542,6 +564,21 @@ class AppAuditoriaXML(ctk.CTkToplevel):
             cor = "#27ae60" if OCR_ATIVADO else "#e74c3c"
             aviso = "" if OCR_ATIVADO else " ⚠️ sem OCR"
             self.lbl_modo_badge.configure(text=f"Modo: PDF{aviso}", text_color=cor)
+
+    def _atualizar_painel_cgr(self, bruto: float, icms: float, liquido: float):
+        """Atualiza o painel fixo de CGR com os valores calculados."""
+        self.lbl_cgr_bruto.configure(
+            text=f"Σ Bruto: R$ {bruto:,.2f}",
+            text_color="#aaaaaa",
+        )
+        self.lbl_cgr_icms.configure(
+            text=f"ICMS: R$ {icms:,.2f}",
+            text_color="#e67e22",
+        )
+        self.lbl_cgr_liquido.configure(
+            text=f"CGR Líquido: R$ {liquido:,.2f}",
+            text_color="#2ecc71",
+        )
 
     # ==========================================
     # FUNÇÕES DE SELEÇÃO
@@ -643,13 +680,18 @@ class AppAuditoriaXML(ctk.CTkToplevel):
             pdfs = list({p.resolve() for p in pasta_empresa.rglob("*.pdf")})
 
             usar_pdf = self.modo_fonte.get() == "PDF"
+            # Fallback automático: se modo=XML mas empresa não tem NENHUM XML,
+            # usa PDFs via OCR (ex: Orizon que só tem DANFEs)
+            sem_xml_forcar_pdf = (not usar_pdf) and (len(xmls) == 0) and (len(pdfs) > 0)
+
             self.text_resultados.insert(
                 "end",
                 f"   XMLs: {len(xmls)}  |  PDFs: {len(pdfs)}  "
-                f"[{'PDF/OCR' if usar_pdf else 'XML'}]\n"
+                f"[{'PDF/OCR' if usar_pdf else 'XML'}"
+                f"{' ⚠️ sem XML→OCR automático' if sem_xml_forcar_pdf else ''}]\n"
             )
 
-            if not usar_pdf:
+            if not usar_pdf and not sem_xml_forcar_pdf:
                 # ── Modo XML ──────────────────────────────────────────────
                 for xml_file in xmls:
                     total_xmls += 1
@@ -657,7 +699,7 @@ class AppAuditoriaXML(ctk.CTkToplevel):
                     if resultado:
                         self.resultados.append(resultado)
             else:
-                # ── Modo PDF — processa somente PDFs, ignora XMLs ─────────
+                # ── Modo PDF ou fallback automático (sem XML) ─────────────
                 ocr_status = "✅ OCR ativo" if OCR_ATIVADO else "⚠️ OCR inativo (só texto nativo)"
                 self.text_resultados.insert(
                     "end",
@@ -713,6 +755,9 @@ class AppAuditoriaXML(ctk.CTkToplevel):
         icms_total = sum(r.icms for r in self.resultados)
         self.cgr_liquido = calcular_cgr_liquido(self.valor_total_geral, icms_total)
 
+        # Atualiza painel fixo de CGR
+        self._atualizar_painel_cgr(self.valor_total_geral, icms_total, self.cgr_liquido)
+
         aliq_pct = PIS_COFINS_CGR_RATE * 100
         self.text_resultados.insert("end", f"\n{'='*52}\n")
         self.text_resultados.insert("end", f"📄 NF-e  → R$ {self.valor_total_nfe:>18,.2f}  | Vol: {self.volume_total_nfe:,.0f}\n")
@@ -747,15 +792,25 @@ class AppAuditoriaXML(ctk.CTkToplevel):
 
         usar_pdf = self.modo_fonte.get() == "PDF"
 
-        # Modo PDF → processa apenas PDFs; Modo XML → processa apenas XMLs
-        arquivos_xml  = xmls  if not usar_pdf else []
-        arquivos_pdf  = pdfs  if usar_pdf     else []
+        if not usar_pdf:
+            # Modo XML: usa XMLs normalmente +
+            # PDFs de subpastas que NÃO têm nenhum XML (ex: Orizon)
+            arquivos_xml = xmls
+            # Identifica pastas sem XML mas com PDF
+            pastas_com_xml = {p.parent for p in xmls}
+            pdfs_orfaos = [p for p in pdfs if p.parent not in pastas_com_xml]
+            arquivos_pdf = pdfs_orfaos
+        else:
+            # Modo PDF: processa apenas PDFs, ignora XMLs
+            arquivos_xml = []
+            arquivos_pdf = pdfs
 
         if not arquivos_xml and not arquivos_pdf:
             messagebox.showinfo("Sem arquivos", "Nenhum XML ou PDF encontrado na pasta.")
             return
 
-        modo_label = "PDF/OCR" if usar_pdf else "XML"
+        n_orfaos = len(arquivos_pdf) if not usar_pdf else 0
+        modo_label = "PDF/OCR" if usar_pdf else f"XML{f' + {n_orfaos} PDF(s) sem XML' if n_orfaos else ''}"
         n_docs = len(arquivos_xml) + len(arquivos_pdf)
         ocr_status_txt = ("✅ OCR ativo" if OCR_ATIVADO else "⚠️ sem OCR") if usar_pdf else ""
         self.lbl_status.configure(
@@ -817,35 +872,54 @@ class AppAuditoriaXML(ctk.CTkToplevel):
         self.lbl_status.configure(text="Somatório calculado!", text_color="#27ae60")
         self.btn_salvar_scg.configure(state="normal")
 
-        aviso_erros = f"\n\n⚠️ {erros} arquivo(s) com erro." if erros else ""
-        ocr_info = ""
-        if ocr_detalhes:
-            ocr_info = f"\n\n  🔍  PDFs via OCR ({len(ocr_detalhes)} doc(s)):\n"
-            for nome, v in ocr_detalhes:
-                ocr_info += f"       {nome[:40]:<40}  R$ {v:>15,.2f}\n"
-            ocr_info += f"       {'─'*57}\n"
-            ocr_info += f"       {'SUBTOTAL OCR':<40}  R$ {val_ocr:>15,.2f}\n"
+        # ── Atualiza painel fixo de CGR ────────────────────────────
+        self._atualizar_painel_cgr(self.valor_total_geral, icm_total, self.cgr_liquido)
 
+        aviso_erros = f"\n⚠️ {erros} arquivo(s) com erro." if erros else ""
         aliq_pct = PIS_COFINS_CGR_RATE * 100
-        msg = (
-            f"📊  SOMATÓRIO — {len(xmls)} XML(s) + {len(pdfs_sem_xml)} PDF(s) OCR{aviso_erros}\n"
-            f"{'─' * 50}\n\n"
-            f"  📄  NF-e\n"
-            f"       Valor Total : R$ {val_nfe:>18,.2f}\n"
-            f"       Volume Total:     {vol_nfe:>18,.2f}\n\n"
-            f"  🚚  CT-e\n"
-            f"       Valor Total : R$ {val_cte:>18,.2f}\n"
-            f"       Volume Total:     {vol_cte:>18,.2f}\n\n"
-            f"{'─' * 50}\n"
-            f"  📊  Σ bruto (c/tributos) : R$ {self.valor_total_geral:>18,.2f}\n"
-            f"  📉  − ICMS               : R$ {icm_total:>18,.2f}\n"
-            f"  ×  (1 − {aliq_pct:.2f}% PIS/COFINS) :     × {1 - PIS_COFINS_CGR_RATE:.4f}\n"
-            f"{'─' * 50}\n"
-            f"  ✅  CGR s/tributos       : R$ {self.cgr_liquido:>18,.2f}\n"
-            f"       Volume Total         :     {self.volume_total_geral:>18,.2f}"
-            + ocr_info
-        )
-        messagebox.showinfo("Somatório Final — CGR", msg)
+        modo_label = "PDF/OCR" if self.modo_fonte.get() == "PDF" else "XML"
+
+        linhas = [
+            f"{'═'*54}",
+            f"  📊  SOMATÓRIO  [{modo_label}] — "
+            f"{len(arquivos_xml)} XML(s) + {len(arquivos_pdf)} PDF(s){aviso_erros}",
+            f"{'─'*54}",
+            f"  📄  NF-e",
+            f"       Valor Total : R$ {val_nfe:>18,.2f}",
+            f"       Volume Total:     {vol_nfe:>18,.2f}",
+            f"",
+            f"  🚚  CT-e",
+            f"       Valor Total : R$ {val_cte:>18,.2f}",
+            f"       Volume Total:     {vol_cte:>18,.2f}",
+            f"",
+            f"{'─'*54}",
+            f"  Σ bruto (c/tributos) : R$ {self.valor_total_geral:>18,.2f}",
+            f"  − ICMS               : R$ {icm_total:>18,.2f}",
+            f"  × (1 − {aliq_pct:.2f}% PIS/COFINS):    × {1 - PIS_COFINS_CGR_RATE:.4f}",
+            f"{'─'*54}",
+            f"  ✅  CGR líquido      : R$ {self.cgr_liquido:>18,.2f}",
+            f"       Volume Total     :     {self.volume_total_geral:>18,.2f}",
+        ]
+
+        if ocr_detalhes:
+            linhas += [
+                f"",
+                f"  🔍  PDFs via OCR ({len(ocr_detalhes)} doc(s)):",
+            ]
+            for nome, v in ocr_detalhes:
+                linhas.append(f"       {nome[:40]:<40}  R$ {v:>15,.2f}")
+            linhas += [
+                f"       {'─'*57}",
+                f"       {'SUBTOTAL OCR':<40}  R$ {val_ocr:>15,.2f}",
+            ]
+
+        linhas.append(f"{'═'*54}")
+
+        # ── Escreve no textbox de resultados (persiste na tela) ────
+        self.text_resultados.configure(state="normal")
+        self.text_resultados.delete("1.0", "end")
+        self.text_resultados.insert("end", "\n".join(linhas))
+        self.text_resultados.configure(state="disabled")
 
     def _auditar_xml(self, xml_path: Path, empresa: str) -> XMLItem:
         """Audita um XML individual"""

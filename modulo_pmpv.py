@@ -81,14 +81,25 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         self.lbl_pmpv.pack()
         self.lbl_final = ctk.CTkLabel(center, text="PREÇO FINAL: R$ 0.0000", font=("Roboto", 28, "bold"), text_color="#f1c40f")
         self.lbl_final.pack()
+        vp_row = ctk.CTkFrame(center, fg_color="transparent")
+        vp_row.pack(pady=(4, 0))
+        self.lbl_vp = ctk.CTkLabel(vp_row, text="VP Total: — m³", font=("Roboto", 13), text_color="#3498db")
+        self.lbl_vp.pack(side="left")
+        self.btn_vp_detail = ctk.CTkButton(
+            vp_row, text="▼ por mês", command=self._popup_vp,
+            width=80, height=22, font=("Roboto", 11),
+            fg_color="#1a5276", hover_color="#2e86c1",
+        )
+        self.btn_vp_detail.pack(side="left", padx=(8, 0))
 
         # Direita: Botões
         right = ctk.CTkFrame(foot, fg_color="transparent")
         right.pack(side="right", padx=20)
-        ctk.CTkButton(right, text="📥 Importar Memória MC",  command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=5)
+        ctk.CTkButton(right, text="📥 Importar Memória MC",  command=self._importar_memoria_calculo,   fg_color="#d35400", hover_color="#e67e22").pack(pady=5)
         ctk.CTkButton(right, text="💾 Salvar Sessão",       command=self.salvar,               fg_color="#8e44ad").pack(pady=5)
         ctk.CTkButton(right, text="📅 Salvar PMPV Mensal",  command=self._salvar_pmpv_mensal,  fg_color="#16a085").pack(pady=5)
         ctk.CTkButton(right, text="📊 Exportar Excel",      command=self.exportar,             fg_color="#2980b9").pack(pady=5)
+        ctk.CTkButton(right, text="📄 Exportar Memória MC", command=self.exportar_memoria_mc,  fg_color="#1a5276", hover_color="#2e86c1").pack(pady=5)
 
     def _criar_aba(self, parent, tab_nome: str = ""):
         # Cabeçalho Tabela
@@ -428,12 +439,14 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         c_tot = v_tot = 0.0
         cg = self._val(self.entry_cg)
         avisos = []
+        vp_por_mes: dict[str, float] = {}   # mes_nome → volume total daquele mês
 
         idx_start = self.lista_meses.index(self.combo_mes.get())
 
         for i, (k, linhas) in enumerate(self.dados_meses.items()):
             dias = self.dias_config.get(k, 30)
             mes_nome = self.lista_meses[(idx_start + i) % 12]
+            v_mes_total = 0.0
 
             for l in linhas:
                 vol = self._val(l['vol'])
@@ -448,6 +461,7 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
                 v_mes  = vol * dias
                 c_tot += pr * v_mes
                 v_tot += v_mes
+                v_mes_total += v_mes
 
                 # Registra parâmetros de preço que estavam vazios (tratados como 0)
                 campos_vazios = []
@@ -459,6 +473,9 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
                     empresa = l['nome'].get().strip() or "(sem nome)"
                     avisos.append(f"  • {mes_nome} | {empresa}: {', '.join(campos_vazios)} → 0")
 
+            if v_mes_total > 0:
+                vp_por_mes[mes_nome] = v_mes_total
+
         if v_tot == 0:
             return messagebox.showwarning("Erro", "Volume Zero — nenhuma linha com volume preenchido.")
 
@@ -467,10 +484,13 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
 
         self.lbl_pmpv.configure(text=f"PMPV: R$ {pmpv:.4f}")
         self.lbl_final.configure(text=f"PREÇO FINAL: R$ {final:.4f}")
+        self.lbl_vp.configure(text=f"VP Total: {v_tot:,.0f} m³")
 
         self.res_final = {
             'volume_total': v_tot, 'custo_total': c_tot,
             'pmpv': pmpv, 'conta_grafica': cg, 'preco_final': final,
+            'vp_mensal': v_tot,
+            'vp_por_mes': vp_por_mes,   # {mes: volume} para uso no módulo SR
         }
 
         if avisos:
@@ -480,6 +500,48 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
                 f"Os campos abaixo estavam vazios e foram considerados 0:\n\n"
                 + "\n".join(avisos)
             )
+
+    def _popup_vp(self):
+        """Exibe janela com VP discriminado por mês."""
+        vp_por_mes: dict = (self.res_final or {}).get('vp_por_mes', {})
+        v_tot: float     = (self.res_final or {}).get('vp_mensal', 0.0)
+
+        win = ctk.CTkToplevel(self)
+        win.title("VP — Volume Prospecto por Mês")
+        win.geometry("360x300")
+        win.grab_set()
+
+        ctk.CTkLabel(win, text="Volume Prospecto (VP) por Mês",
+                     font=("Roboto", 15, "bold")).pack(pady=(16, 8))
+
+        frame = ctk.CTkFrame(win, fg_color="#1e1e2e")
+        frame.pack(fill="both", expand=True, padx=16, pady=4)
+
+        if not vp_por_mes:
+            ctk.CTkLabel(frame, text="Calcule primeiro o PMPV.",
+                         text_color="#aaa").pack(pady=20)
+        else:
+            for mes, vol in vp_por_mes.items():
+                row = ctk.CTkFrame(frame, fg_color="transparent")
+                row.pack(fill="x", padx=12, pady=3)
+                ctk.CTkLabel(row, text=mes, font=("Roboto", 13),
+                             anchor="w", width=120).pack(side="left")
+                ctk.CTkLabel(row, text=f"{vol:,.0f} m³",
+                             font=("Roboto", 13, "bold"),
+                             text_color="#3498db", anchor="e").pack(side="right")
+
+            sep = ctk.CTkFrame(frame, height=1, fg_color="#444")
+            sep.pack(fill="x", padx=12, pady=6)
+            row_tot = ctk.CTkFrame(frame, fg_color="transparent")
+            row_tot.pack(fill="x", padx=12, pady=2)
+            ctk.CTkLabel(row_tot, text="TOTAL", font=("Roboto", 13, "bold"),
+                         anchor="w", width=120).pack(side="left")
+            ctk.CTkLabel(row_tot, text=f"{v_tot:,.0f} m³",
+                         font=("Roboto", 13, "bold"),
+                         text_color="#1abc9c", anchor="e").pack(side="right")
+
+        ctk.CTkButton(win, text="Fechar", command=win.destroy,
+                      width=100).pack(pady=12)
 
     def _get_data_dict(self):
         idx_start = self.lista_meses.index(self.combo_mes.get())
@@ -519,6 +581,123 @@ class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
         d_fmt = {f"Mês {i+1}": v for i, v in enumerate(dados.values())}
         ExcelHandlerPMPV.exportar_trimestre(d_fmt, self.res_final)
         messagebox.showinfo("Sucesso", "Excel Gerado!")
+
+    def exportar_memoria_mc(self):
+        """Exporta no formato Memória de Cálculo, reimportável pelo botão 📥 Importar MC.
+        O usuário escolhe entre exportar os 3 meses juntos ou apenas 1 mês específico."""
+        if not hasattr(self, 'res_final'):
+            return messagebox.showwarning("Erro", "Calcule o PMPV antes de exportar.")
+
+        dados_full = self._get_data_dict()
+        meses_nomes = list(dados_full.keys())   # ex: ['Outubro', 'Novembro', 'Dezembro']
+
+        # ── Janela de escolha de período ─────────────────────────────
+        escolha = {"valor": None}   # mutável para ser capturado pelo closure
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Exportar Memória MC")
+        dlg.geometry("320x260")
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.transient(self)
+
+        ctk.CTkLabel(dlg, text="Selecione o período para exportar:",
+                     font=("Roboto", 13, "bold")).pack(pady=(18, 8))
+
+        def _escolher(v):
+            escolha["valor"] = v
+            dlg.destroy()
+
+        ctk.CTkButton(
+            dlg,
+            text=f"📅 Trimestre completo  ({' + '.join(meses_nomes)})",
+            command=lambda: _escolher("todos"),
+            fg_color="#1a5276", hover_color="#2e86c1",
+            width=280,
+        ).pack(pady=6)
+
+        ctk.CTkLabel(dlg, text="── ou apenas 1 mês ──",
+                     font=("Roboto", 11), text_color="gray").pack(pady=4)
+
+        for mes in meses_nomes:
+            ctk.CTkButton(
+                dlg,
+                text=f"📆 {mes}",
+                command=lambda m=mes: _escolher(m),
+                fg_color="#154360", hover_color="#1a5276",
+                width=280,
+            ).pack(pady=4)
+
+        ctk.CTkButton(dlg, text="Cancelar", command=dlg.destroy,
+                      fg_color="#7f8c8d", width=100).pack(pady=(8, 4))
+
+        self.wait_window(dlg)
+
+        if escolha["valor"] is None:
+            return
+
+        # ── Filtrar dados e recalcular resultado se for 1 mês ────────
+        if escolha["valor"] == "todos":
+            dados     = dados_full
+            dias_cfg  = self.dias_config
+            resultado = self.res_final
+            sufixo    = "trimestre"
+        else:
+            mes_sel = escolha["valor"]
+            idx     = meses_nomes.index(mes_sel)
+            dados   = {mes_sel: dados_full[mes_sel]}
+            dias_cfg = {"Mês 1": self.dias_config.get(f"Mês {idx + 1}", 30)}
+
+            # Recalcula PMPV apenas para o mês selecionado
+            dias_mes = dias_cfg["Mês 1"]
+            c_tot = v_tot = 0.0
+            cg = self._val(self.entry_cg)
+            for l in dados_full[mes_sel]:
+                vol = self._val(l['vol']) if isinstance(l, dict) and 'vol' in l else l.get('volume', 0.0)
+                if vol <= 0:
+                    continue
+                # _get_data_dict devolve dicts com chaves 'molecula','transporte','logistica','volume'
+                pr = l.get('molecula', 0.0) + l.get('transporte', 0.0) + l.get('logistica', 0.0)
+                v_mes  = vol * dias_mes
+                c_tot += pr * v_mes
+                v_tot += v_mes
+
+            if v_tot == 0:
+                return messagebox.showwarning("Aviso", f"Nenhum volume em {mes_sel}.")
+
+            pmpv_mes  = c_tot / v_tot
+            resultado = {
+                'volume_total': v_tot, 'custo_total': c_tot,
+                'pmpv': pmpv_mes, 'conta_grafica': cg,
+                'preco_final': pmpv_mes + cg,
+            }
+            sufixo = mes_sel
+
+        # ── Diálogo de save ──────────────────────────────────────────
+        from tkinter import filedialog
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar Memória de Cálculo",
+            defaultextension=".xlsx",
+            initialfile=f"Memória de Cálculo — {sufixo}.xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+        )
+        if not caminho:
+            return
+
+        try:
+            arq = ExcelHandlerPMPV.exportar_memoria_calculo(
+                dados_por_mes=dados,
+                resultado=resultado,
+                dias_config=dias_cfg,
+                nome_arquivo=caminho,
+            )
+            messagebox.showinfo(
+                "✅ Exportado",
+                f"Arquivo gerado com sucesso:\n{arq}\n\n"
+                "Você pode reimportá-lo com '📥 Importar Memória MC'."
+            )
+        except Exception as exc:
+            messagebox.showerror("Erro ao exportar", str(exc))
 
     def _salvar_pmpv_mensal(self):
         """Salva o PMPV calculado no banco de dados associado a um período mensal."""
