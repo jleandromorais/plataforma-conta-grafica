@@ -1,246 +1,116 @@
-# 🏦 Plataforma Conta Gráfica - Sistema Integrado
+# 📊 Plataforma Conta Gráfica (SCG)
 
-[![Tests](https://img.shields.io/badge/tests-39%20passing-brightgreen)]()
-[![Coverage](https://img.shields.io/badge/coverage-56%25-yellow)]()
-[![Python](https://img.shields.io/badge/python-3.14-blue)]()
+![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python)
+![CustomTkinter](https://img.shields.io/badge/Interface-CustomTkinter-2ea44f?style=for-the-badge)
+![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=for-the-badge&logo=sqlite)
+![Pandas](https://img.shields.io/badge/Data-Pandas-150458?style=for-the-badge&logo=pandas)
+![Pytest](https://img.shields.io/badge/Tests-Pytest-E11210?style=for-the-badge&logo=pytest)
 
-Sistema integrado de gestão financeira com funcionalidades de cálculo PMPV (Preço Médio Ponderado de Venda), conciliação de PDFs e exportação para Excel.
+## 📖 Sobre o Projeto
 
-## 📋 Índice
+A **Plataforma Conta Gráfica** é um sistema desktop desenvolvido em Python para gestão, cálculo e consolidação de indicadores financeiros e faturas. O objetivo principal do software é automatizar o cálculo do **SCG (Sistema de Conta Gráfica)** e do **SR (Saldo Remanescente)**, oferecendo uma interface gráfica moderna e intuitiva.
 
-- [Funcionalidades](#funcionalidades)
-- [Estrutura do Projeto](#estrutura-do-projeto)
-- [Instalação](#instalação)
-- [Como Usar](#como-usar)
-- [Testes](#testes)
-- [Documentação](#documentação)
+Este sistema substitui processos manuais complexos por um fluxo de trabalho automatizado, integrando leitura de ficheiros Excel, armazenamento persistente em base de dados e validação de cálculos rigorosos.
 
-## ✨ Funcionalidades
+## ✨ Principais Funcionalidades
 
-### 1. **Cálculo PMPV Trimestral**
-- Gestão de contratos de gás por empresa
-- Cálculo automático de preços médios
-- Inclusão de conta gráfica
-- Exportação para Excel com múltiplas abas
-- Salvamento em banco de dados SQLite
+O sistema está dividido em módulos independentes que convergem no Dashboard principal:
 
-### 2. **Conciliação de PDFs**
-- Leitura automática de PDFs (texto digital + OCR)
-- Extração inteligente de valores monetários
-- Categorização de receitas e despesas
-- Geração de relatório consolidado em Excel
-- Interface gráfica moderna
+* **📈 Dashboard Central:** Visão geral e navegação entre os vários submódulos.
+* **💼 Módulo SCG (Consolidação):** Calcula a métrica central através da fórmula `SCG = RPV × (CGR + CGF) + RET + RP`.
+* **📊 Módulo SR (Saldo Remanescente):** Calcula as diferenças de volume faturado através da fórmula `SR = (VP - VF) × PR`.
+* **📑 Módulos Base:**
+    * **PMPV:** Preço Médio Ponderado de Venda.
+    * **CGR & CGF:** Auditoria XML e Volumes Faturados.
+    * **RPV & RET:** Requisição de Pequeno Valor e Encargos.
+    * **RP:** Conciliação.
+* **📥 Importação de Dados:** Processamento automatizado de dados provenientes de planilhas Excel (`pandas`).
+* **🗄️ Base de Dados Embutida:** Persistência de dados local segura com `SQLite`.
+* **🔄 Modos de Operação:** Permite ao utilizador alternar entre o modo Automático (dados do banco) e Manual (edição direta).
 
-### 3. **Auditoria XML (NF-e / CT-e)**
-- Leitura recursiva de XMLs fiscais em múltiplas empresas
-- Parse automático de NF-e e CT-e
-- Comparação com planilha Excel de referência
-- Detecção de divergências em valores e volumes
-- Geração de relatório completo com status colorido
+## 🛠️ Tecnologias Utilizadas
 
-### 4. **Dashboard Principal**
-- Interface centralizada
-- Acesso rápido aos módulos
-- Design moderno com CustomTkinter
+* **Linguagem:** [Python 3.10+](https://www.python.org/)
+* **Interface Gráfica (GUI):** [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) (tema escuro, design moderno).
+* **Manipulação de Dados:** [Pandas](https://pandas.pydata.org/) e `openpyxl`.
+* **Base de Dados:** `SQLite3` (nativo do Python).
+* **Testes Automáticos:** `Pytest`.
 
-## 📁 Estrutura do Projeto
+## 📂 Arquitetura e Estrutura de Ficheiros
 
-```
+O projeto foi construído seguindo boas práticas de modularização, separando a interface (UI), a lógica de negócio e o acesso aos dados:
+
+```text
 plataforma-conta-grafica/
-│
-├── 📄 Módulos Principais
-│   ├── main_dashboard.py          # Dashboard principal
-│   ├── modulo_pmpv.py             # Módulo de cálculo PMPV
-│   ├── modulo_concilia.py         # Módulo de conciliação PDF
-│   ├── modulo_auditoria.py        # Módulo de auditoria XML (NF-e/CT-e)
-│   ├── database.py                # Gerenciamento do banco de dados
-│   └── excel_handler.py           # Exportação para Excel
-│
-├── 🧪 Testes (tests/)
-│   ├── __init__.py
-│   ├── test_database.py           # 8 testes de BD
-│   ├── test_excel_handler.py      # 8 testes de Excel
-│   ├── test_modulo_concilia.py    # 11 testes de conciliação
-│   └── test_integracao.py         # 12 testes de integração
-│
-├── 📚 Documentação
-│   ├── README.md                  # Este arquivo
-│   ├── README_TESTES.md           # Guia completo de testes
-│   ├── RESUMO_TESTES.md          # Resumo executivo
-│   └── CHANGELOG.md              # Histórico de mudanças
-│
-├── ⚙️ Configuração
-│   ├── requirements.txt           # Dependências Python
-│   └── pytest.ini                # Configuração de testes
-│
-└── 📊 Relatórios
-    └── htmlcov/                   # Cobertura de testes (HTML)
-```
+├── Src/
+│   ├── Database/
+│   │   └── database.py          # Camada de acesso à BD (SQLite)
+│   └── Modules/
+│       ├── excel_handler.py     # Lógica de extração e tratamento de Excel
+│       ├── modulo_scg.py        # Módulo de Consolidação (UI + Lógica)
+│       ├── modulo_sr.py         # Módulo de Saldo Remanescente
+│       ├── modulo_pmpv.py       # ... (outros módulos de negócio)
+│       └── ...
+├── tests/                       # Suite de testes automatizados (Pytest)
+│   ├── test_database.py
+│   ├── test_excel_handler.py
+│   └── test_modulo_*.py
+├── main_dashboard.py            # Ponto de entrada (Entrypoint) e Menu Principal
+├── requirements.txt             # Dependências do projeto
+├── pytest.ini                   # Configurações de testes
+└── README.md                    # Documentação do projeto
+🚀 Como Instalar e Executar
+Siga os passos abaixo para correr o projeto na sua máquina local.
 
-## 🚀 Instalação
+Pré-requisitos
+Ter o Python instalado (versão 3.10 ou superior).
 
-### 1. Clonar/Baixar o Projeto
-```bash
+Recomenda-se a utilização de um ambiente virtual (venv).
+
+Passos de Instalação
+Clone o repositório:
+
+Bash
+git clone [https://github.com/seu-usuario/plataforma-conta-grafica.git](https://github.com/seu-usuario/plataforma-conta-grafica.git)
 cd plataforma-conta-grafica
-```
+Crie e ative um ambiente virtual (opcional, mas recomendado):
 
-### 2. Instalar Dependências
-```bash
+Bash
+# Em Windows:
+python -m venv venv
+venv\Scripts\activate
+
+# Em Linux/Mac:
+python3 -m venv venv
+source venv/bin/activate
+Instale as dependências:
+
+Bash
 pip install -r requirements.txt
-```
+Inicie a aplicação:
 
-**Dependências Principais:**
-- `customtkinter` - Interface gráfica moderna
-- `openpyxl` - Manipulação de Excel
-- `pdfplumber` - Leitura de PDFs
-- `pytesseract` - OCR (reconhecimento de texto)
-- `Pillow` - Processamento de imagens
-
-**Dependências de Teste:**
-- `pytest` - Framework de testes
-- `pytest-cov` - Cobertura de código
-- `pytest-mock` - Mocking para testes
-
-### 3. Configurar Tesseract OCR (Opcional)
-Se for usar OCR para PDFs escaneados:
-1. Baixe o Tesseract: https://github.com/UB-Mannheim/tesseract/wiki
-2. Instale em: `C:\Program Files\Tesseract-OCR`
-3. O sistema detectará automaticamente
-
-## 💻 Como Usar
-
-### Iniciar o Sistema
-```bash
+Bash
 python main_dashboard.py
-```
+🧪 Execução dos Testes
+A qualidade do software é garantida através de uma suite robusta de testes unitários e de integração. Para executar todos os testes, certifique-se de que o pytest está instalado e corra:
 
-### Módulo PMPV
-1. No dashboard, clique em "📊 Gestão PMPV"
-2. Configure o trimestre (mês inicial)
-3. Preencha dados de cada empresa por mês
-4. Adicione o valor da conta gráfica
-5. Clique em "⚡ CALCULAR"
-6. Exporte para Excel ou salve a sessão
-
-### Módulo Conciliação PDF
-1. No dashboard, clique em "📄 Conciliação PDF"
-2. Selecione pasta de Receitas
-3. Selecione pasta de Despesas
-4. Clique em "⚡ PROCESSAR E CONCILIAR"
-5. Aguarde o processamento
-6. Excel será gerado automaticamente
-
-### Módulo Auditoria XML
-1. No dashboard, clique em "🔍 Auditoria XML"
-2. Selecione a pasta PAI contendo subpastas de empresas
-3. Marque as empresas que deseja auditar
-4. Selecione o Excel de referência (com dados esperados)
-5. Clique em "⚡ INICIAR AUDITORIA"
-6. Gere o relatório em Excel com divergências identificadas
-
-## 🧪 Testes
-
-### Executar Todos os Testes
-```bash
+Bash
 pytest
-```
+Nota: A configuração do Pytest já se encontra otimizada no ficheiro pytest.ini para uma leitura clara dos resultados.
 
-### Com Cobertura Detalhada
-```bash
-pytest --cov=. --cov-report=html
-```
-Abra `htmlcov/index.html` no navegador para ver o relatório visual.
+🤝 Contribuições e Manutenção
+Desenvolvido com foco em código limpo, componentização Orientada a Objetos (Classes) e fácil escalabilidade. Qualquer dúvida ou sugestão, por favor, abra uma Issue no repositório.
 
-### Executar Teste Específico
-```bash
-pytest tests/test_database.py -v
-```
-
-### Estatísticas de Testes
-- ✅ **39 testes** criados
-- ✅ **100% passando**
-- ✅ **56% de cobertura total**
-- ✅ **87-91% de cobertura** nos módulos principais
-
-## 📚 Documentação
-
-### Para Usuários
-- **README.md** (este arquivo) - Visão geral do sistema
-- **RESUMO_TESTES.md** - Resumo executivo das melhorias
-
-### Para Desenvolvedores
-- **README_TESTES.md** - Guia completo de testes
-- **CHANGELOG.md** - Histórico detalhado de mudanças
-- **Cobertura HTML** - `htmlcov/index.html`
-
-## 🔧 Correções Recentes (v1.1.0)
-
-### Problema: Arquivos com Mesmo Nome
-**Resolvido! ✅**
-
-O sistema agora:
-- Gera nomes únicos com timestamp completo
-- Detecta arquivos já abertos
-- Adiciona numeração incremental automática (`_1`, `_2`, etc.)
-- Fecha arquivos corretamente após salvar
-- Nunca sobrescreve dados
-
-**Exemplo:**
-```
-Relatorio_PMPV_20260212_143052.xlsx
-Relatorio_PMPV_20260212_143052_1.xlsx  ← Se já existir
-Conciliacao_Final_20260212_143055.xlsx
-```
-
-## 🎯 Próximas Melhorias
-
-- [ ] Testes de interface gráfica
-- [ ] Integração contínua (CI/CD)
-- [ ] Testes de performance
-- [ ] Exportação para PDF
-- [ ] Gráficos e dashboards
-
-## 📊 Qualidade de Código
-
-| Métrica | Valor | Status |
-|---------|-------|--------|
-| **Testes** | 39 | ✅ |
-| **Cobertura** | 56% | ✅ |
-| **Módulo Database** | 87% | ✅ |
-| **Módulo Excel** | 91% | ✅ |
-| **Testes Passando** | 100% | ✅ |
-
-## 🤝 Contribuindo
-
-1. Execute os testes antes de fazer commit:
-   ```bash
-   pytest
-   ```
-
-2. Adicione testes para novos recursos:
-   ```python
-   # tests/test_nova_funcionalidade.py
-   def test_minha_funcionalidade():
-       assert funcao() == resultado_esperado
-   ```
-
-3. Mantenha cobertura > 80% nos novos módulos
-
-## 📄 Licença
-
-Este projeto é de uso interno.
-
-## 📞 Suporte
-
-Para dúvidas sobre:
-- **Uso do sistema**: Consulte este README
-- **Execução de testes**: Veja `README_TESTES.md`
-- **Mudanças recentes**: Leia `CHANGELOG.md`
-- **Resumo executivo**: Abra `RESUMO_TESTES.md`
 
 ---
 
-**Versão:** 1.1.0  
-**Data:** 12/02/2026  
-**Status:** ✅ Produção  
-**Qualidade:** ⭐⭐⭐⭐⭐ (Profissional)
+### 📝 Instruções de Implementação
+
+1. Abre o teu editor de código (VS Code, etc.).
+2. Substitui o conteúdo atual do teu ficheiro `README.md` (ou `README_TESTES.md` caso queiras unificar a informação) por este código que forneci.
+3. Repara que no bloco de instalação eu coloquei um link de clonagem de exemplo (`https://github.com/seu-usuario/plataforma-conta-grafica.git`). **Lembra-te de alterar "seu-usuario" para o teu nome de utilizador real do GitHub.**
+
+### 🎓 Dica Educativa
+Escrever um bom README faz parte do trabalho de um bom Programador Sênior. Ele ajuda a documentar para outros (e para ti mesmo no futuro) como a arquitetura do teu sistema funciona. Como separaste brilhantemente as funções da base de dados (`database.py`), do processamento de Excel (`excel_handler.py`) e das janelas de visualização (os módulos), destacar essa organização na secção **"Arquitetura"** vai impressionar quem ler o teu repositório!
+
+O que achaste do visual e da organização do texto? Se quiseres alterar ou acrescentar a
