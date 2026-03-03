@@ -15,7 +15,7 @@ import pytesseract
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from Src.common.formatting import br_money_to_float, format_br
+from Src.common.formatting import parse_brl, format_brl_plain
 from Src.infra.ocr_pdf import OCR_ENABLED, read_pdf_text
 
 @dataclass(frozen=True)
@@ -48,7 +48,8 @@ def extrair_valor(text: str) -> Tuple[float, str]:
     lista_floats = []
     if todos_valores:
         for v in todos_valores:
-            f = br_money_to_float(v)
+            # Antes estava f = br_money_to_float(v)
+            f = parse_brl(v)
             # Filtro de ano/datas
             if f in [2024.0, 2025.0, 2026.0, 2027.0]: continue
             
@@ -284,13 +285,13 @@ class AppConciliador(ctk.CTkToplevel):
             
             # Mostra Resultado Final na Tela
             saldo = tot_rec - tot_desp
+           # Ficará assim:
             msg_final = (f"PROCESSAMENTO FINALIZADO!\n\n"
-                         f"Receitas: R$ {format_br(tot_rec)}\n"
-                         f"Despesas: R$ {format_br(tot_desp)}\n"
+                         f"Receitas: R$ {format_brl_plain(tot_rec)}\n"
+                         f"Despesas: R$ {format_brl_plain(tot_desp)}\n"
                          f"----------------\n"
-                         f"SALDO: R$ {format_br(saldo)}\n\n"
+                         f"SALDO: R$ {format_brl_plain(saldo)}\n\n"
                          f"Relatório salvo na pasta do programa.")
-            
             messagebox.showinfo("Sucesso", msg_final)
 
             # Guarda saldo para o botão Salvar no SCG
@@ -325,10 +326,11 @@ class AppConciliador(ctk.CTkToplevel):
         db.atualizar_rp(periodo, self._ultimo_saldo_rp)
         db.fechar()
 
+        # Ficará assim:
         messagebox.showinfo(
             "RP Salvo ✅",
             f"Período : {periodo}\n"
-            f"RP salvo: R$ {format_br(self._ultimo_saldo_rp)}\n\n"
+            f"RP salvo: R$ {format_brl_plain(self._ultimo_saldo_rp)}\n\n"
             f"Acesse o módulo SCG para ver o resultado final.",
         )
 
