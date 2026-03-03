@@ -1,12 +1,8 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, simpledialog
-from database import DatabasePMPV
-from excel_handler import ExcelHandlerPMPV
-
-# Configuração Visual
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+from Src.Database.database import DatabasePMPV
+from Src.Modules.excel_handler import ExcelHandlerPMPV
 
 class CalculadoraTrimestralPMPV(ctk.CTkToplevel):
     def __init__(self, parent=None):

@@ -11,30 +11,7 @@ import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
-# ── OCR (Tesseract) ──────────────────────────────────────────────────────────
-# Detecção automática do Tesseract — mesma lógica usada em modulo_concilia_RP.py
-try:
-    import pdfplumber
-    import pytesseract
-    _TESSERACT_CANDIDATOS = [
-        r'C:\Users\jose.demorais\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
-        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs',
-                     'Tesseract-OCR', 'tesseract.exe'),
-    ]
-    _tess = next((p for p in _TESSERACT_CANDIDATOS if os.path.exists(p)), None)
-    if _tess:
-        pytesseract.pytesseract.tesseract_cmd = _tess
-    OCR_ATIVADO = _tess is not None
-    PDF_ATIVADO = True
-except ImportError:
-    OCR_ATIVADO = False
-    PDF_ATIVADO = False
-
-# Configuração Visual
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+from Src.infra.ocr_pdf import OCR_ENABLED, read_pdf_text
 
 # ── Fórmula regulatória CGR ──────────────────────────────────────────────────
 # Validada contra a planilha "Conta Gráfica e Apuração de Custos":

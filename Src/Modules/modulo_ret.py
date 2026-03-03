@@ -12,30 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-# ── OCR (Tesseract) ──────────────────────────────────────────────────────────
-# Usado como fallback quando pdfplumber não consegue extrair texto do PDF
-# (PDFs com texto renderizado como vetores/curvas, ex.: NDPFP, TOPNREC).
-try:
-    import pytesseract
-    _TESSERACT_CANDIDATOS = [
-        r'C:\Users\jose.demorais\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
-        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-    ]
-    _tess_path = next(
-        (p for p in _TESSERACT_CANDIDATOS if os.path.exists(p)), None
-    )
-    if _tess_path:
-        pytesseract.pytesseract.tesseract_cmd = _tess_path
-    OCR_ATIVADO = _tess_path is not None
-except ImportError:
-    pytesseract = None  # type: ignore
-    OCR_ATIVADO = False
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Configuração Visual
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+from Src.infra.ocr_pdf import OCR_ENABLED, read_pdf_text
 
 # Taxa de câmbio EUR → BRL (ajuste conforme a cotação desejada)
 TAXA_EUR_BRL = 6.0
@@ -274,22 +251,9 @@ class SistemaRET(ctk.CTkToplevel):
         }
         
         try:
-            with pdfplumber.open(caminho_pdf) as pdf:
-                texto_completo = ''
-
-                for pagina in pdf.pages:
-                    texto = pagina.extract_text() or ''
-                    if not texto.strip() and OCR_ATIVADO and pytesseract is not None:
-                        # Fallback OCR: PDF com texto renderizado como vetor
-                        try:
-                            img = pagina.to_image(resolution=200).original
-                            texto = pytesseract.image_to_string(
-                                img, lang='eng', config='--psm 6'
-                            )
-                            dados['ocr_usado'] = True
-                        except Exception:
-                            texto = ''
-                    texto_completo += texto + '\n'
+            texto_completo, metodo = read_pdf_text(Path(caminho_pdf), lang="eng")
+            if metodo == "OCR":
+                dados["ocr_usado"] = True
 
                 # Extrair número ND
                 nd_match = re.search(r'ND\s*[:\-]?\s*(\d+)', texto_completo, re.IGNORECASE)

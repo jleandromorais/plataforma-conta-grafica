@@ -4,21 +4,18 @@ from tkinter import messagebox
 from PIL import Image
 import os
 
-# Importando os módulos
-try:
-    from modulo_pmpv import CalculadoraTrimestralPMPV
-    from modulo_concilia_RP import AppConciliador
-    from modulo_ret import SistemaRET
-    from modulo_auditoria_CGR import AppAuditoriaXML
-    from modulo_scg import ModuloSCG
-    from modulo_cgf import CGFApp
-    from modulo_rpv import ModuloRPV
-except ImportError as e:
-    print(f"Erro de importação: {e}")
+from Src.config.ui_theme import configure_theme
 
-# Configuração Visual Global
-ctk.set_appearance_mode("Dark")  # Modos: "System", "Dark", "Light"
-ctk.set_default_color_theme("blue")  # Temas: "blue", "green", "dark-blue"
+try:
+    from Src.Modules.modulo_pmpv import CalculadoraTrimestralPMPV
+    from Src.Modules.modulo_concilia_RP import AppConciliador
+    from Src.Modules.modulo_ret import SistemaRET
+    from Src.Modules.modulo_auditoria_CGR import AppAuditoriaXML
+    from Src.Modules.modulo_scg import ModuloSCG
+    from Src.Modules.modulo_cgf import CGFApp
+    from Src.Modules.modulo_rpv import ModuloRPV
+except ImportError as e:
+    print(f"Erro de importação dos módulos da aplicação: {e}")
 
 class PlataformaFinanceira(ctk.CTk):
     def __init__(self):
@@ -234,5 +231,6 @@ class PlataformaFinanceira(ctk.CTk):
             messagebox.showerror("Erro", f"Erro ao abrir RPV: {e}")
 
 if __name__ == "__main__":
+    configure_theme()
     app = PlataformaFinanceira()
     app.mainloop()

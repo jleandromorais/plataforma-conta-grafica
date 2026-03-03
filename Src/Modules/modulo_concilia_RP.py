@@ -10,33 +10,13 @@ from typing import List, Tuple
 from datetime import datetime
 import re
 
-# Bibliotecas de lógica
 import pdfplumber
 import pytesseract
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-# ==========================================
-# 1. CONFIGURAÇÕES E UTILITÁRIOS
-# ==========================================
-
-# Configuração Visual
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
-
-# Detecção automática do Tesseract em múltiplos caminhos comuns no Windows
-_TESSERACT_CANDIDATOS = [
-    r'C:\Users\jose.demorais\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
-    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-    r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-    os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Tesseract-OCR', 'tesseract.exe'),
-]
-CAMINHO_EXECUTAVEL = next((p for p in _TESSERACT_CANDIDATOS if os.path.exists(p)), None)
-if CAMINHO_EXECUTAVEL:
-    pytesseract.pytesseract.tesseract_cmd = CAMINHO_EXECUTAVEL
-
-# Verifica Tesseract
-OCR_ATIVADO = CAMINHO_EXECUTAVEL is not None
+from Src.common.formatting import br_money_to_float, format_br
+from Src.infra.ocr_pdf import OCR_ENABLED, read_pdf_text
 
 @dataclass(frozen=True)
 class PdfItem:
@@ -47,44 +27,16 @@ class PdfItem:
     status: str
     method: str
 
-# --- Funções de Limpeza e OCR (Originais Melhoradas) ---
-
-def br_money_to_float(raw: str) -> float:
-    if not raw: return 0.0
-    clean = re.sub(r"[^\d,\.]", "", str(raw))
-    if not clean: return 0.0
-    clean = clean.replace(".", "").replace(",", ".")
-    try:
-        return float(clean)
-    except ValueError:
-        return 0.0
-
-def format_br(value: float) -> str:
-    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
 def clean_ocr_text(text: str) -> str:
-    if not text: return ""
-    return text.replace("|", "").replace("!", "1").replace("l", "1").replace("$=", " ").replace("=", " = ")
-
-def ler_conteudo_pdf(pdf_path: Path) -> Tuple[str, str]:
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            paginas_texto = [p.extract_text() or "" for p in pdf.pages]
-            texto_digital = "\n".join(paginas_texto)
-
-            if len(texto_digital.strip()) > 50:
-                return texto_digital, "TEXTO_DIGITAL"
-
-            if not OCR_ATIVADO:
-                return "", "FALHA: Imagem (Sem Tesseract)"
-
-            # Tenta OCR na primeira página
-            imagem = pdf.pages[0].to_image(resolution=300).original 
-            texto_lido = pytesseract.image_to_string(imagem, lang="por")
-            return texto_lido, "OCR (IA Visual)"
-            
-    except Exception as e:
-        return "", f"ERRO LEITURA: {str(e)}"
+    if not text:
+        return ""
+    return (
+        text.replace("|", "")
+        .replace("!", "1")
+        .replace("l", "1")
+        .replace("$=", " ")
+        .replace("=", " = ")
+    )
 
 def extrair_valor(text: str) -> Tuple[float, str]:
     text_clean = clean_ocr_text(text)
@@ -117,7 +69,7 @@ def processar_lista_arquivos(arquivos: List[Path], categoria: str, log_callback)
     for i, arq in enumerate(arquivos):
         log_callback(f"[{i+1}/{total}] Lendo: {arq.name}...")
         
-        texto, metodo_leitura = ler_conteudo_pdf(arq)
+        texto, metodo_leitura = read_pdf_text(arq)
         if texto:
             valor, metodo_extracao = extrair_valor(texto)
             status = "OK" if valor > 0 else "REVISAR"
@@ -186,8 +138,8 @@ class AppConciliador(ctk.CTkToplevel):
         # Variáveis de Estado
         self.path_rec = tk.StringVar()
         self.path_desp = tk.StringVar()
-        self.status_ocr_txt = "✅ MOTOR OCR ATIVO" if OCR_ATIVADO else "❌ OCR NÃO ENCONTRADO"
-        self.cor_ocr = "#27ae60" if OCR_ATIVADO else "#c0392b"
+        self.status_ocr_txt = "✅ MOTOR OCR ATIVO" if OCR_ENABLED else "❌ OCR NÃO ENCONTRADO"
+        self.cor_ocr = "#27ae60" if OCR_ENABLED else "#c0392b"
 
         self._setup_ui()
 

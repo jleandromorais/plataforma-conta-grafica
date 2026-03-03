@@ -1,11 +1,6 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
-# Importa a tua classe de banco de dados (que deve estar noutro ficheiro chamado database.py)
-from database import DatabasePMPV
-
-# Configura o visual da janela para o modo escuro e tema azul
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+from Src.Database.database import DatabasePMPV
 
 # ── Cores ────────────────────────────────────────────────────────────────────
 # Guardar as cores em variáveis é uma excelente prática! 

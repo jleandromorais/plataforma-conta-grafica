@@ -4,12 +4,6 @@ import pandas as pd
 from pathlib import Path
 import customtkinter as ctk
 
-# ---------------------------------------------
-# Configurações gerais CustomTkinter
-# ---------------------------------------------
-ctk.set_appearance_mode("dark")  # Força o dark mode
-ctk.set_default_color_theme("blue")
-
 APP_TITLE = "CGF - Somatório de Volume Faturado"
 APP_SIZE  = "1050x700"
 

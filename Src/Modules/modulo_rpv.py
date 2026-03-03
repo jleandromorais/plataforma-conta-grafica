@@ -11,10 +11,7 @@ automaticamente do banco de dados pelo período selecionado.
 
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
-from database import DatabasePMPV
-
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+from Src.Database.database import DatabasePMPV
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 BG        = "#0f172a"
