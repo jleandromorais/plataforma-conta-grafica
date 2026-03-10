@@ -9,8 +9,8 @@ from Src.config.ui_theme import configure_theme
 try:
     from Src.Views.tela_pmpv import TelaPMPV
     from Src.Views.tela_concilia import TelaConciliador
-    from Src.Modules.modulo_ret import SistemaRET
-    from Src.Modules.modulo_auditoria_CGR import AppAuditoriaXML
+    from Src.Views.tela_ret import TelaRET
+    from Src.Views.tela_auditoria import TelaAuditoria
     from Src.Modules.modulo_scg import ModuloSCG
     from Src.Modules.modulo_cgf import CGFApp
     from Src.Modules.modulo_rpv import ModuloRPV
@@ -25,6 +25,30 @@ class PlataformaFinanceira(ctk.CTk):
         self.title("Sistema Integrado de Gestão Financeira")
         self.geometry("1100x700")
         
+        # ==================================================
+        # 🌟 CÓDIGO DO ÍCONE (SOLUÇÃO DEFINITIVA PARA WINDOWS)
+        # ==================================================
+        try:
+            from PIL import Image
+            import os
+            
+            pasta_atual = os.path.dirname(os.path.abspath(__file__))
+            caminho_png = os.path.join(pasta_atual, 'assets', 'icons8-cash-94.png')
+            caminho_ico = os.path.join(pasta_atual, 'assets', 'icone.ico')
+            
+            # 1. Se o ficheiro .ico ainda não existir, o Python cria-o a partir do PNG!
+            if not os.path.exists(caminho_ico):
+                img_pil = Image.open(caminho_png)
+                # Guarda como ICO com tamanhos otimizados para o Windows
+                img_pil.save(caminho_ico, format='ICO', sizes=[(32, 32), (64, 64)])
+            
+            # 2. Usa o comando NATIVO do Windows (iconbitmap) que NUNCA falha
+            self.iconbitmap(caminho_ico)
+            
+        except Exception as e:
+            print(f"Aviso: Ícone não encontrado ou erro ao carregar -> {e}")
+        # ==================================================
+
         # Grid Layout (2 colunas)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -51,17 +75,13 @@ class PlataformaFinanceira(ctk.CTk):
         ]
 
         # --- LAÇO FOR: CRIANDO OS BOTÕES DO MENU ---
-        # enumerate nos ajuda a obter o índice 'i' para gerir o número da linha (row) dinamicamente.
         for i, config in enumerate(botoes_menu, start=1):
-            # Extraímos texto e comando obrigatórios
             texto = config.pop("text")
             comando = config.pop("command")
-            
-            # O restante de `config` (se tiver cores personalizadas) é passado usando **config
             btn = ctk.CTkButton(self.sidebar_frame, text=texto, command=comando, **config)
             btn.grid(row=i, column=0, padx=20, pady=10)
 
-        # Configura a última linha do menu para expandir (empurrando elementos para cima)
+        # Configura a última linha do menu para expandir
         self.sidebar_frame.grid_rowconfigure(len(botoes_menu) + 1, weight=1)
 
         # === 2. ÁREA PRINCIPAL (DIREITA) ===
@@ -149,25 +169,24 @@ class PlataformaFinanceira(ctk.CTk):
 
     def abrir_ocr(self):
         try:
-            # Mudamos de AppConciliador para TelaConciliador
             self._janela_ocr = TelaConciliador(self)
             self._janela_ocr.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir Conciliação: {e}")
+            
     def abrir_ret(self):
         try:
-            self._janela_ret = SistemaRET(self)
-            self._janela_ret.geometry("1400x900")
+            self._janela_ret = TelaRET(self)
             self._janela_ret.lift()
         except Exception as e:
-            messagebox.showerror("Erro", f"Módulo RET não encontrado/importado.\n{e}")
+            messagebox.showerror("Erro", f"Erro ao abrir RET: {e}")
 
     def abrir_auditoria(self):
         try:
-            self._janela_auditoria = AppAuditoriaXML(self)
+            self._janela_auditoria = TelaAuditoria(self)
             self._janela_auditoria.lift()
         except Exception as e:
-            messagebox.showerror("Erro", f"Módulo Auditoria não encontrado/importado.\n{e}")
+            messagebox.showerror("Erro", f"Erro ao abrir Auditoria: {e}")
 
     def abrir_scg(self):
         try:
@@ -189,4 +208,3 @@ class PlataformaFinanceira(ctk.CTk):
             self._janela_rpv.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir RPV: {e}")
-
