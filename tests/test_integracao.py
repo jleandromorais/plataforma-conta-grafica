@@ -3,8 +3,8 @@ Testes de integração entre módulos
 """
 import pytest
 from pathlib import Path
-from database import DatabasePMPV
-from excel_handler import ExcelHandlerPMPV
+from Src.Database.database import DatabasePMPV
+from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 import openpyxl
 
 

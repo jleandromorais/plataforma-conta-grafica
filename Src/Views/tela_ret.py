@@ -8,7 +8,7 @@ from pathlib import Path
 
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.excel_ret import ExcelRET
-from Src.Database.database import DatabasePMPV
+from Src.Services.servicos_consolidacao import ServicosConsolidacao
 
 _APP_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
            else os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +23,7 @@ class TelaRET(ctk.CTkToplevel):
         self.pasta_selecionada = None
         self.dados_processados = []
         self.resultados = None
+        self.consolidacao = ServicosConsolidacao()
         
         self._setup_ui()
     
@@ -524,11 +525,7 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
 
         periodo = simpledialog.askstring("Período RET", "Digite o período (ex: Q1 2026):", initialvalue="Q1 2026")
         if periodo:
-            db = DatabasePMPV()
-            if not db.buscar_consolidacao(periodo):
-                db.criar_periodo_consolidacao(periodo, "RET")
-            db.atualizar_ret(periodo, total_geral)
-            db.fechar()
+            self.consolidacao.salvar_ret(periodo, total_geral)
 
             total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             messagebox.showinfo("RET Salvo", f"RET: {total_fmt}\nPeríodo: {periodo}")

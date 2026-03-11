@@ -5,7 +5,7 @@ import pytest
 import sqlite3
 import os
 from pathlib import Path
-from database import DatabasePMPV
+from Src.Database.database import DatabasePMPV
 
 
 class TestDatabasePMPV:

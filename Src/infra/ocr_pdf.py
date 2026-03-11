@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover
 
 
 _TESSERACT_CANDIDATES = [
-    r"C:\Users\jose.demorais\AppData\Local\Programs\Tesseract-OCR\tesseract.exe",
+    os.environ.get("TESSERACT_CMD", ""),
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
     os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Tesseract-OCR", "tesseract.exe"),

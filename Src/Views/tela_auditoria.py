@@ -8,7 +8,7 @@ import pandas as pd
 from Src.infra.ocr_pdf import OCR_ENABLED
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_CGR_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
-from Src.Database.database import DatabasePMPV
+from Src.Services.servicos_consolidacao import ServicosConsolidacao
 
 # Mapeando variavel de controle para facilitar
 PDF_ATIVADO = True # Assumimos True se pdfplumber estiver instalado
@@ -35,6 +35,7 @@ class TelaAuditoria(ctk.CTkToplevel):
         self.valor_total_cte    = 0.0
         self.volume_total_cte   = 0.0
         self.cgr_liquido        = 0.0
+        self.consolidacao       = ServicosConsolidacao()
 
         self.modo_fonte = tk.StringVar(value="XML")
 
@@ -333,8 +334,6 @@ class TelaAuditoria(ctk.CTkToplevel):
         cgr = getattr(self, 'cgr_liquido', 0.0)
         periodo = simpledialog.askstring("Salvar", "Período (ex: Dez/2025):", initialvalue="Dez/2025")
         if periodo:
-            db = DatabasePMPV()
-            db.atualizar_cgr(periodo, cgr)
-            rpv = db.calcular_e_salvar_rpv(periodo)
-            db.fechar()
+            dados = self.consolidacao.salvar_cgr(periodo, cgr)
+            rpv = dados["rpv"]
             messagebox.showinfo("Salvo", f"CGR salvo: R$ {cgr:,.2f}\nRPV: R$ {rpv:,.2f}")

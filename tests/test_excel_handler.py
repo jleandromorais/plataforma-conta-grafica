@@ -4,7 +4,7 @@ Testes para o módulo excel_handler.py
 import pytest
 import openpyxl
 from pathlib import Path
-from excel_handler import ExcelHandlerPMPV
+from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 
 
 class TestExcelHandlerPMPV:

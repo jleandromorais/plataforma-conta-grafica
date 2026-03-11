@@ -197,21 +197,42 @@ class DatabasePMPV:
         """, (valor, periodo))
         self.conn.commit()
 
-    def calcular_e_salvar_rpv(self, periodo: str) -> float:
-        """Calcula RPV = CGR − CGF, salva no banco e retorna o valor."""
+    def atualizar_campos_consolidacao(self, periodo: str, **campos: float):
+        """Atualiza vários campos de consolidação em uma única operação."""
+        campos_validos = {
+            chave: valor
+            for chave, valor in campos.items()
+            if chave in {"cgr", "cgf", "ret", "rp", "rpv", "scg"}
+        }
+        if not campos_validos:
+            return
+
         self._garantir_periodo(periodo)
-        self.cursor.execute("SELECT cgr, cgf FROM consolidacao WHERE periodo = ?", (periodo,))
-        row = self.cursor.fetchone()
-        if not row:
-            return 0.0
-        dados = dict(row)
-        rpv = (dados.get('cgr') or 0.0) - (dados.get('cgf') or 0.0)
-        self.cursor.execute("""
+        atribuicoes = ", ".join(f"{campo} = ?" for campo in campos_validos)
+        valores = list(campos_validos.values())
+        self.cursor.execute(f"""
             UPDATE consolidacao
-            SET rpv = ?, data_atualizacao = CURRENT_TIMESTAMP
+            SET {atribuicoes}, data_atualizacao = CURRENT_TIMESTAMP
             WHERE periodo = ?
-        """, (rpv, periodo))
+        """, (*valores, periodo))
         self.conn.commit()
+
+    def salvar_rpv(self, periodo: str, rpv: float):
+        self.atualizar_campos_consolidacao(periodo, rpv=rpv)
+
+    def salvar_scg(self, periodo: str, scg: float):
+        self.atualizar_campos_consolidacao(periodo, scg=scg)
+
+    def calcular_e_salvar_rpv(self, periodo: str) -> float:
+        """Compatibilidade legada: delega o cálculo oficial ao serviço."""
+        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+
+        dados = self.buscar_consolidacao(periodo) or {}
+        rpv = ServicosConsolidacao.calcular_rpv(
+            dados.get("cgr") or 0.0,
+            dados.get("cgf") or 0.0,
+        )
+        self.salvar_rpv(periodo, rpv)
         return rpv
 
     def atualizar_rpv_cgf(self, periodo: str, rpv: float, cgf: float):
@@ -224,29 +245,20 @@ class DatabasePMPV:
         self.conn.commit()
         
     def calcular_scg(self, periodo: str) -> float:
-        """Calcula o SCG e salva"""
-        self.cursor.execute("SELECT * FROM consolidacao WHERE periodo = ?", (periodo,))
-        row = self.cursor.fetchone()
-        
-        if not row:
+        """Compatibilidade legada: delega o cálculo oficial ao serviço."""
+        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+
+        dados = self.buscar_consolidacao(periodo)
+        if not dados:
             return 0.0
-        
-        dados = dict(row)
-        cgr = dados.get('cgr', 0)
-        cgf = dados.get('cgf', 0)
-        rpv = dados.get('rpv', 0)
-        ret = dados.get('ret', 0)
-        rp = dados.get('rp', 0)
-        
-        # Fórmula: SCG = RPV(CGR + CGF) + RET + RP
-        scg = rpv + ret + rp
-        
-        self.cursor.execute("""
-            UPDATE consolidacao
-            SET scg = ?, data_atualizacao = CURRENT_TIMESTAMP
-            WHERE periodo = ?
-        """, (scg, periodo))
-        self.conn.commit()
+
+        scg = ServicosConsolidacao.calcular_scg(
+            dados.get("cgr") or 0.0,
+            dados.get("cgf") or 0.0,
+            dados.get("ret") or 0.0,
+            dados.get("rp") or 0.0,
+        )
+        self.salvar_scg(periodo, scg)
         return scg
     
     def buscar_consolidacao(self, periodo: str) -> dict:
@@ -259,6 +271,10 @@ class DatabasePMPV:
         """Lista todos os períodos de consolidação"""
         self.cursor.execute("SELECT periodo, scg, data_atualizacao FROM consolidacao ORDER BY data_criacao DESC")
         return [dict(row) for row in self.cursor.fetchall()]
+
+    def apagar_periodo(self, periodo: str):
+        self.cursor.execute("DELETE FROM consolidacao WHERE periodo = ?", (periodo,))
+        self.conn.commit()
         
         
         

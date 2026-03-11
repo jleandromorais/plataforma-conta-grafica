@@ -8,8 +8,8 @@ from datetime import datetime
 
 # --- IMPORTAÇÕES DA NOVA ARQUITETURA ---
 from Src.Services.servicos_concilia import RegrasConcilia
+from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
-from Src.Database.database import DatabasePMPV
 from Src.common.formatting import format_brl_plain
 from Src.infra.ocr_pdf import OCR_ENABLED
 
@@ -24,6 +24,7 @@ class TelaConciliador(ctk.CTkToplevel):
         self.path_desp = tk.StringVar()
         self.status_ocr_txt = "✅ MOTOR OCR ATIVO" if OCR_ENABLED else "❌ OCR NÃO ENCONTRADO"
         self.cor_ocr = "#27ae60" if OCR_ENABLED else "#c0392b"
+        self.consolidacao = ServicosConsolidacao()
 
         self._setup_ui()
 
@@ -131,9 +132,7 @@ class TelaConciliador(ctk.CTkToplevel):
     def _salvar_rp_scg(self):
         periodo = simpledialog.askstring("Salvar RP", "Digite o período (ex: Dez/2025):", initialvalue="Dez/2025")
         if periodo:
-            db = DatabasePMPV()
-            db.atualizar_rp(periodo, self._ultimo_saldo_rp)
-            db.fechar()
+            self.consolidacao.salvar_rp(periodo, self._ultimo_saldo_rp)
             messagebox.showinfo("Sucesso", f"RP de {periodo} salvo no SCG!")
 
     def restaurar_interface(self):

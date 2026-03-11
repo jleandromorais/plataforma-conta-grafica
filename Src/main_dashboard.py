@@ -11,9 +11,10 @@ try:
     from Src.Views.tela_concilia import TelaConciliador
     from Src.Views.tela_ret import TelaRET
     from Src.Views.tela_auditoria import TelaAuditoria
-    from Src.Modules.modulo_scg import ModuloSCG
-    from Src.Modules.modulo_cgf import CGFApp
-    from Src.Modules.modulo_rpv import ModuloRPV
+    from Src.Views.tela_scg import TelaSCG
+    from Src.Views.tela_cgf import TelaCGF
+    from Src.Views.tela_rpv import TelaRPV
+    from Src.Views.tela_sr import TelaSR
 except ImportError as e:
     print(f"Erro de importação dos módulos da aplicação: {e}")
 
@@ -26,27 +27,20 @@ class PlataformaFinanceira(ctk.CTk):
         self.geometry("1100x700")
         
         # ==================================================
-        # 🌟 CÓDIGO DO ÍCONE (SOLUÇÃO DEFINITIVA PARA WINDOWS)
+        # 🌟 CÓDIGO DO ÍCONE (SOLUÇÃO DEFINITIVA WINDOWS 11)
         # ==================================================
+        pasta_atual = os.path.dirname(os.path.abspath(__file__))
         try:
-            from PIL import Image
-            import os
+            # TRUQUE DE MESTRE: Força o Windows a reconhecer como App próprio e não como um script Python
+            import ctypes
+            myappid = 'minha.plataforma.financeira.1.0'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
             
-            pasta_atual = os.path.dirname(os.path.abspath(__file__))
-            caminho_png = os.path.join(pasta_atual, 'assets', 'icons8-cash-94.png')
+            # Caminho do ficheiro .ico (Certifica-te que descarregaste do site e não foi o gerado pelo código anterior)
             caminho_ico = os.path.join(pasta_atual, 'assets', 'icone.ico')
-            
-            # 1. Se o ficheiro .ico ainda não existir, o Python cria-o a partir do PNG!
-            if not os.path.exists(caminho_ico):
-                img_pil = Image.open(caminho_png)
-                # Guarda como ICO com tamanhos otimizados para o Windows
-                img_pil.save(caminho_ico, format='ICO', sizes=[(32, 32), (64, 64)])
-            
-            # 2. Usa o comando NATIVO do Windows (iconbitmap) que NUNCA falha
             self.iconbitmap(caminho_ico)
-            
         except Exception as e:
-            print(f"Aviso: Ícone não encontrado ou erro ao carregar -> {e}")
+            print(f"Aviso: Ícone não encontrado -> {e}")
         # ==================================================
 
         # Grid Layout (2 colunas)
@@ -57,10 +51,21 @@ class PlataformaFinanceira(ctk.CTk):
         self.sidebar_frame = ctk.CTkFrame(self, width=250, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         
-        # Título do Menu
-        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="FINANÇAS PRO", 
-                                     font=ctk.CTkFont(size=24, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+        # ==================================================
+        # 🌟 TÍTULO DO MENU COM A IMAGEM DO DINHEIRO (.PNG)
+        # ==================================================
+        try:
+            caminho_png = os.path.join(pasta_atual, 'assets', 'icons8-cash-94.png')
+            img_logo = ctk.CTkImage(light_image=Image.open(caminho_png), size=(35, 35))
+            self.logo_label = ctk.CTkLabel(self.sidebar_frame, text=" FINANÇAS PRO", 
+                                         image=img_logo, compound="left",
+                                         font=ctk.CTkFont(size=20, weight="bold"))
+        except Exception as e:
+            self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="FINANÇAS PRO", 
+                                         font=ctk.CTkFont(size=24, weight="bold"))
+        
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 20))
+        # ==================================================
 
         # --- LISTA DE DADOS PARA OS BOTÕES DO MENU LATERAL ---
         botoes_menu = [
@@ -112,12 +117,11 @@ class PlataformaFinanceira(ctk.CTk):
             {"linha": 0, "coluna": 0, "titulo": "📊 Gestão PMPV", "desc": "Cálculo trimestral\nde contratos de gás", "comando": self.abrir_pmpv},
             {"linha": 0, "coluna": 1, "titulo": "📄 Conciliação RP", "desc": "Subtração entre  \nReceita - Despesa das penalidades \nde PDFs via OCR", "comando": self.abrir_ocr},
             {"linha": 0, "coluna": 2, "titulo": "⚡ Sistema RET", "desc": "Processamento\nde encargos e NFs \nSoma de encargos", "comando": self.abrir_ret},
-            {"linha": 1, "coluna": 0, "titulo": "🔍 Auditoria XML e soma CGR", "desc": "NF-e e CT-e\ncomparação com Excel", "comando": self.abrir_auditoria},
-            {"linha": 1, "coluna": 1, "titulo": "💼 Consolidação SCG", "desc": "Cálculo final\nSCG = RPV(CGR+CGF)+RET+RP", "comando": self.abrir_scg},
+            {"linha": 1, "coluna": 0, "titulo": "🔍 Auditoria XML", "desc": "NF-e e CT-e\ncomparação com Excel", "comando": self.abrir_auditoria},
+            {"linha": 1, "coluna": 1, "titulo": "💼 Consolidação SCG", "desc": "Cálculo final\nSCG = RPV+RET+RP", "comando": self.abrir_scg},
             {"linha": 1, "coluna": 2, "titulo": "📋 Volume CGF", "desc": "Somatório de volume\nFaturada - Canceladas\n- Devoluções", "comando": self.abrir_cgf},
             {"linha": 2, "coluna": 0, "titulo": "🧾 RPV", "desc": "Requisição de\nPequeno Valor\nCGR − CGF", "comando": self.abrir_rpv},
-            {"linha": 2, "coluna": 1, "titulo": "⚙️ Módulo 8", "desc": "Descrição do\noitavo módulo", "comando": None},
-            {"linha": 2, "coluna": 2, "titulo": "📁 Módulo 9", "desc": "Descrição do\nnono módulo", "comando": None}
+            {"linha": 2, "coluna": 1, "titulo": "📁 Módulo 8", "desc": "Em desenvolvimento", "comando": None}
         ]
 
         # --- LAÇO FOR: CRIANDO OS CARDS ---
@@ -190,21 +194,23 @@ class PlataformaFinanceira(ctk.CTk):
 
     def abrir_scg(self):
         try:
-            self._janela_scg = ModuloSCG(self)
+            self._janela_scg = TelaSCG(self)
             self._janela_scg.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir SCG: {e}")
 
     def abrir_cgf(self):
         try:
-            self._janela_cgf = CGFApp(self)
+            self._janela_cgf = TelaCGF(self)
             self._janela_cgf.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir CGF: {e}")
 
     def abrir_rpv(self):
         try:
-            self._janela_rpv = ModuloRPV(self)
+            self._janela_rpv = TelaRPV(self)
             self._janela_rpv.lift()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir RPV: {e}")
+            
+    

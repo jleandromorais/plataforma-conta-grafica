@@ -4,11 +4,10 @@ from tkinter import messagebox, simpledialog, filedialog
 
 # --- IMPORTAÇÕES DA NOVA ARQUITETURA ---
 # Vai buscar as regras matemáticas à pasta Services
-from Src.Services.servicos_pmpv import RegrasPMPV, ExcelPMPV
-# Vai buscar a Base de Dados à pasta Database
-from Src.Database.database import DatabasePMPV
-# Mantive o ExcelHandler em Modules para não quebrar os teus outros códigos por agora!
-from Src.Modules.excel_handler import ExcelHandlerPMPV
+from Src.Services.servicos_pmpv import ExcelPMPV
+# Casos de uso da aplicação (desacoplados da infraestrutura)
+from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
+from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 
 # ==========================================
 # 3. INTERFACE GRÁFICA (A Tela)
@@ -22,7 +21,7 @@ class TelaPMPV(ctk.CTkToplevel):
         self.title("Sistema PMPV Master - Gestão Trimestral")
         self.geometry("1300x850")
         
-        self.db = DatabasePMPV()
+        self.use_cases = PMPVUseCases()
         self.empresas_padrao = ["PETROBRAS", "GALP", "PETRORECONCAVO", "BRAVA", "ENEVA", "ORIZON"]
         self.mapa_dias = {
             "Janeiro": 31, "Fevereiro": 28, "Março": 31, "Abril": 30,
@@ -216,8 +215,7 @@ class TelaPMPV(ctk.CTkToplevel):
         idx_start = self.lista_meses.index(self.combo_mes.get())
 
         try:
-            # Chama a RegrasPMPV do ficheiro de Serviços!
-            self.res_final = RegrasPMPV.calcular_resultados(
+            self.res_final = self.use_cases.calcular_resultados(
                 dados_extraidos=dados,
                 valor_cg=cg_valor,
                 dias_config=self.dias_config,
@@ -374,16 +372,10 @@ class TelaPMPV(ctk.CTkToplevel):
     def salvar(self):
         nome = simpledialog.askstring("Salvar", "Nome da Sessão:")
         if not nome or not hasattr(self, 'res_final'): return
-        
-        sid = self.db.criar_sessao(nome)
+
         dados = self._get_data_dict()
-        
-        idx = 1
-        for _, lista in dados.items():
-            self.db.salvar_dados_mes(sid, idx, lista); idx += 1
-            
-        self.db.salvar_resultado(sid, self.res_final['volume_total'], self.res_final['custo_total'],
-                                self.res_final['pmpv'], self.res_final['conta_grafica'], self.res_final['preco_final'])
+
+        self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
         messagebox.showinfo("Sucesso", "Salvo!")
 
     def exportar(self):
@@ -403,7 +395,7 @@ class TelaPMPV(ctk.CTkToplevel):
         periodo = simpledialog.askstring("Salvar PMPV Mensal", f"PMPV: R$ {pmpv:.4f}/m³\nDigite o período (ex: Jan/2026):", parent=self)
         if not periodo or not periodo.strip(): return
 
-        self.db.salvar_pmpv_mensal(periodo.strip(), pmpv)
+        self.use_cases.salvar_pmpv_mensal(periodo.strip(), pmpv)
         messagebox.showinfo("Salvo", f"Período: {periodo.strip()}\nPMPV: R$ {pmpv:.4f}/m³")
 
 if __name__ == "__main__":
