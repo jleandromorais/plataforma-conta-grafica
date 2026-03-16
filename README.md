@@ -1,18 +1,74 @@
-# Plataforma Conta Grafica (SCG)
+# ⚡ Plataforma Conta Gráfica | Hiper-Automação Regulatória
 
-Aplicacao desktop em Python para calculo e consolidacao financeira dos modulos PMPV, CGR, CGF, RET, RP, RPV e SCG.
+<div align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.9+-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white">
+  <img alt="RPA & Automação" src="https://img.shields.io/badge/RPA_%26_Automação-Eficiência_Extrema-FF4500?style=for-the-badge">
+  <img alt="Clean Architecture" src="https://img.shields.io/badge/Clean_Architecture-SOLID-brightgreen?style=for-the-badge">
+</div>
 
-## Visao Geral
+<br>
 
-- Interface desktop com `CustomTkinter`.
-- Persistencia local em `SQLite`.
-- Processamento de planilhas com `pandas` e `openpyxl`.
-- OCR de PDF com `pdfplumber` e `pytesseract` (opcional).
-- Testes com `pytest`.
+> **De 3 meses para 1 dia.** Como a engenharia de software transformou o processamento de dados do Setor de TI da Agência de Regulação de Pernambuco (ARPE).
 
-## Arquitetura
+---
 
-O projeto esta organizado por camadas, com foco em separacao de responsabilidades:
+## 🎯 O Impacto do Projeto (O Problema vs. A Solução)
+
+A Agência lida com um volume colossal de cálculos regulatórios. O processo tradicional era um verdadeiro labirinto manual que envolvia a leitura humana de **milhares de ficheiros PDF** e o cruzamento denso de dados em **inúmeras folhas de cálculo Excel**. 
+
+Este fluxo de trabalho manual demorava cerca de **3 meses** a ser concluído pela equipa.
+
+Desenvolvi a **Plataforma Conta Gráfica** para erradicar essa ineficiência. Através da construção de um *pipeline* de dados robusto em Python e orquestração inteligente, o processo foi integralmente automatizado. **O tempo de execução foi reduzido de 90 dias para apenas 24 horas.**
+
+---
+
+## 🖥️ Interface Gráfica (Dashboard)
+
+Para garantir que a equipa da agência conseguisse operar a automação com facilidade, desenvolvi uma interface gráfica fluida e intuitiva. Abaixo estão algumas capturas de ecrã dos principais módulos do sistema:
+
+### 🏠 Tela Principal & Navegação
+> *Visão geral da plataforma, permitindo o acesso rápido aos diferentes módulos de cálculo e auditoria.*
+
+<img src="caminho/para/a/tua/imagem_dashboard.png" alt="Tela Principal do Dashboard" width="800">
+
+### 📄 Módulo de Processamento (Ex: PMPV / OCR)
+> *Interface onde o utilizador aciona a extração em lote dos ficheiros PDF e acompanha o progresso da automação em tempo real.*
+
+<img src="caminho/para/a/tua/imagem_processamento.png" alt="Tela de Processamento PMPV" width="800">
+
+### 📊 Módulo de Auditoria e Conciliação
+> *Ambiente dedicado à consolidação dos dados, onde o sistema cruza as informações processadas com as folhas de cálculo Excel.*
+
+<img src="caminho/para/a/tua/imagem_auditoria.png" alt="Tela de Auditoria e Conciliação" width="800">
+
+---
+
+## 🧠 Arquitetura e Engenharia em Python
+
+Este não é apenas um "script de automação". O projeto foi rigorosamente desenhado em **Python**, adotando princípios de **Clean Architecture** e **SOLID**, garantindo que a aplicação é escalável, modular e fácil de manter.
+
+A estrutura do domínio foi isolada da infraestrutura, permitindo uma separação clara de responsabilidades:
+
+* **`/domain` & `/application`:** O coração do sistema. Aqui residem os *Use Cases* e as lógicas de cálculo regulatório puro.
+* **`/infrastructure` & `/infra`:** Os motores de I/O. Inclui módulos avançados de **OCR** para extração de dados não estruturados de PDFs e repositórios **SQLite**.
+* **`/Services`:** A camada de orquestração que gere fluxos de consolidação e auditoria de contas.
+* **`/Views`:** Componentes visuais do Dashboard mostrados acima.
+
+---
+
+## ⚙️ Funcionalidades Core (Data Pipeline & RPA)
+
+- [x] **Motor de OCR em Massa:** Varredura e *parsing* inteligente de PDFs.
+- [x] **Processamento de Excel a Alta Velocidade:** Leitura, cruzamento e escrita sem margem de erro.
+- [x] **Módulos de Auditoria:** Serviços automatizados que validam a consistência dos dados.
+- [x] **Testabilidade:** Suíte de testes automatizados com `pytest`.
+
+---
+
+## 🏗️ Estrutura do Projeto
+
+O projeto está organizado por camadas, com foco absoluto na separação de responsabilidades:
 
 ```text
 plataforma-conta-grafica/
@@ -51,66 +107,29 @@ plataforma-conta-grafica/
 ├── requirements.txt
 ├── pytest.ini
 └── README.md
-```
+🚀 Como Iniciar (Setup Local)
+Pré-requisitos
+Certifica-te de ter o Python 3.9+ instalado na tua máquina.
 
-## Regras de Negocio Principais
+Instalação
+Clonar o repositório:
 
-- `RPV = CGR - CGF`
-- `SCG = RPV + RET + RP`
+Bash
+git clone [https://github.com/teu-usuario/plataforma-conta-grafica.git](https://github.com/teu-usuario/plataforma-conta-grafica.git)
+cd plataforma-conta-grafica
+Criar um ambiente virtual isolado:
 
-## Requisitos
+Bash
+python -m venv venv
+# Para ativar no Windows:
+venv\Scripts\activate
+# Para ativar no Linux/macOS:
+source venv/bin/activate
+Instalar as dependências do projeto:
 
-- Python 3.10+
-- Windows (principal ambiente alvo atual)
-
-## Instalacao
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
+Bash
 pip install -r requirements.txt
-```
+Iniciar o Dashboard da Plataforma:
 
-## Execucao
-
-```bash
+Bash
 python main.py
-```
-
-## Testes
-
-```bash
-pytest
-```
-
-Se `pytest` nao estiver instalado no ambiente:
-
-```bash
-pip install pytest
-```
-
-## Seguranca
-
-Checklist rapido para publicacao (GitHub/LinkedIn):
-
-- Nao ha chaves de API, tokens ou segredos hardcoded no repositorio.
-- Arquivos de banco local (`*.db`, `*.sqlite`, `*.sqlite3`) estao ignorados no `.gitignore`.
-- O OCR usa caminho de Tesseract configuravel por variavel de ambiente `TESSERACT_CMD` e caminhos padrao do sistema, sem caminho pessoal fixo.
-- O projeto nao depende de servicos externos sensiveis para rodar.
-
-Recomendacoes adicionais:
-
-- Nunca commitar bancos reais com dados de producao.
-- Evitar publicar planilhas com dados sensiveis em exemplos.
-- Se no futuro houver API externa, usar variaveis de ambiente (`.env`) e rotacao de chaves.
-
-## Roadmap Tecnico
-
-- Melhorar cobertura de testes de interface e fluxos end-to-end.
-- Adicionar CI para rodar lint e testes automaticamente.
-- Evoluir contratos de `domain/ports` para todos os modulos.
-- Padronizar tratamento de erros e telemetria de falhas.
-
-## Licenca
-
-Definir licenca do projeto (ex.: MIT) antes da publicacao publica.
