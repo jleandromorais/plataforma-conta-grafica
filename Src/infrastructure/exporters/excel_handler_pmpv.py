@@ -2,6 +2,17 @@ import os
 from datetime import datetime
 from typing import Dict
 
+"""
+Esse arquivo (`excel_handler_pmpv.py`) serve como um "exportador" dos resultados do módulo PMPV para arquivos Excel (.xlsx).
+
+Ele contém a classe `ExcelHandlerPMPV`, que possui métodos para criar planilhas do Excel de forma programática, preenchendo abas com os dados por mês e um resumo dos resultados principais dos cálculos de PMPV.
+
+O principal objetivo dele é permitir que, depois do processamento dos dados e das análises/tratamentos no backend, o usuário possa exportar tudo em um formato amigável (Excel), já pronto para consulta, impressão ou análise posterior — organizando as informações em diferentes abas, ajustando formatação e facilitando a visualização dos resultados.
+
+Resumindo, ele automatiza a geração do arquivo Excel do relatório PMPV, incluindo controle para nomes de arquivos, sobreescrita, formato visual e abertura automática do arquivo gerado.
+"""
+
+
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 

@@ -11,7 +11,7 @@ from Src.Services.servicos_concilia import RegrasConcilia
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
-from Src.infra.ocr_pdf import OCR_ENABLED
+from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 
 class TelaConciliador(ctk.CTkToplevel):
     def __init__(self, parent=None):

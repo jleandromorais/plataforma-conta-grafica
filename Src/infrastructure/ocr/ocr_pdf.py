@@ -28,13 +28,13 @@ OCR_ENABLED: bool = bool(_tess_path and pytesseract)
 
 def read_pdf_text(pdf_path: Path, lang: str = "por") -> Tuple[str, str]:
     """
-    Lê texto de um PDF.
+    Le texto de um PDF.
 
     Prioridade:
       1. Texto digital via pdfplumber.
-      2. Fallback OCR na primeira página (se OCR_ENABLED).
+      2. Fallback OCR na primeira pagina (se OCR_ENABLED).
 
-    Retorna (texto, método_usado).
+    Retorna (texto, metodo_usado).
     """
     try:
         with pdfplumber.open(str(pdf_path)) as pdf:
@@ -52,4 +52,3 @@ def read_pdf_text(pdf_path: Path, lang: str = "por") -> Tuple[str, str]:
             return ocr_text, "OCR"
     except Exception as e:  # pragma: no cover
         return "", f"ERRO LEITURA: {e}"
-

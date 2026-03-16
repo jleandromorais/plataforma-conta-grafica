@@ -1,7 +1,7 @@
 import os
 import re
 from pathlib import Path
-from Src.infra.ocr_pdf import read_pdf_text
+from Src.infrastructure.ocr.ocr_pdf import read_pdf_text
 
 # Taxa de câmbio EUR → BRL
 TAXA_EUR_BRL = 6.0

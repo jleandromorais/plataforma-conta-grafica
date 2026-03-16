@@ -3,7 +3,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple
 from Src.common.formatting import parse_brl
-from Src.infra.ocr_pdf import read_pdf_text
+from Src.infrastructure.ocr.ocr_pdf import read_pdf_text
 
 @dataclass(frozen=True)
 class PdfItem:

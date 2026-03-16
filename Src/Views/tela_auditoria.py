@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 
-from Src.infra.ocr_pdf import OCR_ENABLED
+from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_CGR_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao

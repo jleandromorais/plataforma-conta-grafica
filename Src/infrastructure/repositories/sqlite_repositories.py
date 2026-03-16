@@ -72,3 +72,22 @@ class SqlitePMPVRepository(PMPVRepository):
 
     def fechar(self):
         self.db.fechar()
+        
+
+        # (Resposta explicativa para "pq retorna ela msm e (periodo) ?")
+        # 
+        # Retornar o próprio parâmetro `periodo` (ou outro valor que foi inserido/buscado/atualizado)
+        # em métodos que realizam ações de gravação/alteração é um padrão comum para indicar, de forma explícita,
+        # qual foi o identificador ou referência afetada pela operação. 
+        #
+        # Por exemplo:
+        # - Se "criar_periodo_consolidacao" recebe e retorna `periodo`, isso permite ao chamador saber 
+        #   exatamente qual período foi criado (inclusive se houve alguma formatação, normalização ou ajuste).
+        # - Em buscas ou atualizações, retornar `periodo` pode facilitar encadeamentos ou conferências no fluxo,
+        #   principalmente quando há lógica condicional.
+        #
+        # Isso também serve de confirmação/reafirmação para que, ao reutilizar o retorno imediatamente, 
+        # o valor correto (e esperado) já esteja disponível, reduzindo ambiguidades.
+        #
+        # Mas nada impede que métodos retornem apenas status (True/False) — depende da semântica desejada e do estilo da API.
+

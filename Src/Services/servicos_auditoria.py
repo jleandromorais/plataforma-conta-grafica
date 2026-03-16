@@ -7,7 +7,7 @@ import pdfplumber
 import pytesseract
 from dataclasses import dataclass
 
-from Src.infra.ocr_pdf import OCR_ENABLED, read_pdf_text
+from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED, read_pdf_text
 
 # ── Fórmula regulatória CGR ──────────────────────────────────────────────────
 # Validada contra a planilha "Conta Gráfica e Apuração de Custos":
