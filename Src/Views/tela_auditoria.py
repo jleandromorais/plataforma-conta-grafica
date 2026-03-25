@@ -9,6 +9,7 @@ from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_CGR_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Database.database import DatabasePMPV
 
 # Mapeando variavel de controle para facilitar
 PDF_ATIVADO = True # Assumimos True se pdfplumber estiver instalado
@@ -19,7 +20,7 @@ class TelaAuditoria(ctk.CTkToplevel):
         super().__init__(parent)
         
         self.title("Auditoria XML - NF-e e CT-e")
-        self.geometry("1300x850")
+        self.geometry("1300x1050")
         
         self.pasta_selecionada = None
         self.empresas_disponiveis = []
@@ -47,8 +48,10 @@ class TelaAuditoria(ctk.CTkToplevel):
         ctk.CTkLabel(header, text="🔍 Auditoria XML Fiscal", 
                      font=("Roboto", 24, "bold")).pack(side="left", padx=20, pady=10)
         
-        container = ctk.CTkFrame(self, fg_color="transparent")
-        container.pack(fill="both", expand=True, padx=20, pady=20)
+        # Área rolável: concentra os blocos de configuração e resultados.
+        # Em telas menores/escala alta do Windows, isso evita "empurrar" botões para fora.
+        container = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=20, pady=(12, 8))
         
         # ========== PASSO 1: PASTA PAI ==========
         frame_pasta = ctk.CTkFrame(container)
@@ -130,22 +133,6 @@ class TelaAuditoria(ctk.CTkToplevel):
                                        font=("Roboto", 14), text_color="#f39c12")
         self.lbl_status.pack(pady=15)
         
-        # ========== BOTÕES DE AÇÃO ==========
-        frame_btns = ctk.CTkFrame(container, fg_color="transparent")
-        frame_btns.pack(fill="x", pady=20)
-
-        self.btn_auditar = ctk.CTkButton(frame_btns, text="⚡ AUDITORIA COMPLETA", command=self.iniciar_auditoria,
-                                         font=("Roboto", 15, "bold"), height=50, fg_color="#e74c3c", hover_color="#c0392b", state="disabled")
-        self.btn_auditar.pack(side="left", expand=True, fill="x", padx=(0, 8))
-
-        self.btn_somatorio = ctk.CTkButton(frame_btns, text="📊 SÓ SOMATÓRIO\n(Valor e Volume das NFs/CTes)", command=self.calcular_somatorio,
-                                           font=("Roboto", 13, "bold"), height=50, fg_color="#2980b9", hover_color="#3498db", state="disabled")
-        self.btn_somatorio.pack(side="left", expand=True, fill="x", padx=(8, 0))
-
-        self.btn_salvar_scg = ctk.CTkButton(container, text="💾 SALVAR RESULTADO NO SCG", command=self._salvar_cgr_scg,
-                                            font=("Roboto", 13, "bold"), height=40, fg_color="#27ae60", hover_color="#1e8449", state="disabled")
-        self.btn_salvar_scg.pack(fill="x", pady=(0, 5))
-
         # ========== PAINEL CGR ==========
         frame_cgr = ctk.CTkFrame(container, fg_color="#0d1b2a", corner_radius=10)
         frame_cgr.pack(fill="x", pady=(8, 2))
@@ -160,11 +147,31 @@ class TelaAuditoria(ctk.CTkToplevel):
 
         # ========== ÁREA DE RESULTADOS ==========
         frame_resultados = ctk.CTkFrame(container)
-        frame_resultados.pack(fill="both", expand=True, pady=(4, 10))
+        frame_resultados.pack(fill="both", expand=False, pady=(4, 10), padx=0)
         
         ctk.CTkLabel(frame_resultados, text="📋 Resultados da Auditoria", font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
-        self.text_resultados = ctk.CTkTextbox(frame_resultados, height=200, font=("Consolas", 11))
-        self.text_resultados.pack(fill="both", expand=True, padx=10, pady=5)
+        self.text_resultados = ctk.CTkTextbox(frame_resultados, height=150, font=("Consolas", 11))
+        self.text_resultados.pack(fill="both", expand=False, padx=10, pady=5)
+
+        # ========== BOTÕES DE AÇÃO (RODAPÉ FIXO) ==========
+        # Ficam fora do container rolável para permanecerem sempre visíveis.
+        rodape_acoes = ctk.CTkFrame(self, fg_color="transparent")
+        rodape_acoes.pack(fill="x", padx=20, pady=(0, 12))
+
+        frame_btns = ctk.CTkFrame(rodape_acoes, fg_color="transparent")
+        frame_btns.pack(fill="x", pady=(0, 6))
+
+        self.btn_auditar = ctk.CTkButton(frame_btns, text="⚡ AUDITORIA COMPLETA", command=self.iniciar_auditoria,
+                                         font=("Roboto", 14, "bold"), height=42, fg_color="#e74c3c", hover_color="#c0392b", state="disabled")
+        self.btn_auditar.pack(side="left", expand=True, fill="x", padx=(0, 8))
+
+        self.btn_somatorio = ctk.CTkButton(frame_btns, text="📊 SÓ SOMATÓRIO", command=self.calcular_somatorio,
+                                           font=("Roboto", 13, "bold"), height=42, fg_color="#2980b9", hover_color="#3498db", state="disabled")
+        self.btn_somatorio.pack(side="left", expand=True, fill="x", padx=(8, 0))
+
+        self.btn_salvar_scg = ctk.CTkButton(rodape_acoes, text="💾 SALVAR RESULTADO NO SCG", command=self._salvar_cgr_scg,
+                                            font=("Roboto", 13, "bold"), height=38, fg_color="#27ae60", hover_color="#1e8449", state="disabled")
+        self.btn_salvar_scg.pack(fill="x", pady=(0, 8))
     
     # --- HELPERS ---
     def _atualizar_badge_modo(self):
@@ -219,9 +226,18 @@ class TelaAuditoria(ctk.CTkToplevel):
     def _verificar_habilitacao(self):
         empresas_sel = [emp for emp, var, _ in self.checkboxes_empresas if var.get()]
         self.btn_somatorio.configure(state="normal" if self.pasta_selecionada else "disabled")
-        if self.pasta_selecionada and empresas_sel and self.excel_path:
+        if self.pasta_selecionada and empresas_sel:
             self.btn_auditar.configure(state="normal")
-            self.lbl_status.configure(text=f"Pronto! {len(empresas_sel)} empresas selecionadas", text_color="#27ae60")
+            if self.excel_path:
+                self.lbl_status.configure(
+                    text=f"Pronto! {len(empresas_sel)} empresas selecionadas + Excel carregado",
+                    text_color="#27ae60"
+                )
+            else:
+                self.lbl_status.configure(
+                    text=f"Pronto! {len(empresas_sel)} empresas selecionadas (sem Excel)",
+                    text_color="#f39c12"
+                )
         else:
             self.btn_auditar.configure(state="disabled")
 
@@ -333,7 +349,40 @@ class TelaAuditoria(ctk.CTkToplevel):
     def _salvar_cgr_scg(self):
         cgr = getattr(self, 'cgr_liquido', 0.0)
         periodo = simpledialog.askstring("Salvar", "Período (ex: Dez/2025):", initialvalue="Dez/2025")
-        if periodo:
-            dados = self.consolidacao.salvar_cgr(periodo, cgr)
-            rpv = dados["rpv"]
-            messagebox.showinfo("Salvo", f"CGR salvo: R$ {cgr:,.2f}\nRPV: R$ {rpv:,.2f}")
+        if not periodo:
+            return
+
+        dados = self.consolidacao.salvar_cgr(periodo, cgr)
+        rpv = dados["rpv"]
+
+        # Salva os itens detalhados no banco principal
+        if self.resultados:
+            icms_total = sum(r.icms for r in self.resultados)
+            itens_dict = [
+                {
+                    "empresa":     r.empresa,
+                    "tipo":        r.tipo,
+                    "numero":      r.numero,
+                    "valor_total": r.valor_total,
+                    "icms":        r.icms,
+                    "pis":         r.pis,
+                    "cofins":      r.cofins,
+                    "volume_total": r.volume_total,
+                    "cgr_liquido": RegrasAuditoria.calcular_cgr_liquido(r.valor_total, r.icms),
+                }
+                for r in self.resultados
+            ]
+            try:
+                db = DatabasePMPV()
+                db.salvar_auditoria_itens(periodo, itens_dict)
+                db.fechar()
+            except Exception as e:
+                messagebox.showwarning("Aviso BD", f"CGR salvo no SCG, mas erro ao salvar itens:\n{e}")
+
+        messagebox.showinfo(
+            "Salvo ✅",
+            f"Período: {periodo}\n"
+            f"CGR salvo: R$ {cgr:,.2f}\n"
+            f"RPV calculado: R$ {rpv:,.2f}\n\n"
+            f"{len(self.resultados)} item(ns) salvo(s) no banco."
+        )

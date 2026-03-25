@@ -12,6 +12,7 @@ from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
+from Src.Database.database import DatabasePMPV
 
 class TelaConciliador(ctk.CTkToplevel):
     def __init__(self, parent=None):
@@ -96,10 +97,10 @@ class TelaConciliador(ctk.CTkToplevel):
         try:
             p_rec = Path(self.path_rec.get()) if self.path_rec.get() else None
             p_desp = Path(self.path_desp.get()) if self.path_desp.get() else None
-            
+
             arquivos_rec = list(p_rec.rglob("*.pdf")) if p_rec else []
             arquivos_desp = list(p_desp.rglob("*.pdf")) if p_desp else []
-            
+
             itens = []
             if arquivos_rec:
                 self.log_message("--- Receitas ---")
@@ -114,12 +115,13 @@ class TelaConciliador(ctk.CTkToplevel):
 
             nome_excel = f"Conciliacao_{datetime.now().strftime('%H%M%S')}.xlsx"
             caminho_final = Path(os.getcwd()) / nome_excel
-            
+
             tot_rec, tot_desp = ExcelConcilia.gerar_relatorio(caminho_final, itens)
             self._ultimo_saldo_rp = tot_rec - tot_desp
-            
+            self._ultimos_itens_concilia = itens
+
             self.log_message(f"CONCLUÍDO! Salvo em: {caminho_final}")
-            msg = (f"Finalizado!\nSaldo: R$ {format_brl_plain(self._ultimo_saldo_rp)}")
+            msg = f"Finalizado!\nSaldo: R$ {format_brl_plain(self._ultimo_saldo_rp)}"
             messagebox.showinfo("Sucesso", msg)
             self.btn_salvar_scg.configure(state="normal")
 
@@ -130,10 +132,40 @@ class TelaConciliador(ctk.CTkToplevel):
             self.restaurar_interface()
 
     def _salvar_rp_scg(self):
-        periodo = simpledialog.askstring("Salvar RP", "Digite o período (ex: Dez/2025):", initialvalue="Dez/2025")
-        if periodo:
-            self.consolidacao.salvar_rp(periodo, self._ultimo_saldo_rp)
-            messagebox.showinfo("Sucesso", f"RP de {periodo} salvo no SCG!")
+        periodo = simpledialog.askstring(
+            "Salvar RP", "Digite o período (ex: Dez/2025):", initialvalue="Dez/2025"
+        )
+        if not periodo:
+            return
+
+        self.consolidacao.salvar_rp(periodo, self._ultimo_saldo_rp)
+
+        # Salva itens detalhados no banco principal
+        itens = getattr(self, "_ultimos_itens_concilia", [])
+        if itens:
+            itens_dict = [
+                {
+                    "arquivo":   it.file_name,
+                    "categoria": it.category,
+                    "valor":     it.amount,
+                    "status":    it.status,
+                    "metodo":    it.method,
+                }
+                for it in itens
+            ]
+            try:
+                db = DatabasePMPV()
+                db.salvar_concilia_itens(periodo, itens_dict)
+                db.fechar()
+            except Exception as e:
+                messagebox.showwarning("Aviso BD", f"RP salvo no SCG, mas erro ao salvar itens:\n{e}")
+
+        messagebox.showinfo(
+            "Salvo ✅",
+            f"Período: {periodo}\n"
+            f"RP salvo: R$ {format_brl_plain(self._ultimo_saldo_rp)}\n\n"
+            f"{len(itens)} item(ns) salvo(s) no banco."
+        )
 
     def restaurar_interface(self):
         self.progress.stop()

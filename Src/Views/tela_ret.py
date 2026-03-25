@@ -9,6 +9,7 @@ from pathlib import Path
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.excel_ret import ExcelRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Database.database import DatabasePMPV
 
 _APP_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
            else os.path.dirname(os.path.abspath(__file__))
@@ -518,14 +519,31 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         if not hasattr(self, 'dados_processados') or not self.dados_processados:
             messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
             return
-        
+
         from tkinter import simpledialog
         calc = RegrasRET.calcular_ret(self.dados_processados)
         total_geral = calc['ret']
 
-        periodo = simpledialog.askstring("Período RET", "Digite o período (ex: Q1 2026):", initialvalue="Q1 2026")
-        if periodo:
-            self.consolidacao.salvar_ret(periodo, total_geral)
+        periodo = simpledialog.askstring(
+            "Período RET", "Digite o período (ex: Q1/2026):", initialvalue="Q1/2026"
+        )
+        if not periodo:
+            return
 
-            total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            messagebox.showinfo("RET Salvo", f"RET: {total_fmt}\nPeríodo: {periodo}")
+        self.consolidacao.salvar_ret(periodo, total_geral)
+
+        # Salva os itens detalhados no banco principal
+        try:
+            db = DatabasePMPV()
+            db.salvar_ret_itens(periodo, self.dados_processados)
+            db.fechar()
+        except Exception as e:
+            messagebox.showwarning("Aviso BD", f"RET salvo no SCG, mas erro ao salvar itens:\n{e}")
+
+        total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        messagebox.showinfo(
+            "RET Salvo ✅",
+            f"Período: {periodo}\n"
+            f"RET (EC): {total_fmt}\n\n"
+            f"{len(self.dados_processados)} documento(s) salvo(s) no banco."
+        )

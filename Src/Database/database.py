@@ -67,6 +67,76 @@ class DatabasePMPV:
         """)
 
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS auditoria_itens (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                periodo        TEXT NOT NULL,
+                empresa        TEXT,
+                tipo           TEXT,
+                numero         TEXT,
+                valor_total    REAL DEFAULT 0,
+                icms           REAL DEFAULT 0,
+                pis            REAL DEFAULT 0,
+                cofins         REAL DEFAULT 0,
+                volume_total   REAL DEFAULT 0,
+                cgr_liquido    REAL DEFAULT 0,
+                data_registro  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ret_itens (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                periodo          TEXT NOT NULL,
+                arquivo          TEXT,
+                tipo_encargo     TEXT,
+                empresa          TEXT,
+                nota_tipo        TEXT,
+                numero_nd        TEXT,
+                data_vencimento  TEXT,
+                valor_total      REAL DEFAULT 0,
+                moeda            TEXT DEFAULT 'BRL',
+                contrib_ec       TEXT,
+                data_registro    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS concilia_itens (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                periodo       TEXT NOT NULL,
+                arquivo       TEXT,
+                categoria     TEXT,
+                valor         REAL DEFAULT 0,
+                status        TEXT,
+                metodo        TEXT,
+                data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sr_resultados (
+                periodo          TEXT PRIMARY KEY,
+                vp               REAL DEFAULT 0,
+                vf               REAL DEFAULT 0,
+                pr               REAL DEFAULT 0,
+                sr               REAL DEFAULT 0,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cgf_resumo (
+                periodo                 TEXT PRIMARY KEY,
+                volume_faturado         REAL DEFAULT 0,
+                volume_canceladas       REAL DEFAULT 0,
+                volume_devolucoes       REAL DEFAULT 0,
+                volume_consumo_proprio  REAL DEFAULT 0,
+                volume_final            REAL DEFAULT 0,
+                data_atualizacao        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
                             
                             CREATE TABLE IF NOT EXISTS  consolidacao(
                                 id INTEGER PRIMARY KEY  AUTOINCREMENT,
@@ -304,6 +374,184 @@ class DatabasePMPV:
             "SELECT periodo, pmpv, data_atualizacao FROM pmpv_mensal ORDER BY data_atualizacao DESC"
         )
         return [dict(r) for r in self.cursor.fetchall()]
+
+    # ==========================================
+    # AUDITORIA XML
+    # ==========================================
+
+    def salvar_auditoria_itens(self, periodo: str, itens: List[Dict]):
+        """Apaga os itens existentes do período e salva a nova lista."""
+        self.cursor.execute("DELETE FROM auditoria_itens WHERE periodo = ?", (periodo,))
+        for it in itens:
+            self.cursor.execute("""
+                INSERT INTO auditoria_itens
+                    (periodo, empresa, tipo, numero, valor_total, icms, pis, cofins, volume_total, cgr_liquido)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                periodo,
+                it.get("empresa", ""),
+                it.get("tipo", ""),
+                it.get("numero", ""),
+                it.get("valor_total", 0.0),
+                it.get("icms", 0.0),
+                it.get("pis", 0.0),
+                it.get("cofins", 0.0),
+                it.get("volume_total", 0.0),
+                it.get("cgr_liquido", 0.0),
+            ))
+        self.conn.commit()
+
+    def listar_auditoria_itens(self, periodo: str) -> List[Dict]:
+        self.cursor.execute(
+            "SELECT * FROM auditoria_itens WHERE periodo = ? ORDER BY empresa, tipo", (periodo,)
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
+    def listar_periodos_auditoria(self) -> List[str]:
+        self.cursor.execute(
+            "SELECT DISTINCT periodo FROM auditoria_itens ORDER BY periodo DESC"
+        )
+        return [r[0] for r in self.cursor.fetchall()]
+
+    # ==========================================
+    # RET
+    # ==========================================
+
+    def salvar_ret_itens(self, periodo: str, itens: List[Dict]):
+        """Apaga os itens existentes do período e salva a nova lista."""
+        self.cursor.execute("DELETE FROM ret_itens WHERE periodo = ?", (periodo,))
+        for it in itens:
+            self.cursor.execute("""
+                INSERT INTO ret_itens
+                    (periodo, arquivo, tipo_encargo, empresa, nota_tipo, numero_nd,
+                     data_vencimento, valor_total, moeda, contrib_ec)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                periodo,
+                it.get("arquivo", ""),
+                it.get("tipo_encargo", ""),
+                it.get("empresa", ""),
+                it.get("nota_tipo", ""),
+                it.get("numero_nd", ""),
+                it.get("data_vencimento", ""),
+                it.get("valor_total", 0.0),
+                it.get("moeda_detectada", "BRL"),
+                it.get("contrib_ec", ""),
+            ))
+        self.conn.commit()
+
+    def listar_ret_itens(self, periodo: str) -> List[Dict]:
+        self.cursor.execute(
+            "SELECT * FROM ret_itens WHERE periodo = ? ORDER BY tipo_encargo, empresa", (periodo,)
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
+    def listar_periodos_ret(self) -> List[str]:
+        self.cursor.execute(
+            "SELECT DISTINCT periodo FROM ret_itens ORDER BY periodo DESC"
+        )
+        return [r[0] for r in self.cursor.fetchall()]
+
+    # ==========================================
+    # CONCILIAÇÃO RP
+    # ==========================================
+
+    def salvar_concilia_itens(self, periodo: str, itens: List[Dict]):
+        """Apaga os itens existentes do período e salva a nova lista."""
+        self.cursor.execute("DELETE FROM concilia_itens WHERE periodo = ?", (periodo,))
+        for it in itens:
+            self.cursor.execute("""
+                INSERT INTO concilia_itens (periodo, arquivo, categoria, valor, status, metodo)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                periodo,
+                it.get("arquivo", it.get("file_name", "")),
+                it.get("categoria", it.get("category", "")),
+                it.get("valor", it.get("amount", 0.0)),
+                it.get("status", ""),
+                it.get("metodo", it.get("method", "")),
+            ))
+        self.conn.commit()
+
+    def listar_concilia_itens(self, periodo: str) -> List[Dict]:
+        self.cursor.execute(
+            "SELECT * FROM concilia_itens WHERE periodo = ? ORDER BY categoria, arquivo", (periodo,)
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
+    def listar_periodos_concilia(self) -> List[str]:
+        self.cursor.execute(
+            "SELECT DISTINCT periodo FROM concilia_itens ORDER BY periodo DESC"
+        )
+        return [r[0] for r in self.cursor.fetchall()]
+
+    # ==========================================
+    # SR
+    # ==========================================
+
+    def salvar_sr(self, periodo: str, vp: float, vf: float, pr: float, sr: float):
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO sr_resultados (periodo, vp, vf, pr, sr, data_atualizacao)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (periodo, vp, vf, pr, sr))
+        self.conn.commit()
+
+    def buscar_sr(self, periodo: str) -> Dict:
+        self.cursor.execute("SELECT * FROM sr_resultados WHERE periodo = ?", (periodo,))
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+
+    def listar_sr(self) -> List[Dict]:
+        self.cursor.execute("SELECT * FROM sr_resultados ORDER BY data_atualizacao DESC")
+        return [dict(r) for r in self.cursor.fetchall()]
+
+    # ==========================================
+    # CGF RESUMO
+    # ==========================================
+
+    def salvar_cgf_resumo(self, periodo: str, volume_faturado: float, volume_canceladas: float,
+                           volume_devolucoes: float, volume_consumo_proprio: float, volume_final: float):
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO cgf_resumo
+                (periodo, volume_faturado, volume_canceladas, volume_devolucoes,
+                 volume_consumo_proprio, volume_final, data_atualizacao)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (periodo, volume_faturado, volume_canceladas, volume_devolucoes,
+              volume_consumo_proprio, volume_final))
+        self.conn.commit()
+
+    def buscar_cgf_resumo(self, periodo: str) -> Dict:
+        self.cursor.execute("SELECT * FROM cgf_resumo WHERE periodo = ?", (periodo,))
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+
+    # ==========================================
+    # SESSÕES COM VOLUMES (PMPV)
+    # ==========================================
+
+    def listar_sessoes_com_volumes(self) -> List[Dict]:
+        """
+        Lista todas as sessões salvas com seus respectivos VP e VF.
+
+        - VP = soma de 'volume' (m³/dia) de todos os registros de dados_mes da sessão.
+        - VF = volume_total gravado em resultados (vol × dias de cada empresa).
+        """
+        self.cursor.execute("""
+            SELECT
+                s.id,
+                s.nome,
+                strftime('%d/%m/%Y %H:%M', s.data_criacao) AS data_criacao,
+                COALESCE(r.volume_total, 0.0) AS vf,
+                COALESCE((
+                    SELECT SUM(dm.volume)
+                    FROM dados_mes dm
+                    WHERE dm.sessao_id = s.id
+                ), 0.0) AS vp
+            FROM sessoes s
+            LEFT JOIN resultados r ON r.sessao_id = s.id
+            ORDER BY s.data_criacao DESC
+        """)
+        return [dict(row) for row in self.cursor.fetchall()]
 
     def fechar(self):
         if self.conn: self.conn.close()
