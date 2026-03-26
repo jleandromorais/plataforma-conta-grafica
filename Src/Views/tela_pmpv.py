@@ -12,14 +12,11 @@ from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 # ==========================================
 # 3. INTERFACE GRÁFICA (A Tela)
 # ==========================================
-class TelaPMPV(ctk.CTkToplevel):
+class TelaPMPV(ctk.CTkFrame):
     """A interface principal do módulo PMPV."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        self.title("Sistema PMPV Master - Gestão Trimestral")
-        self.geometry("1300x850")
         
         self.use_cases = PMPVUseCases()
         self.empresas_padrao = ["PETROBRAS", "GALP", "PETRORECONCAVO", "BRAVA", "ENEVA", "ORIZON"]
@@ -400,7 +397,8 @@ class TelaPMPV(ctk.CTkToplevel):
 
 if __name__ == "__main__":
     root = ctk.CTk()
-    root.withdraw()
+    root.title("Teste PMPV (embed)")
+    root.geometry("1300x850")
     app = TelaPMPV(root)
-    app.protocol("WM_DELETE_WINDOW", root.destroy)
+    app.pack(fill="both", expand=True)
     root.mainloop()

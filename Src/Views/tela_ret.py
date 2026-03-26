@@ -14,12 +14,9 @@ from Src.Database.database import DatabasePMPV
 _APP_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
            else os.path.dirname(os.path.abspath(__file__))
 
-class TelaRET(ctk.CTkToplevel):
+class TelaRET(ctk.CTkFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        self.title("Sistema RET - Processamento de PDFs")
-        self.geometry("1400x900")
         
         self.pasta_selecionada = None
         self.dados_processados = []

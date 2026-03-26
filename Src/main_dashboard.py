@@ -170,58 +170,57 @@ class PlataformaFinanceira(ctk.CTk):
     # --- MÉTODOS DE INTEGRAÇÃO (Abertura de Janelas) ---
     def abrir_pmpv(self):
         try:
-            self._janela_pmpv = TelaPMPV(self)
-            self._janela_pmpv.geometry("1300x800")
-            self._janela_pmpv.lift()
+            self._limpar_area_principal()
+            TelaPMPV(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Módulo PMPV não encontrado/importado.\n{e}")
 
     def abrir_ocr(self):
         try:
-            self._janela_ocr = TelaConciliador(self)
-            self._janela_ocr.lift()
+            self._limpar_area_principal()
+            TelaConciliador(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir Conciliação: {e}")
             
     def abrir_ret(self):
         try:
-            self._janela_ret = TelaRET(self)
-            self._janela_ret.lift()
+            self._limpar_area_principal()
+            TelaRET(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir RET: {e}")
 
     def abrir_auditoria(self):
         try:
-            self._janela_auditoria = TelaAuditoria(self)
-            self._janela_auditoria.lift()
+            self._limpar_area_principal()
+            TelaAuditoria(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir Auditoria: {e}")
 
     def abrir_scg(self):
         try:
-            self._janela_scg = TelaSCG(self)
-            self._janela_scg.lift()
+            self._limpar_area_principal()
+            TelaSCG(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir SCG: {e}")
 
     def abrir_cgf(self):
         try:
-            self._janela_cgf = TelaCGF(self)
-            self._janela_cgf.lift()
+            self._limpar_area_principal()
+            TelaCGF(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir CGF: {e}")
 
     def abrir_rpv(self):
         try:
-            self._janela_rpv = TelaRPV(self)
-            self._janela_rpv.lift()
+            self._limpar_area_principal()
+            TelaRPV(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir RPV: {e}")
 
     def abrir_sr(self):
         try:
-            self._janela_sr = TelaSR(self)
-            self._janela_sr.lift()
+            self._limpar_area_principal()
+            TelaSR(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir SR: {e}")
 

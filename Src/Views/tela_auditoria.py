@@ -3,6 +3,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from pathlib import Path
 from datetime import datetime
+import threading
+from queue import Queue, Empty
 import pandas as pd
 
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
@@ -15,12 +17,9 @@ from Src.Database.database import DatabasePMPV
 PDF_ATIVADO = True # Assumimos True se pdfplumber estiver instalado
 OCR_ATIVADO = OCR_ENABLED
 
-class TelaAuditoria(ctk.CTkToplevel):
+class TelaAuditoria(ctk.CTkFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        self.title("Auditoria XML - NF-e e CT-e")
-        self.geometry("1300x1050")
         
         self.pasta_selecionada = None
         self.empresas_disponiveis = []
@@ -37,6 +36,11 @@ class TelaAuditoria(ctk.CTkToplevel):
         self.volume_total_cte   = 0.0
         self.cgr_liquido        = 0.0
         self.consolidacao       = ServicosConsolidacao()
+        self._fila_auditoria = Queue()
+        self._thread_auditoria: threading.Thread | None = None
+        self._processando_auditoria = False
+        self._fila_carregamento = Queue()
+        self._thread_carregamento: threading.Thread | None = None
 
         self.modo_fonte = tk.StringVar(value="XML")
 
@@ -132,6 +136,9 @@ class TelaAuditoria(ctk.CTkToplevel):
         self.lbl_status = ctk.CTkLabel(frame_status, text="Aguardando seleções...",
                                        font=("Roboto", 14), text_color="#f39c12")
         self.lbl_status.pack(pady=15)
+        self.progress_auditoria = ctk.CTkProgressBar(frame_status, mode="indeterminate")
+        self.progress_auditoria.pack(fill="x", padx=14, pady=(0, 12))
+        self.progress_auditoria.set(0)
         
         # ========== PAINEL CGR ==========
         frame_cgr = ctk.CTkFrame(container, fg_color="#0d1b2a", corner_radius=10)
@@ -193,13 +200,15 @@ class TelaAuditoria(ctk.CTkToplevel):
         pasta = filedialog.askdirectory(title="Selecione a pasta PAI")
         if pasta:
             self.pasta_selecionada = Path(pasta)
-            self.lbl_pasta.configure(text=f"✅ {pasta}", text_color="#27ae60")
-            self.empresas_disponiveis = [d.name for d in self.pasta_selecionada.iterdir() if d.is_dir()]
-            if not self.empresas_disponiveis:
-                messagebox.showwarning("Aviso", "Nenhuma subpasta encontrada!")
-                return
-            self._criar_checkboxes_empresas()
-            self._verificar_habilitacao()
+            self.lbl_pasta.configure(text=f"⏳ Lendo pastas em: {pasta}", text_color="#f39c12")
+            self.lbl_status.configure(text="Carregando empresas da pasta selecionada...", text_color="#f39c12")
+            self._thread_carregamento = threading.Thread(
+                target=self._worker_carregar_empresas,
+                args=(self.pasta_selecionada,),
+                daemon=True,
+            )
+            self._thread_carregamento.start()
+            self.after(80, self._poll_fila_carregamento)
     
     def _criar_checkboxes_empresas(self):
         for cb in self.checkboxes_empresas: cb.destroy()
@@ -214,16 +223,81 @@ class TelaAuditoria(ctk.CTkToplevel):
         arquivo = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx *.xls")])
         if arquivo:
             self.excel_path = arquivo
-            self.lbl_excel.configure(text=f"✅ {Path(arquivo).name}", text_color="#27ae60")
+            self.df_excel = None
+            self.lbl_excel.configure(text=f"⏳ Carregando {Path(arquivo).name}...", text_color="#f39c12")
+            self.lbl_status.configure(text="Lendo arquivo Excel em segundo plano...", text_color="#f39c12")
+            self._thread_carregamento = threading.Thread(
+                target=self._worker_carregar_excel,
+                args=(arquivo,),
+                daemon=True,
+            )
+            self._thread_carregamento.start()
+            self.after(80, self._poll_fila_carregamento)
+
+    def _worker_carregar_empresas(self, pasta: Path):
+        try:
+            empresas = sorted([d.name for d in pasta.iterdir() if d.is_dir()])
+            self._fila_carregamento.put(("empresas_ok", pasta, empresas))
+        except Exception as e:
+            self._fila_carregamento.put(("empresas_error", str(e)))
+
+    def _worker_carregar_excel(self, arquivo: str):
+        try:
+            df = pd.read_excel(arquivo)
+            self._fila_carregamento.put(("excel_ok", arquivo, df))
+        except Exception as e:
+            self._fila_carregamento.put(("excel_error", str(e)))
+
+    def _poll_fila_carregamento(self):
+        recebeu_msg = False
+        while True:
             try:
-                self.df_excel = pd.read_excel(arquivo)
+                msg = self._fila_carregamento.get_nowait()
+                recebeu_msg = True
+            except Empty:
+                break
+
+            tipo = msg[0]
+            if tipo == "empresas_ok":
+                _, pasta, empresas = msg
+                self.empresas_disponiveis = empresas
+                if not self.empresas_disponiveis:
+                    self.lbl_pasta.configure(text=f"⚠️ {pasta}", text_color="#f39c12")
+                    self.lbl_status.configure(text="Nenhuma subpasta encontrada.", text_color="#f39c12")
+                    messagebox.showwarning("Aviso", "Nenhuma subpasta encontrada!")
+                else:
+                    self.lbl_pasta.configure(text=f"✅ {pasta}", text_color="#27ae60")
+                    self.lbl_status.configure(
+                        text=f"{len(self.empresas_disponiveis)} empresa(s) carregadas",
+                        text_color="#27ae60",
+                    )
+                    self._criar_checkboxes_empresas()
+                self._verificar_habilitacao()
+            elif tipo == "empresas_error":
+                self.lbl_status.configure(text="Erro ao ler pasta selecionada", text_color="#e74c3c")
+                messagebox.showerror("Erro", f"Falha ao carregar pastas:\n{msg[1]}")
+            elif tipo == "excel_ok":
+                _, arquivo, df = msg
+                self.df_excel = df
+                self.lbl_excel.configure(text=f"✅ {Path(arquivo).name}", text_color="#27ae60")
                 self.lbl_status.configure(text=f"Excel: {len(self.df_excel)} linhas", text_color="#27ae60")
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro:\n{e}")
-                return
-            self._verificar_habilitacao()
+                self._verificar_habilitacao()
+            elif tipo == "excel_error":
+                self.excel_path = None
+                self.df_excel = None
+                self.lbl_excel.configure(text="Nenhum arquivo selecionado", text_color="gray")
+                self.lbl_status.configure(text="Erro ao carregar Excel", text_color="#e74c3c")
+                messagebox.showerror("Erro", f"Falha ao ler o Excel:\n{msg[1]}")
+
+        if self._thread_carregamento and self._thread_carregamento.is_alive():
+            self.after(80, self._poll_fila_carregamento)
     
     def _verificar_habilitacao(self):
+        if self._processando_auditoria:
+            self.btn_auditar.configure(state="disabled")
+            self.btn_somatorio.configure(state="disabled")
+            return
+
         empresas_sel = [emp for emp, var, _ in self.checkboxes_empresas if var.get()]
         self.btn_somatorio.configure(state="normal" if self.pasta_selecionada else "disabled")
         if self.pasta_selecionada and empresas_sel:
@@ -243,40 +317,119 @@ class TelaAuditoria(ctk.CTkToplevel):
 
     # --- LÓGICA DE EXECUÇÃO ---
     def iniciar_auditoria(self):
-        self.btn_auditar.configure(state="disabled")
+        if self._processando_auditoria:
+            return
+
+        empresas = [emp for emp, var, _ in self.checkboxes_empresas if var.get()]
+        if not self.pasta_selecionada or not empresas:
+            messagebox.showwarning("Aviso", "Selecione uma pasta e ao menos uma empresa.")
+            return
+
+        self._alterar_estado_processamento(True)
         self.text_resultados.delete("1.0", "end")
         self.resultados.clear()
-        empresas = [emp for emp, var, _ in self.checkboxes_empresas if var.get()]
-        total_xmls = total_ocr = 0
+        self.lbl_status.configure(text="Iniciando auditoria...", text_color="#f39c12")
+        self.text_resultados.insert("end", "⏳ Processando em segundo plano...\n")
+        self.text_resultados.insert("end", "Isso evita travamentos da interface durante a leitura dos arquivos.\n")
 
-        for empresa in empresas:
-            self.text_resultados.insert("end", f"\n📂 Auditando: {empresa}\n")
-            self.update()
-            pasta_empresa = self.pasta_selecionada / empresa
-            xmls = list({p.resolve() for p in pasta_empresa.rglob("*.xml")})
-            pdfs = list({p.resolve() for p in pasta_empresa.rglob("*.pdf")})
+        usar_pdf = self.modo_fonte.get() == "PDF"
+        self._thread_auditoria = threading.Thread(
+            target=self._worker_auditoria,
+            args=(empresas, usar_pdf),
+            daemon=True,
+        )
+        self._thread_auditoria.start()
+        self.after(120, self._poll_fila_auditoria)
 
-            usar_pdf = self.modo_fonte.get() == "PDF"
-            sem_xml_forcar_pdf = (not usar_pdf) and (len(xmls) == 0) and (len(pdfs) > 0)
+    def _alterar_estado_processamento(self, processando: bool):
+        self._processando_auditoria = processando
+        if processando:
+            self.btn_auditar.configure(state="disabled")
+            self.btn_somatorio.configure(state="disabled")
+            self.btn_salvar_scg.configure(state="disabled")
+            self.progress_auditoria.start()
+        else:
+            self.progress_auditoria.stop()
+            self.progress_auditoria.set(0)
+            self._verificar_habilitacao()
 
-            if not usar_pdf and not sem_xml_forcar_pdf:
-                for xml_file in xmls:
-                    total_xmls += 1
-                    res = self._auditar_xml(xml_file, empresa)
-                    if res: self.resultados.append(res)
-            else:
-                for pdf_file in pdfs:
-                    total_ocr += 1
-                    dados = RegrasAuditoria.parse_pdf_ocr(pdf_file)
-                    if 'erro' in dados: continue
-                    vf = dados.get('valor_total', 0.0)
-                    self.resultados.append(XMLItem(
-                        empresa, dados.get('tipo', 'NF-e'), dados.get('numero', 'N/A'),
-                        vf, dados.get('icms', 0.0), dados.get('pis', 0.0), dados.get('cofins', 0.0),
-                        dados.get('volume', 0), 'OCR', dados.get('volume_total', 0.0)
-                    ))
+    def _worker_auditoria(self, empresas: list[str], usar_pdf: bool):
+        try:
+            resultados: list[XMLItem] = []
+            total_xmls = 0
+            total_ocr = 0
 
-        self._processar_totais_e_ui(total_xmls, total_ocr)
+            for idx, empresa in enumerate(empresas, start=1):
+                self._fila_auditoria.put(("status", f"📂 Auditando {empresa} ({idx}/{len(empresas)})..."))
+                pasta_empresa = self.pasta_selecionada / empresa
+                xmls = list({p.resolve() for p in pasta_empresa.rglob("*.xml")})
+                pdfs = list({p.resolve() for p in pasta_empresa.rglob("*.pdf")})
+
+                sem_xml_forcar_pdf = (not usar_pdf) and (len(xmls) == 0) and (len(pdfs) > 0)
+                arquivos_proc = 0
+
+                if not usar_pdf and not sem_xml_forcar_pdf:
+                    for xml_file in xmls:
+                        total_xmls += 1
+                        arquivos_proc += 1
+                        res = self._auditar_xml(xml_file, empresa)
+                        if res:
+                            resultados.append(res)
+                        if arquivos_proc % 25 == 0:
+                            self._fila_auditoria.put(("status", f"📂 {empresa}: {arquivos_proc}/{len(xmls)} XMLs"))
+                else:
+                    for pdf_file in pdfs:
+                        total_ocr += 1
+                        arquivos_proc += 1
+                        dados = RegrasAuditoria.parse_pdf_ocr(pdf_file)
+                        if "erro" not in dados:
+                            vf = dados.get("valor_total", 0.0)
+                            resultados.append(
+                                XMLItem(
+                                    empresa,
+                                    dados.get("tipo", "NF-e"),
+                                    dados.get("numero", "N/A"),
+                                    vf,
+                                    dados.get("icms", 0.0),
+                                    dados.get("pis", 0.0),
+                                    dados.get("cofins", 0.0),
+                                    dados.get("volume", 0),
+                                    "OCR",
+                                    dados.get("volume_total", 0.0),
+                                )
+                            )
+                        if arquivos_proc % 10 == 0:
+                            self._fila_auditoria.put(("status", f"📂 {empresa}: {arquivos_proc}/{len(pdfs)} PDFs"))
+
+            self._fila_auditoria.put(("done", resultados, total_xmls, total_ocr))
+        except Exception as e:
+            self._fila_auditoria.put(("error", str(e)))
+
+    def _poll_fila_auditoria(self):
+        while True:
+            try:
+                msg = self._fila_auditoria.get_nowait()
+            except Empty:
+                break
+
+            tipo = msg[0]
+            if tipo == "status":
+                self.lbl_status.configure(text=msg[1], text_color="#f39c12")
+            elif tipo == "done":
+                _, resultados, total_xmls, total_ocr = msg
+                self.resultados = resultados
+                self._alterar_estado_processamento(False)
+                self.lbl_status.configure(text="✅ Auditoria concluída", text_color="#27ae60")
+                self._processar_totais_e_ui(total_xmls, total_ocr)
+                return
+            elif tipo == "error":
+                self._alterar_estado_processamento(False)
+                self.lbl_status.configure(text="❌ Erro na auditoria", text_color="#e74c3c")
+                messagebox.showerror("Erro", f"Falha ao processar auditoria:\n{msg[1]}")
+                return
+
+        if self._processando_auditoria:
+            self.after(120, self._poll_fila_auditoria)
 
     def calcular_somatorio(self):
         if not self.pasta_selecionada: return

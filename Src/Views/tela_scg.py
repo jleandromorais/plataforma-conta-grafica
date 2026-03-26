@@ -73,7 +73,7 @@ class LinhaValor(ctk.CTkFrame):
             self.entry.pack(side="left", padx=8)
 
 
-class TelaSCG(ctk.CTkToplevel):
+class TelaSCG(ctk.CTkFrame):
     CAMPOS = [
         ("cgr", "📄", "CGR  (Auditoria XML)",    COR_AZUL,    True),
         ("cgf", "📋", "CGF  (Volume Faturado)",  COR_VERDE,   True),
@@ -83,14 +83,7 @@ class TelaSCG(ctk.CTkToplevel):
     ]
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.title("💼 SCG — Consolidação da Conta Gráfica")
-        self.geometry("860x720")
-        self.configure(fg_color=COR_FUNDO)
-        
-        if parent and hasattr(parent, 'img_icone_app'):
-            try: self.wm_iconphoto(False, parent.img_icone_app)
-            except: pass
+        super().__init__(parent, fg_color=COR_FUNDO)
 
         self.servicos = ServicosSCG()
         self.periodo_atual = None

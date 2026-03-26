@@ -14,12 +14,9 @@ from Src.common.formatting import format_brl_plain
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Database.database import DatabasePMPV
 
-class TelaConciliador(ctk.CTkToplevel):
+class TelaConciliador(ctk.CTkFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        self.title("ConciliaPDF 2.0 - Automação Financeira")
-        self.geometry("900x700")
         
         self.path_rec = tk.StringVar()
         self.path_desp = tk.StringVar()

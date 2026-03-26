@@ -21,18 +21,9 @@ ACCENT_GREEN_HOVER = "#059669"
 ACCENT_RED   = "#ef4444"
 ACCENT_RED_HOVER = "#dc2626"
 
-class TelaCGF(ctk.CTkToplevel):
+class TelaCGF(ctk.CTkFrame):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.title(APP_TITLE)
-        self.geometry(APP_SIZE)
-        self.minsize(1000, 700)
-        self.configure(fg_color=BG_APP)
-
-        # Garante o Ícone Premium (Herdado do main_dashboard)
-        if parent and hasattr(parent, 'img_icone_app'):
-            try: self.wm_iconphoto(False, parent.img_icone_app)
-            except: pass
+        super().__init__(parent, fg_color=BG_APP)
 
         self.servicos = ServicosCGF()
 

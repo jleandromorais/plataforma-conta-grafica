@@ -14,20 +14,11 @@ ROXO      = "#8b5cf6"
 TEXTO     = "#f8fafc"
 MUTED     = "#94a3b8"
 
-class TelaRPV(ctk.CTkToplevel):
+class TelaRPV(ctk.CTkFrame):
     """RPV = CGR − CGF com entrada manual e/ou automática via banco de dados."""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.title("🧾 RPV — Requisição de Pequeno Valor")
-        self.geometry("780x680")
-        self.minsize(700, 600)
-        self.configure(fg_color=BG)
-        
-        # Garante que esta tela também usa o ícone Premium do aplicativo base!
-        if parent and hasattr(parent, 'img_icone_app'):
-            try: self.wm_iconphoto(False, parent.img_icone_app)
-            except: pass
+        super().__init__(parent, fg_color=BG)
 
         self.servicos = ServicosRPV()
         self._build_ui()

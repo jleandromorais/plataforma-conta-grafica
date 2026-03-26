@@ -53,7 +53,7 @@ def _fmt_brl(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-class TelaSR(ctk.CTkToplevel):
+class TelaSR(ctk.CTkFrame):
     """
     SR = (VP − VF) × PR
 
@@ -63,17 +63,7 @@ class TelaSR(ctk.CTkToplevel):
     """
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.title("📈 SR — (VP − VF) × PR")
-        self.geometry("760x640")
-        self.minsize(680, 560)
-        self.configure(fg_color=BG)
-
-        if parent and hasattr(parent, "img_icone_app"):
-            try:
-                self.wm_iconphoto(False, parent.img_icone_app)
-            except Exception:
-                pass
+        super().__init__(parent, fg_color=BG)
 
         self._servicos = ServicosSR()
         self._sessoes: list[dict] = []
@@ -458,7 +448,7 @@ class TelaSR(ctk.CTkToplevel):
 
 if __name__ == "__main__":
     root = ctk.CTk()
-    root.withdraw()
-    app = TelaSR(root)
-    app.protocol("WM_DELETE_WINDOW", root.destroy)
+    root.title("Teste SR (embed)")
+    root.geometry("900x700")
+    TelaSR(root).pack(fill="both", expand=True)
     root.mainloop()
