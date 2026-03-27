@@ -1,4 +1,7 @@
 import sqlite3
+import sys
+from pathlib import Path
+
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.types import Numeric, String, Integer
@@ -7,11 +10,22 @@ import os
 
 load_dotenv()
 
-def migrar_sqlite_para_postgres(caminho_sqlite: str = "plataforma_pmpv.db"):
+CAMINHO_PADRAO = Path(__file__).resolve().parent.parent.parent.parent / "pmpv_data.db"
+
+def migrar_sqlite_para_postgres(caminho_sqlite: str = None):
+    if caminho_sqlite is None:
+        caminho_sqlite = str(CAMINHO_PADRAO)
+
+    caminho = Path(caminho_sqlite)
+    if not caminho.exists():
+        print(f"ERRO: Arquivo SQLite não encontrado em: {caminho}")
+        return
+
     print("--- Iniciando Migração SQLite -> PostgreSQL ---")
+    print(f"Arquivo SQLite: {caminho}")
     
     # 1. Conexões
-    conn_sqlite = sqlite3.connect(caminho_sqlite)
+    conn_sqlite = sqlite3.connect(str(caminho))
     
     user = os.getenv("PG_USER", "postgres")
     password = os.getenv("PG_PASSWORD", "admin")
@@ -71,4 +85,5 @@ def migrar_sqlite_para_postgres(caminho_sqlite: str = "plataforma_pmpv.db"):
         conn_sqlite.close()
 
 if __name__ == "__main__":
-    migrar_sqlite_para_postgres()
+    caminho = sys.argv[1] if len(sys.argv) > 1 else None
+    migrar_sqlite_para_postgres(caminho)
