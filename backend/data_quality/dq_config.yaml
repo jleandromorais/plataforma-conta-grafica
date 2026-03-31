@@ -1,0 +1,6 @@
+thresholds:
+  max_null_percent_auditoria_status: 5.0
+  min_daily_volume_auditoria: 100
+  max_volume_variance_percent: 20.0
+  min_faturado_mensal: 1000.00
+  max_dias_atraso_importacao: 3
