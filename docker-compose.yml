@@ -21,6 +21,7 @@ x-airflow-common: &airflow-common
     - ./backend/airflow/plugins:/opt/airflow/plugins
     - ./backend:/opt/airflow/backend
     - ./Src:/opt/airflow/Src  # <-- NOVA LINHA: Mapeia a tua lógica de negócio
+    - ./reports:/opt/airflow/reports  # <-- NOVO: Mapeia pasta de relatórios Excel/PDF
   depends_on:
     postgres:
       condition: service_healthy

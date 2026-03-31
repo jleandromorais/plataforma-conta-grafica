@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerta de Monitoramento - Conta Gráfica</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+            color: #333;
+        }
+        .email-container {
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .logo-section {
+            text-align: center;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e3c72;
+            margin-bottom: 5px;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #666;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .summary-box {
+            background-color: #f0f7ff;
+            border-left: 4px solid #1e3c72;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        .summary-box h2 {
+            color: #1e3c72;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .alert-counts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+        }
+        .count-item {
+            text-align: center;
+            padding: 10px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .count-number {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .count-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .count-critical {
+            color: #d32f2f;
+        }
+        .count-warning {
+            color: #f57c00;
+        }
+        .count-info {
+            color: #1976d2;
+        }
+        .alerts-section {
+            margin-bottom: 30px;
+        }
+        .alerts-section h3 {
+            color: #1e3c72;
+            font-size: 14px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .alert-item {
+            margin-bottom: 20px;
+            border-left: 4px solid #ccc;
+            padding: 15px;
+            background-color: #fafafa;
+            border-radius: 4px;
+        }
+        .alert-item.critical {
+            border-left-color: #d32f2f;
+            background-color: #ffebee;
+        }
+        .alert-item.warning {
+            border-left-color: #f57c00;
+            background-color: #fff3e0;
+        }
+        .alert-item.info {
+            border-left-color: #1976d2;
+            background-color: #e3f2fd;
+        }
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+        .alert-title {
+            font-weight: bold;
+            font-size: 14px;
+            color: #1e3c72;
+        }
+        .alert-severity {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .alert-severity.critical {
+            background-color: #d32f2f;
+            color: white;
+        }
+        .alert-severity.warning {
+            background-color: #f57c00;
+            color: white;
+        }
+        .alert-severity.info {
+            background-color: #1976d2;
+            color: white;
+        }
+        .alert-message {
+            font-size: 13px;
+            margin: 8px 0;
+            color: #333;
+        }
+        .alert-details {
+            font-size: 12px;
+            color: #666;
+            background-color: rgba(255, 255, 255, 0.6);
+            padding: 10px;
+            border-radius: 3px;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .alert-action {
+            font-size: 12px;
+            color: #1e3c72;
+            font-weight: 600;
+            margin-top: 8px;
+            padding: 8px;
+            background-color: rgba(30, 60, 114, 0.05);
+            border-radius: 3px;
+        }
+        .action-label {
+            display: inline-block;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .actions-section {
+            background-color: #e8f5e9;
+            border-left: 4px solid #388e3c;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        .actions-section h3 {
+            color: #388e3c;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .action-list {
+            list-style: none;
+            padding: 0;
+        }
+        .action-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            font-size: 13px;
+        }
+        .action-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #388e3c;
+            font-weight: bold;
+        }
+        .footer {
+            background-color: #f5f5f5;
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #e0e0e0;
+            font-size: 11px;
+            color: #999;
+        }
+        .footer-timestamp {
+            margin-top: 10px;
+            font-size: 10px;
+        }
+        @media (max-width: 600px) {
+            .email-container {
+                margin: 0;
+                border-radius: 0;
+            }
+            .header {
+                padding: 20px 15px;
+            }
+            .header h1 {
+                font-size: 22px;
+            }
+            .content {
+                padding: 15px;
+            }
+            .alert-counts {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- HEADER -->
+        <div class="header">
+            <h1>🚨 Alerta de Monitoramento</h1>
+            <p>Plataforma Conta Gráfica - Sistema de Detecção de Anomalias</p>
+        </div>
+
+        <!-- LOGO/BRANDING -->
+        <div class="logo-section">
+            <div class="logo">📊 Conta Gráfica</div>
+            <div class="timestamp">Alerta gerado em: {{alert_timestamp}}</div>
+        </div>
+
+        <!-- CONTENT -->
+        <div class="content">
+            <!-- RESUMO -->
+            <div class="summary-box">
+                <h2>📈 Resumo de Alertas</h2>
+                <div class="alert-counts">
+                    <div class="count-item">
+                        <div class="count-number count-critical">{{critical_count}}</div>
+                        <div class="count-label">Crítico</div>
+                    </div>
+                    <div class="count-item">
+                        <div class="count-number count-warning">{{warning_count}}</div>
+                        <div class="count-label">Aviso</div>
+                    </div>
+                    <div class="count-item">
+                        <div class="count-number count-info">{{info_count}}</div>
+                        <div class="count-label">Informação</div>
+                    </div>
+                    <div class="count-item">
+                        <div class="count-number">{{total_count}}</div>
+                        <div class="count-label">Total</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ALERTAS CRÍTICOS -->
+            {{critical_alerts_section}}
+
+            <!-- ALERTAS DE AVISO -->
+            {{warning_alerts_section}}
+
+            <!-- ALERTAS DE INFORMAÇÃO -->
+            {{info_alerts_section}}
+
+            <!-- AÇÕES RECOMENDADAS -->
+            <div class="actions-section">
+                <h3>✅ Próximos Passos Recomendados</h3>
+                <ul class="action-list">
+                    <li>Revisar todos os alertas críticos com prioridade máxima</li>
+                    <li>Verificar logs de monitoramento em: <code>/logs/alerts_{{alert_date}}.log</code></li>
+                    <li>Contatar o time de infraestrutura caso problemas persistam</li>
+                    <li>Acompanhar histórico em: <code>marts.monitoring_alerts</code></li>
+                    <li>Atualizar runbooks de resolução conforme necessário</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <p>Este é um email automático do Sistema de Monitoramento da Plataforma Conta Gráfica.</p>
+            <p>Não responda este email. Para dúvidas, contate o time de Data Engineering.</p>
+            <div class="footer-timestamp">
+                Timestamp: {{execution_timestamp}} | Servidor: {{hostname}}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
