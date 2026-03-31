@@ -1,21 +1,26 @@
 version: "3.8"
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.9.0
+  build:
+    context: .
+    dockerfile: backend/airflow/Dockerfile
   env_file:
     - ./backend/.env
   environment:
+    _PIP_ADDITIONAL_REQUIREMENTS: "pdfplumber pytesseract"
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_USER}:${PG_PASSWORD}@postgres:${PG_PORT}/airflow_db
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
-    PYTHONPATH: /opt/airflow/backend:/opt/airflow/dags
+    # Adicionamos /opt/airflow ao PYTHONPATH para o 'Src' ser reconhecido
+    PYTHONPATH: /opt/airflow:/opt/airflow/backend:/opt/airflow/dags
     PG_HOST: postgres
   volumes:
     - ./backend/airflow/dags:/opt/airflow/dags
     - ./backend/airflow/logs:/opt/airflow/logs
     - ./backend/airflow/plugins:/opt/airflow/plugins
     - ./backend:/opt/airflow/backend
+    - ./Src:/opt/airflow/Src  # <-- NOVA LINHA: Mapeia a tua lógica de negócio
   depends_on:
     postgres:
       condition: service_healthy
@@ -55,6 +60,7 @@ services:
       --lastname User
       --role Admin
       --email admin@example.com
+      || true
       "
 
   airflow-webserver:
