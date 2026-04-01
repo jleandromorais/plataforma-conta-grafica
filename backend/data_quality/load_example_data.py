@@ -1,8 +1,15 @@
 import os
 import sys
+import locale
 from sqlalchemy import create_engine, text
 from pathlib import Path
-import chardet
+
+# Forçar UTF-8 em todo o script
+if sys.platform == 'win32':
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 def load_example_data():
     pg_user = os.getenv("PG_USER", "postgres")
@@ -11,7 +18,8 @@ def load_example_data():
     pg_port = os.getenv("PG_PORT", "5432")
     pg_db = os.getenv("PG_DB", "plataforma")
     
-    db_url = f"postgresql+psycopg2://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    # URL com client_encoding explícito
+    db_url = f"postgresql+psycopg2://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}?client_encoding=utf8"
     
     try:
         # Testar conexão

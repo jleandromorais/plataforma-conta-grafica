@@ -6,8 +6,8 @@ import sys
 import os
 
 # Adiciona o caminho local ao sys.path para importar os scripts do repositório
-sys.path.append('/opt/airflow/dags/repo/backend/data_quality')
-from run_checks import main as executar_dq
+sys.path.append('/opt/airflow/backend')
+from data_quality.run_checks import main as executar_dq
 
 default_args = {
     'owner': 'engenharia_dados',

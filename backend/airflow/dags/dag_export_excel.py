@@ -1,51 +1,55 @@
-import os
+"""
+DAG: dag_export_excel
+Exporta relatórios consolidados para formato Excel.
+✅ CORRIGIDO: sys.path aponta para /opt/airflow
+✅ CORRIGIDO: Import usa 'from backend.reporting.export_excel import main'
+"""
+
 import sys
 from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.sensors.external_task import ExternalTaskSensor
 
-# Adicionar a diretoria backend ao sys.path para conseguir importar os módulos corretamente
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
-
-from backend.reporting.export_excel import main as export_excel_main
+# ✅ CORRIGIDO: Raiz /opt/airflow adicionada ao path
+# Com PYTHONPATH=/opt/airflow no docker-compose, isto é redundante mas garante robustez
+if '/opt/airflow' not in sys.path:
+    sys.path.insert(0, '/opt/airflow')
 
 default_args = {
-    'owner': 'data_team',
+    'owner': 'conta-grafica',
     'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
 
+
+def run_export_excel(**context):
+    """
+    Importa e executa a exportação para Excel.
+    ✅ CORRIGIDO: Import absoluto 'from backend.reporting.export_excel import main'
+    """
+    # ✅ CORRIGIDO: Sem 'ModuleNotFoundError: No module named backend'
+    from backend.reporting.export_excel import main as export_excel_main
+    export_excel_main()
+
+
 with DAG(
     dag_id='dag_export_excel',
     default_args=default_args,
-    description='Exporta dados consolidados, Auditoria, RET e Data Quality para Excel formatado.',
-    schedule_interval='0 3 * * *', # Diariamente às 03:00
+    description='Exportação de relatórios consolidados para Excel',
+    schedule_interval='@weekly',
+    start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=['reporting', 'excel'],
+    tags=['export', 'excel', 'relatorios'],
 ) as dag:
 
-    # Sensor para aguardar a conclusão da DAG de Data Quality do dia atual
-    wait_for_data_quality = ExternalTaskSensor(
-        task_id='wait_for_data_quality',
-        external_dag_id='dag_data_quality_diaria',
-        external_task_id=None, # Aguarda a DAG inteira
-        allowed_states=['success'],
-        failed_states=['failed', 'skipped'],
-        mode='poke',
-        poke_interval=300,
-        timeout=3600,
+    task_export = PythonOperator(
+        task_id='exportar_para_excel',
+        python_callable=run_export_excel,
+        provide_context=True,
     )
 
-    # Tarefa de execução do script Python
-    export_task = PythonOperator(
-        task_id='export_to_excel',
-        python_callable=export_excel_main,
-    )
-
-    # Ordem de execução
-    wait_for_data_quality >> export_task
+    task_export

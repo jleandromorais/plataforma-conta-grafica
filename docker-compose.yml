@@ -1,86 +1,128 @@
-version: "3.8"
 
 x-airflow-common: &airflow-common
-  build:
-    context: .
-    dockerfile: backend/airflow/Dockerfile
-  env_file:
-    - ./backend/.env
+  image: apache/airflow:2.8.1
   environment:
-    _PIP_ADDITIONAL_REQUIREMENTS: "pdfplumber pytesseract"
+    &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_USER}:${PG_PASSWORD}@postgres:${PG_PORT}/airflow_db
-    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
-    # Adicionamos /opt/airflow ao PYTHONPATH para o 'Src' ser reconhecido
-    PYTHONPATH: /opt/airflow:/opt/airflow/backend:/opt/airflow/dags
-    PG_HOST: postgres
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # ✅ CORRIGIDO: PYTHONPATH inclui raiz /opt/airflow E /opt/airflow/backend
+    PYTHONPATH: /opt/airflow:/opt/airflow/backend
+    # ✅ CORRIGIDO: Todas as dependências necessárias
+    _PIP_ADDITIONAL_REQUIREMENTS: >-
+      pdfplumber
+      pytesseract
+      pandas
+      openpyxl
+      PyYAML
+      psycopg2-binary
   volumes:
+    # ✅ DAGs mapeadas para /opt/airflow/dags
     - ./backend/airflow/dags:/opt/airflow/dags
-    - ./backend/airflow/logs:/opt/airflow/logs
-    - ./backend/airflow/plugins:/opt/airflow/plugins
+    # ✅ Backend inteiro mapeado para /opt/airflow/backend
     - ./backend:/opt/airflow/backend
-    - ./Src:/opt/airflow/Src  # <-- NOVA LINHA: Mapeia a tua lógica de negócio
-    - ./reports:/opt/airflow/reports  # <-- NOVO: Mapeia pasta de relatórios Excel/PDF
+    - ./logs:/opt/airflow/logs
+    - ./config:/opt/airflow/config
+    - ./plugins:/opt/airflow/plugins
+    # ✅ Reports mapeado para acessar Excel gerado
+    - ./reports:/opt/airflow/reports
+  user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
+    &airflow-common-depends-on
     postgres:
       condition: service_healthy
 
 services:
   postgres:
-    image: postgres:16
-    container_name: postgres-plataforma
-    restart: always
-    env_file:
-      - ./backend/.env
+    image: postgres:13
     environment:
-      POSTGRES_USER: ${PG_USER}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
-      POSTGRES_DB: ${PG_DB}
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+  
+  postgres-data:
+    image: postgres:13
+    container_name: postgres-plataforma
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: plataforma
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres-data-volume:/var/lib/postgresql/data
+      - ./backend/warehouse/create_schemas.sql:/docker-entrypoint-initdb.d/01_create_schemas.sql
+      - ./backend/data_quality/example_data.sql:/docker-entrypoint-initdb.d/02_example_data.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
-      timeout: 5s
       retries: 5
-
-  airflow-init:
-    <<: *airflow-common
-    container_name: airflow-init
-    command: >
-      bash -c "
-      airflow db migrate &&
-      airflow users create
-      --username admin
-      --password admin
-      --firstname Admin
-      --lastname User
-      --role Admin
-      --email admin@example.com
-      || true
-      "
+      start_period: 5s
+    restart: always
 
   airflow-webserver:
     <<: *airflow-common
-    container_name: airflow-webserver
     command: webserver
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
     depends_on:
+      <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
 
   airflow-scheduler:
     <<: *airflow-common
-    container_name: airflow-scheduler
     command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
     depends_on:
+      <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
 
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    user: "0:0"
+    volumes:
+      - .:/sources
+
 volumes:
-  postgres_data:
+  postgres-db-volume:
+  postgres-data-volume:

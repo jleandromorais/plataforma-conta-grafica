@@ -1,84 +1,47 @@
-# ── Banco de dados locais ─────────────────────────────────────
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Airflow
+backend/airflow/logs/
+logs/
+airflow.db
+airflow.cfg
+webserver_config.py
+
+# Reports
+reports/
+*.xlsx
+*.pdf
+
+# Database
 *.db
 *.sqlite
 *.sqlite3
 
-# ── Dados e Excel (arquivos com dados reais da empresa) ───────
-*.csv
-*.xlsx
-*.xls
-*.zip
-*.rar
-*.7z
-*.pdf
-dados_reais_empresa.json
-_dados_referencia/
-
-# Arquivos de NF e dados operacionais
-NF*/
-NF *.xlsx
-*devolucao*.xlsx
-*faturada*.xlsx
-*cancelada*.xlsx
-*Memoria*Calculo*.xlsx
-Relatorio_PMPV_*.xlsx
-
-# ── Credenciais e segredos ────────────────────────────────────
+# Environment
 .env
-.env.*
-*.env
-secrets.py
-config_local.py
-credenciais.py
-credenciais.json
-credentials.json
-*.key
-*.pem
-*.p12
-*.pfx
-*.cer
+backend/.env
 
-# Caminhos de rede e configurações internas
-config_paths.py
-caminhos_rede.py
-DEFAULT_FILES*
-
-# ── Python ────────────────────────────────────────────────────
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.egg-info/
-.eggs/
-*.egg
-
-# ── PyInstaller (build e distribuição) ────────────────────────
-build/
-dist/
-*.spec
-
-# ── Ambientes virtuais ────────────────────────────────────────
-venv/
-.venv/
-env/
-
-# ── Logs e temporários ────────────────────────────────────────
-*.log
-*.tmp
-*.bak
-*.backup
-_*.py
-
-# ── Cobertura de testes ───────────────────────────────────────
-htmlcov/
-.coverage
-coverage.xml
-.pytest_cache/
-
-# ── IDEs e editores ───────────────────────────────────────────
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+
+# OS
+.DS_Store
 Thumbs.db
-desktop.ini
+
+# Docker
+docker-compose.override.yml
