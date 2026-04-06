@@ -8,7 +8,7 @@ from queue import Queue, Empty
 import pandas as pd
 
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
-from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_CGR_RATE
+from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Database.database import DatabasePMPV
@@ -474,6 +474,16 @@ class TelaAuditoria(ctk.CTkFrame):
                        dados['icms'], dados['pis'], dados['cofins'], int(vol_total), "OK", vol_total)
 
     def _processar_totais_e_ui(self, n_xmls, n_pdfs):
+        # Deduplicar por (empresa, tipo, numero) — segurança contra XMLs repetidos
+        visto = set()
+        unicos = []
+        for r in self.resultados:
+            chave = (r.empresa, r.tipo, r.numero)
+            if chave not in visto:
+                visto.add(chave)
+                unicos.append(r)
+        self.resultados = unicos
+
         nfes = [r for r in self.resultados if r.tipo == 'NF-e']
         ctes = [r for r in self.resultados if r.tipo == 'CT-e']
 
@@ -484,9 +494,11 @@ class TelaAuditoria(ctk.CTkFrame):
         self.valor_total_geral  = self.valor_total_nfe + self.valor_total_cte
         self.volume_total_geral = self.volume_total_nfe + self.volume_total_cte
 
-        icms_total = sum(r.icms for r in self.resultados)
-        self.cgr_liquido = RegrasAuditoria.calcular_cgr_liquido(self.valor_total_geral, icms_total)
-        self._atualizar_painel_cgr(self.valor_total_geral, icms_total, self.cgr_liquido)
+        # CGR = (Σ valor_total[todos] − Σ ICMS[todos]) × (1 − PIS − COFINS)
+        bruto_total = sum(r.valor_total for r in self.resultados)
+        icms_total_all = sum(r.icms for r in self.resultados)
+        self.cgr_liquido = RegrasAuditoria.calcular_cgr_liquido(bruto_total, icms_total_all)
+        self._atualizar_painel_cgr(self.valor_total_geral, icms_total_all, self.cgr_liquido)
 
         self.text_resultados.configure(state="normal")
         self.text_resultados.delete("1.0", "end")
@@ -521,7 +533,7 @@ class TelaAuditoria(ctk.CTkFrame):
                     "pis":         r.pis,
                     "cofins":      r.cofins,
                     "volume_total": r.volume_total,
-                    "cgr_liquido": RegrasAuditoria.calcular_cgr_liquido(r.valor_total, r.icms),
+                    "cgr_liquido": (r.valor_total - r.icms) * (1.0 - PIS_COFINS_RATE),
                 }
                 for r in self.resultados
             ]

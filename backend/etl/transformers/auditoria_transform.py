@@ -1,10 +1,16 @@
 import logging
 
-PIS_COFINS_CGR_RATE = 0.0925  # PIS 1,65% + COFINS 7,60% = 9,25%
+PIS_RATE = 0.0165
+COFINS_RATE = 0.076
+PIS_COFINS_RATE = PIS_RATE + COFINS_RATE  # 0.0925
+
 
 def transformar_auditoria(dados_brutos: dict, empresa: str) -> dict | None:
     """
     Transforma dados brutos de XML Fiscal e calcula o CGR Líquido.
+
+    CGR per-item (todos os tipos):
+      (valor - ICMS) × (1 - PIS_RATE - COFINS_RATE)
     """
     if not dados_brutos or "erro" in dados_brutos:
         return None
@@ -22,8 +28,8 @@ def transformar_auditoria(dados_brutos: dict, empresa: str) -> dict | None:
         # Consolidação do volume (lida com as duas chaves possíveis do extrator)
         volume_total = abs(float(dados_brutos.get("volume_total", dados_brutos.get("volume", 0.0))))
 
-        # Aplicação da regra de negócio: G = (F - ICMS) * (1 - PIS_COFINS_CGR_RATE)
-        cgr_liquido = (valor_total - icms) * (1.0 - PIS_COFINS_CGR_RATE)
+        # CGR: todos os tipos usam a mesma fórmula
+        cgr_liquido = (valor_total - icms) * (1.0 - PIS_COFINS_RATE)
 
         return {
             "empresa": empresa,
