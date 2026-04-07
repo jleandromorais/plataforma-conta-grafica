@@ -79,3 +79,6 @@ _dados_referencia/
 plataforma_pmpv.db
 pmpv_data.db
 RET_dados.db
+
+*.spec
+*.ps1
