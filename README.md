@@ -1,189 +1,96 @@
-# Plataforma Conta Gráfica - Data Engineering
+# Plataforma Conta Grafica
 
-Sistema completo de ETL, Data Warehouse, Data Quality e Relatórios automatizados.
+Automacao de auditoria fiscal para processamento de XML/PDF, consolidacao de dados e geracao de relatorios (CGR / RPV / RET / PMPV).
 
-## 🚀 Quick Start
+## O que este projeto faz
 
-### Pré-requisitos
-- Docker Desktop instalado e rodando
-- Python 3.10+ (para testes locais)
-- 8GB RAM disponível
+- Processa notas fiscais (NF-e e CT-e) por XML e PDF (OCR).
+- Apura valores com e sem tributos com regras de negocio da conta grafica.
+- Gera relatorios Excel consolidados para analise operacional.
+- Disponibiliza pipelines de dados (ETL + Airflow) para execucao recorrente.
 
-### Iniciar Sistema
-
-```powershell
-# 1. Subir todos os serviços
-docker-compose up -d
-
-# 2. Aguardar 2-3 minutos para inicialização
-
-# 3. Acessar Airflow Web UI
-http://localhost:8080
-Login: airflow / airflow
-
-# 4. Ativar DAGs (toggle ON)
-- pipeline_auditoria_xml
-- pipeline_ret_pdf
-- pipeline_consolidacao
-- dag_data_quality_diaria
-- dag_export_excel
-- dag_monitoramento_alertas
-```
-
-## 📊 Arquitetura
-
-```
-PostgreSQL (2 instâncias)
-├─ airflow (metadata)
-└─ plataforma (dados)
-    ├─ raw (dados brutos)
-    ├─ staging (dados limpos)
-    └─ marts (dados agregados)
-
-Apache Airflow
-├─ 6 DAGs automatizadas
-├─ Scheduler (24/7)
-└─ Web UI (porta 8080)
-
-Outputs
-├─ reports/ (Excel diário)
-└─ logs/ (alertas e auditoria)
-```
-
-## 🔄 DAGs e Horários
-
-| DAG | Horário | Função |
-|-----|---------|--------|
-| `pipeline_auditoria_xml` | 00:00 diário | Processa XMLs fiscais |
-| `pipeline_ret_pdf` | 00:00 diário | Processa PDFs de RET |
-| `pipeline_consolidacao` | 00:00 seg | Consolida dados semanais |
-| `dag_data_quality_diaria` | 02:30 diário | Testes de qualidade |
-| `dag_monitoramento_alertas` | Cada 30min | Detecta anomalias |
-| `dag_export_excel` | Semanal | Gera relatório Excel |
-
-## 📁 Estrutura de Pastas
+## Estrutura do repositorio
 
 ```
 plataforma-conta-grafica/
-├── backend/
-│   ├── airflow/dags/        ← DAGs do Airflow
-│   ├── data_quality/        ← Testes e validações
-│   ├── etl/                 ← Extractors, Transformers, Loaders
-│   ├── monitoring/          ← Alertas automáticos
-│   ├── reporting/           ← Export Excel/PDF
-│   └── warehouse/           ← Schema SQL
-├── reports/                 ← Excel gerado automaticamente
-├── logs/                    ← Logs do sistema
-└── docker-compose.yml       ← Configuração Docker
+├── Src/                      # Aplicacao principal (UI, servicos, dominio)
+│   ├── Views/
+│   ├── Services/
+│   ├── Modules/
+│   └── infrastructure/
+├── backend/                  # ETL, Airflow, qualidade e monitoramento
+│   ├── airflow/
+│   ├── etl/
+│   ├── data_quality/
+│   ├── monitoring/
+│   └── reporting/
+├── tests/                    # Testes automatizados
+├── config/
+├── docker-compose.yml
+├── requirements.txt
+└── .env.example
 ```
 
-## 🧪 Testes
+## Requisitos
+
+- Python 3.10+
+- Docker Desktop (opcional, para stack completa com Airflow/Postgres)
+
+## Configuracao local
+
+1. Crie e ative ambiente virtual.
+2. Instale dependencias.
+3. Copie `.env.example` para `.env` e ajuste variaveis.
+
+### Windows PowerShell
 
 ```powershell
-# Testes unitários
-python -m pytest tests/test_dq_staging.py -v
-
-# Testes locais
-python backend/reporting/export_excel.py
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-## 🔧 Configuração
+## Execucao
 
-### Variáveis de Ambiente (.env)
-
-```bash
-# PostgreSQL
-PG_USER=postgres
-PG_PASSWORD=admin
-PG_HOST=localhost
-PG_PORT=5432
-PG_DB=plataforma
-
-# SMTP (Alertas)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=seu_email@gmail.com
-SMTP_PASSWORD=seu_app_password
-ALERT_FROM=seu_email@gmail.com
-ALERT_TO=destinatario@empresa.com
-```
-
-### Mudar Horários das DAGs
-
-Edite o arquivo da DAG:
-```python
-# backend/airflow/dags/dag_export_excel.py
-schedule_interval='0 8 * * *'  # 08:00 todo dia
-```
-
-Formato cron:
-- `0 8 * * *` = 08:00 todo dia
-- `0 8 * * 1-5` = 08:00 seg-sex
-- `*/30 * * * *` = A cada 30 minutos
-
-## 📊 Verificar Resultados
+### Aplicacao desktop
 
 ```powershell
-# Excel gerado
-ls reports\relatorio_geral_*.xlsx
-
-# Logs de alertas
-cat logs\alerts_*.log
-
-# Status dos containers
-docker ps
-
-# Logs do Airflow
-docker logs airflow-scheduler --tail 100
+python start.py
 ```
 
-## 🛠️ Troubleshooting
+### Stack de dados com Docker
 
-### Porta 5432 já em uso
 ```powershell
-docker-compose down -v
-docker container prune -f
 docker-compose up -d
 ```
 
-### DAG com erro de import
+Airflow Web UI:
+
+- URL: http://localhost:8080
+- Usuario: airflow
+- Senha: airflow
+
+## Testes
+
 ```powershell
-docker logs airflow-scheduler --tail 200 | grep ERROR
+python -m pytest -q
 ```
 
-### Excel vazio
-Verificar se há dados em marts:
-```powershell
-docker exec postgres-plataforma psql -U postgres -d plataforma -c "SELECT COUNT(*) FROM marts.visao_geral;"
-```
+## Publicacao no GitHub (checklist)
 
-### Rebuild completo
-```powershell
-docker-compose down -v
-docker-compose build --no-cache
-docker-compose up -d
-```
+- [x] Arquivos locais/sensiveis ignorados no `.gitignore`.
+- [x] Exemplo de variaveis em `.env.example`.
+- [x] README com setup e execucao.
+- [ ] Remover do indice git arquivos grandes ja versionados anteriormente.
+- [ ] Rotacionar chaves de API se alguma chave real ja foi exposta.
 
-## 📧 Configurar Alertas Gmail
+## Observacoes importantes
 
-1. Acesse: https://myaccount.google.com/
-2. Segurança → Senhas de Aplicativo
-3. Gere senha para "Mail"
-4. Cole no `.env` em `SMTP_PASSWORD`
+- Nunca commitar `.env` real.
+- Nunca commitar bancos locais (`*.db`) e arquivos de entrada grandes (`*.zip`, `*.rar`).
+- O fallback Gemini para OCR depende de quota/billing no projeto Google API.
 
-## 🎯 Passos Concluídos
+## Licenca
 
-✅ Passo 1: ETL Modular  
-✅ Passo 2: PostgreSQL + Migração  
-✅ Passo 3: Data Warehouse (raw, staging, marts)  
-✅ Passo 4: Airflow Orchestration  
-✅ Passo 5: Data Quality (pytest + SQL checks)  
-✅ Passo 6: Excel Reporting  
-✅ Passo 7: Alertas Automáticos  
-
-## 📞 Suporte
-
-Para dúvidas ou problemas, verifique logs:
-- Airflow: `docker logs airflow-scheduler`
-- PostgreSQL: `docker logs postgres-plataforma`
-- DAG específica: Airflow Web UI → DAG → View Log
+Defina a licenca antes de publicar (sugestao: MIT).

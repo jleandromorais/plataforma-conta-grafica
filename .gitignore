@@ -4,12 +4,24 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.venv/
 venv/
 env/
 ENV/
 *.egg-info/
+*.egg
+pip-wheel-metadata/
+__pypackages__/
 dist/
 build/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
 # Airflow
 backend/airflow/logs/
@@ -22,15 +34,19 @@ webserver_config.py
 reports/
 *.xlsx
 *.pdf
+*.csv
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
 
 # Environment
 .env
 backend/.env
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -45,3 +61,21 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Local build/runtime artifacts
+__pycache__/
+dist/
+build/
+tmp/
+temp/
+
+# Large input archives and local raw data
+*.zip
+*.rar
+Src/Arch/
+_dados_referencia/
+
+# Project local files
+plataforma_pmpv.db
+pmpv_data.db
+RET_dados.db

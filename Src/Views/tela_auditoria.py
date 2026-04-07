@@ -168,8 +168,8 @@ class TelaAuditoria(ctk.CTkFrame):
         frame_btns = ctk.CTkFrame(rodape_acoes, fg_color="transparent")
         frame_btns.pack(fill="x", pady=(0, 6))
 
-        self.btn_auditar = ctk.CTkButton(frame_btns, text="⚡ AUDITORIA COMPLETA", command=self.iniciar_auditoria,
-                                         font=("Roboto", 14, "bold"), height=42, fg_color="#e74c3c", hover_color="#c0392b", state="disabled")
+        self.btn_auditar = ctk.CTkButton(frame_btns, text="📊 GERAR RELATÓRIO EXCEL", command=self.iniciar_auditoria,
+                                         font=("Roboto", 14, "bold"), height=42, fg_color="#1a5276", hover_color="#2e86c1", state="disabled")
         self.btn_auditar.pack(side="left", expand=True, fill="x", padx=(0, 8))
 
         self.btn_somatorio = ctk.CTkButton(frame_btns, text="📊 SÓ SOMATÓRIO", command=self.calcular_somatorio,
@@ -391,6 +391,7 @@ class TelaAuditoria(ctk.CTkFrame):
                                     dados.get("numero", "N/A"),
                                     vf,
                                     dados.get("icms", 0.0),
+                                    dados.get("icms_taxa", 0.0),
                                     dados.get("pis", 0.0),
                                     dados.get("cofins", 0.0),
                                     dados.get("volume", 0),
@@ -432,34 +433,78 @@ class TelaAuditoria(ctk.CTkFrame):
             self.after(120, self._poll_fila_auditoria)
 
     def calcular_somatorio(self):
-        if not self.pasta_selecionada: return
+        if not self.pasta_selecionada or self._processando_auditoria:
+            return
+
+        self._alterar_estado_processamento(True)
         self.resultados.clear()
-        
-        pasta = Path(self.pasta_selecionada)
-        xmls = list({p.resolve() for p in pasta.rglob("*.xml")})
-        pdfs = list({p.resolve() for p in pasta.rglob("*.pdf")})
+        self.text_resultados.configure(state="normal")
+        self.text_resultados.delete("1.0", "end")
+        self.text_resultados.insert("end", "⏳ Calculando somatório em segundo plano...\n")
+        self.text_resultados.configure(state="disabled")
+        self.lbl_status.configure(text="Iniciando somatório...", text_color="#f39c12")
 
         usar_pdf = self.modo_fonte.get() == "PDF"
-        if not usar_pdf:
-            arquivos_xml = xmls
-            pastas_com_xml = {p.parent for p in xmls}
-            arquivos_pdf = [p for p in pdfs if p.parent not in pastas_com_xml]
-        else:
-            arquivos_xml = []
-            arquivos_pdf = pdfs
+        self._thread_auditoria = threading.Thread(
+            target=self._worker_somatorio,
+            args=(usar_pdf,),
+            daemon=True,
+        )
+        self._thread_auditoria.start()
+        self.after(120, self._poll_fila_auditoria)
 
-        for xml_path in arquivos_xml:
-            res = self._auditar_xml(xml_path, "Múltiplas")
-            if res: self.resultados.append(res)
-            
-        for pdf_path in arquivos_pdf:
-             dados = RegrasAuditoria.parse_pdf_ocr(pdf_path)
-             if 'erro' not in dados:
-                 self.resultados.append(XMLItem("Múltiplas", dados.get('tipo', 'NF-e'), dados.get('numero', 'N/A'),
-                        dados.get('valor_total', 0.0), dados.get('icms', 0.0), 0.0, 0.0,
-                        dados.get('volume', 0), 'OCR', dados.get('volume_total', 0.0)))
-        
-        self._processar_totais_e_ui(len(arquivos_xml), len(arquivos_pdf))
+    def _worker_somatorio(self, usar_pdf: bool):
+        try:
+            pasta = Path(self.pasta_selecionada)
+            self._fila_auditoria.put(("status", "🔍 Varrendo arquivos..."))
+            xmls = list({p.resolve() for p in pasta.rglob("*.xml")})
+            pdfs = list({p.resolve() for p in pasta.rglob("*.pdf")})
+
+            if not usar_pdf:
+                arquivos_xml = xmls
+                pastas_com_xml = {p.parent for p in xmls}
+                arquivos_pdf = [p for p in pdfs if p.parent not in pastas_com_xml]
+            else:
+                arquivos_xml = []
+                arquivos_pdf = pdfs
+
+            resultados: list[XMLItem] = []
+            total_xmls = 0
+            total_ocr = 0
+
+            for idx, xml_path in enumerate(arquivos_xml, 1):
+                total_xmls += 1
+                res = self._auditar_xml(xml_path, xml_path.parent.name)
+                if res:
+                    resultados.append(res)
+                if idx % 30 == 0:
+                    self._fila_auditoria.put(("status", f"📄 XMLs: {idx}/{len(arquivos_xml)}"))
+
+            for idx, pdf_path in enumerate(arquivos_pdf, 1):
+                total_ocr += 1
+                dados = RegrasAuditoria.parse_pdf_ocr(pdf_path)
+                if "erro" not in dados:
+                    resultados.append(
+                        XMLItem(
+                            pdf_path.parent.name,
+                            dados.get("tipo", "NF-e"),
+                            dados.get("numero", "N/A"),
+                            dados.get("valor_total", 0.0),
+                            dados.get("icms", 0.0),
+                            dados.get("icms_taxa", 0.0),
+                            dados.get("pis", 0.0),
+                            dados.get("cofins", 0.0),
+                            dados.get("volume", 0),
+                            "OCR",
+                            dados.get("volume_total", 0.0),
+                        )
+                    )
+                if idx % 10 == 0:
+                    self._fila_auditoria.put(("status", f"📄 PDFs: {idx}/{len(arquivos_pdf)}"))
+
+            self._fila_auditoria.put(("done", resultados, total_xmls, total_ocr))
+        except Exception as e:
+            self._fila_auditoria.put(("error", str(e)))
 
     def _auditar_xml(self, xml_path: Path, empresa: str) -> XMLItem:
         tipo = RegrasAuditoria.detectar_tipo_xml(xml_path)
@@ -471,7 +516,7 @@ class TelaAuditoria(ctk.CTkFrame):
         
         vol_total = dados.get('volume_total', float(dados.get('volume', 0)))
         return XMLItem(empresa, dados['tipo'], dados['numero'], dados['valor_total'],
-                       dados['icms'], dados['pis'], dados['cofins'], int(vol_total), "OK", vol_total)
+                       dados['icms'], dados.get('icms_taxa', 0.0), dados['pis'], dados['cofins'], int(vol_total), "OK", vol_total)
 
     def _processar_totais_e_ui(self, n_xmls, n_pdfs):
         # Deduplicar por (empresa, tipo, numero) — segurança contra XMLs repetidos
@@ -507,9 +552,28 @@ class TelaAuditoria(ctk.CTkFrame):
         self.text_resultados.configure(state="disabled")
 
         self.btn_salvar_scg.configure(state="normal")
-        if self.excel_path and messagebox.askyesno("Exportar", "Gerar relatório Excel?"):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            ExcelAuditoria.gerar_relatorio_auditoria(self.resultados, f"Auditoria_{timestamp}.xlsx")
+        self._gerar_e_salvar_excel()
+
+    def _gerar_e_salvar_excel(self):
+        if not self.resultados:
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"Relatorio_Auditoria_{timestamp}.xlsx"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+            initialfile=default_name,
+            title="Salvar Relatório Excel",
+        )
+        if not path:
+            return
+        try:
+            ExcelAuditoria.gerar_relatorio_auditoria(
+                self.resultados, path, cgr_total=self.cgr_liquido
+            )
+            messagebox.showinfo("✅ Exportado", f"Relatório salvo em:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Erro ao Exportar", f"Falha ao gerar o Excel:\n{e}")
 
     def _salvar_cgr_scg(self):
         cgr = getattr(self, 'cgr_liquido', 0.0)
