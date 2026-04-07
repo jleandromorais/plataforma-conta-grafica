@@ -211,7 +211,8 @@ class TelaAuditoria(ctk.CTkFrame):
             self.after(80, self._poll_fila_carregamento)
     
     def _criar_checkboxes_empresas(self):
-        for cb in self.checkboxes_empresas: cb.destroy()
+        for _, _, cb in self.checkboxes_empresas:
+            cb.destroy()
         self.checkboxes_empresas.clear()
         for empresa in self.empresas_disponiveis:
             var = tk.BooleanVar(value=True)
@@ -474,7 +475,9 @@ class TelaAuditoria(ctk.CTkFrame):
 
             for idx, xml_path in enumerate(arquivos_xml, 1):
                 total_xmls += 1
-                res = self._auditar_xml(xml_path, xml_path.parent.name)
+                # No somatório, manter empresa agregada evita quebrar a deduplicação
+                # quando o arquivo está em subpastas diferentes da mesma empresa.
+                res = self._auditar_xml(xml_path, "Múltiplas")
                 if res:
                     resultados.append(res)
                 if idx % 30 == 0:
@@ -486,7 +489,7 @@ class TelaAuditoria(ctk.CTkFrame):
                 if "erro" not in dados:
                     resultados.append(
                         XMLItem(
-                            pdf_path.parent.name,
+                            "Múltiplas",
                             dados.get("tipo", "NF-e"),
                             dados.get("numero", "N/A"),
                             dados.get("valor_total", 0.0),
@@ -539,10 +542,13 @@ class TelaAuditoria(ctk.CTkFrame):
         self.valor_total_geral  = self.valor_total_nfe + self.valor_total_cte
         self.volume_total_geral = self.volume_total_nfe + self.volume_total_cte
 
-        # CGR = (Σ valor_total[todos] − Σ ICMS[todos]) × (1 − PIS − COFINS)
+        # Cálculo por documento (mesma lógica validada contra planilha Arch)
         bruto_total = sum(r.valor_total for r in self.resultados)
-        icms_total_all = sum(r.icms for r in self.resultados)
-        self.cgr_liquido = RegrasAuditoria.calcular_cgr_liquido(bruto_total, icms_total_all)
+        icms_total_all = sum(r.valor_total * r.icms_taxa for r in self.resultados)
+        self.cgr_liquido = sum(
+            RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa)
+            for r in self.resultados
+        )
         self._atualizar_painel_cgr(self.valor_total_geral, icms_total_all, self.cgr_liquido)
 
         self.text_resultados.configure(state="normal")
@@ -597,7 +603,7 @@ class TelaAuditoria(ctk.CTkFrame):
                     "pis":         r.pis,
                     "cofins":      r.cofins,
                     "volume_total": r.volume_total,
-                    "cgr_liquido": (r.valor_total - r.icms) * (1.0 - PIS_COFINS_RATE),
+                    "cgr_liquido": RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa),
                 }
                 for r in self.resultados
             ]
