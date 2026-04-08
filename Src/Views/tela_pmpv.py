@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog
+from datetime import datetime
 
 # --- IMPORTAÇÕES DA NOVA ARQUITETURA ---
 # Vai buscar as regras matemáticas à pasta Services
@@ -8,6 +9,8 @@ from Src.Services.servicos_pmpv import ExcelPMPV
 # Casos de uso da aplicação (desacoplados da infraestrutura)
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
+from Src.common.excel_final_destino import escolher_destino_excel_final
 
 # ==========================================
 # 3. INTERFACE GRÁFICA (A Tela)
@@ -77,18 +80,20 @@ class TelaPMPV(ctk.CTkFrame):
         self.lbl_final.pack()
         vp_row = ctk.CTkFrame(center, fg_color="transparent")
         vp_row.pack(pady=(4, 0))
-        self.lbl_vp = ctk.CTkLabel(vp_row, text="VP Total: — m³", font=("Roboto", 13), text_color="#3498db")
+        self.lbl_vp = ctk.CTkLabel(vp_row, text="Volume Prospectiva Total: — m³", font=("Roboto", 13), text_color="#3498db")
         self.lbl_vp.pack(side="left")
-        self.btn_vp_detail = ctk.CTkButton(vp_row, text="▼ por mês", command=self._popup_vp, width=80, height=22, font=("Roboto", 11), fg_color="#1a5276", hover_color="#2e86c1")
+        self.btn_vp_detail = ctk.CTkButton(vp_row, text="▼ por mês", command=self._popup_vp, width=90, height=22, font=("Roboto", 11), fg_color="#1a5276", hover_color="#2e86c1")
         self.btn_vp_detail.pack(side="left", padx=(8, 0))
 
         right = ctk.CTkFrame(foot, fg_color="transparent")
         right.pack(side="right", padx=20)
-        ctk.CTkButton(right, text="📥 Importar Memória MC", command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=5)
-        ctk.CTkButton(right, text="💾 Salvar Sessão", command=self.salvar, fg_color="#8e44ad").pack(pady=5)
-        ctk.CTkButton(right, text="📅 Salvar PMPV Mensal", command=self._salvar_pmpv_mensal, fg_color="#16a085").pack(pady=5)
-        ctk.CTkButton(right, text="📊 Exportar Excel", command=self.exportar, fg_color="#2980b9").pack(pady=5)
-        ctk.CTkButton(right, text="📄 Exportar Memória MC", command=self.exportar_memoria_mc, fg_color="#1a5276", hover_color="#2e86c1").pack(pady=5)
+        ctk.CTkLabel(right, text="Ações PMPV", font=("Roboto", 13, "bold")).pack(pady=(0, 4))
+        ctk.CTkButton(right, text="📥 Importar Memória de Cálculo", command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=4, fill="x")
+        ctk.CTkButton(right, text="💾 Salvar Sessão no Banco", command=self.salvar, fg_color="#8e44ad").pack(pady=4, fill="x")
+        ctk.CTkButton(right, text="📅 Salvar PMPV Mensal", command=self._salvar_pmpv_mensal, fg_color="#16a085").pack(pady=4, fill="x")
+        ctk.CTkButton(right, text="📊 Exportar Excel do PMPV", command=self.exportar, fg_color="#2980b9").pack(pady=4, fill="x")
+        ctk.CTkButton(right, text="➕ Adicionar ao Excel Final (Módulo 9)", command=self._adicionar_excel_final, fg_color="#6c3483", hover_color="#884ea0").pack(pady=4, fill="x")
+        ctk.CTkButton(right, text="📄 Exportar Memória MC", command=self.exportar_memoria_mc, fg_color="#1a5276", hover_color="#2e86c1").pack(pady=4, fill="x")
 
     def _criar_aba(self, parent, tab_nome: str = ""):
         head = ctk.CTkFrame(parent, height=30, fg_color="#2c3e50")
@@ -224,7 +229,7 @@ class TelaPMPV(ctk.CTkFrame):
 
         self.lbl_pmpv.configure(text=f"PMPV: R$ {self.res_final['pmpv']:.4f}")
         self.lbl_final.configure(text=f"PREÇO FINAL: R$ {self.res_final['preco_final']:.4f}")
-        self.lbl_vp.configure(text=f"VP Total: {self.res_final['vp_mensal']:,.0f} m³")
+        self.lbl_vp.configure(text=f"Volume Prospectiva Total: {self.res_final['vp_mensal']:,.0f} m³")
 
         if self.res_final['avisos']:
             messagebox.showinfo(
@@ -285,7 +290,7 @@ class TelaPMPV(ctk.CTkFrame):
         win.geometry("450x300")
         win.grab_set()
 
-        ctk.CTkLabel(win, text="Volumes (VP) vs (VF) por Mês", font=("Roboto", 15, "bold")).pack(pady=(16, 8))
+        ctk.CTkLabel(win, text="Volume Prospectiva vs Volume Faturado por Mês", font=("Roboto", 15, "bold")).pack(pady=(16, 8))
         frame = ctk.CTkFrame(win, fg_color="#1e1e2e")
         frame.pack(fill="both", expand=True, padx=16, pady=4)
 
@@ -295,8 +300,8 @@ class TelaPMPV(ctk.CTkFrame):
             head = ctk.CTkFrame(frame, fg_color="transparent")
             head.pack(fill="x", padx=12, pady=5)
             ctk.CTkLabel(head, text="Mês", font=("Roboto", 12, "bold"), width=120, anchor="w").pack(side="left")
-            ctk.CTkLabel(head, text="VF (Faturado)", font=("Roboto", 12, "bold"), width=100, anchor="e").pack(side="right")
-            ctk.CTkLabel(head, text="VP (Prospecto)", font=("Roboto", 12, "bold"), width=100, anchor="e").pack(side="right", padx=10)
+            ctk.CTkLabel(head, text="Volume Faturado", font=("Roboto", 12, "bold"), width=115, anchor="e").pack(side="right")
+            ctk.CTkLabel(head, text="Volume Prospectiva", font=("Roboto", 12, "bold"), width=130, anchor="e").pack(side="right", padx=10)
 
             for mes in vp_por_mes.keys():
                 vp_val = vp_por_mes[mes]
@@ -385,6 +390,32 @@ class TelaPMPV(ctk.CTkFrame):
     def exportar_memoria_mc(self):
         if not hasattr(self, 'res_final'): return messagebox.showwarning("Erro", "Calcule o PMPV antes de exportar.")
         messagebox.showinfo("Aviso", "Funcionalidade simplificada para manter o código limpo. Configure exportar aqui.")
+
+    def _adicionar_excel_final(self):
+        if not hasattr(self, 'res_final'):
+            return messagebox.showwarning("Aviso", "Calcule o PMPV antes de adicionar ao Excel final.")
+
+        nome_padrao = datetime.now().strftime("PMPV_%d%m%Y_%H%M")
+        nome = simpledialog.askstring("Sessão PMPV", "Nome da sessão PMPV para o Excel final:", initialvalue=nome_padrao, parent=self)
+        if not nome or not nome.strip():
+            return
+        dados = self._get_data_dict()
+        self.use_cases.salvar_sessao_completa(nome.strip(), dados, self.res_final)
+
+        periodo = simpledialog.askstring(
+            "Excel final (Módulo 9)",
+            "Período para o relatório final (ex: Dez/2025).\nDeixe em branco para incluir todos:",
+            parent=self,
+        )
+
+        if periodo is None:
+            return
+
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
 
     def _salvar_pmpv_mensal(self):
         if not hasattr(self, 'res_final'): return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")

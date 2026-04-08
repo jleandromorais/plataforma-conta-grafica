@@ -115,7 +115,11 @@ class ServicosCGF:
 
         return {
             "logs": logs,
-            "volume_final": volume_final
+            "volume_final": volume_final,
+            "volume_faturado": total_faturado,
+            "volume_canceladas": total_canceladas,
+            "volume_devolucoes": total_devolucoes,
+            "volume_consumo_proprio": total_consumo_proprio,
         }
 
     # Interações com Banco de Dados

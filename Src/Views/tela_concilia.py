@@ -11,8 +11,10 @@ from Src.Services.servicos_concilia import RegrasConcilia
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
+from Src.common.excel_final_destino import escolher_destino_excel_final
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Database.database import DatabasePMPV
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 class TelaConciliador(ctk.CTkFrame):
     def __init__(self, parent=None):
@@ -52,6 +54,18 @@ class TelaConciliador(ctk.CTkFrame):
         self.btn_salvar_scg = ctk.CTkButton(self, text="💾 SALVAR SALDO (RP) NO SCG", command=self._salvar_rp_scg,
                                            font=("Roboto", 13, "bold"), height=38, fg_color="#27ae60", state="disabled")
         self.btn_salvar_scg.pack(fill="x", padx=40, pady=(0, 15))
+
+        self.btn_excel_final = ctk.CTkButton(
+            self,
+            text="➕ Adicionar ao Excel Final (Módulo 9)",
+            command=self._adicionar_excel_final,
+            font=("Roboto", 13, "bold"),
+            height=38,
+            fg_color="#6c3483",
+            hover_color="#884ea0",
+            state="disabled",
+        )
+        self.btn_excel_final.pack(fill="x", padx=40, pady=(0, 15))
 
         # LOG
         self.log_box = ctk.CTkTextbox(self, height=200, font=("Consolas", 12))
@@ -121,6 +135,7 @@ class TelaConciliador(ctk.CTkFrame):
             msg = f"Finalizado!\nSaldo: R$ {format_brl_plain(self._ultimo_saldo_rp)}"
             messagebox.showinfo("Sucesso", msg)
             self.btn_salvar_scg.configure(state="normal")
+            self.btn_excel_final.configure(state="normal")
 
         except Exception as e:
             self.log_message(f"ERRO: {e}")
@@ -168,3 +183,44 @@ class TelaConciliador(ctk.CTkFrame):
         self.progress.stop()
         self.progress.set(1)
         self.btn_run.configure(state="normal", text="⚡ PROCESSAR E CONCILIAR")
+
+    def _adicionar_excel_final(self):
+        saldo = getattr(self, "_ultimo_saldo_rp", None)
+        itens = getattr(self, "_ultimos_itens_concilia", [])
+        if saldo is None:
+            messagebox.showwarning("Aviso", "Processe a Conciliação antes de adicionar ao Excel final.")
+            return
+
+        periodo = simpledialog.askstring(
+            "Excel Final (Módulo 9)",
+            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+            parent=self,
+        )
+        if periodo is None:
+            return
+
+        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+
+        self.consolidacao.salvar_rp(periodo_salvar, saldo)
+        if itens:
+            itens_dict = [
+                {
+                    "arquivo": it.file_name,
+                    "categoria": it.category,
+                    "valor": it.amount,
+                    "status": it.status,
+                    "metodo": it.method,
+                }
+                for it in itens
+            ]
+            db = DatabasePMPV()
+            try:
+                db.salvar_concilia_itens(periodo_salvar, itens_dict)
+            finally:
+                db.fechar()
+
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")

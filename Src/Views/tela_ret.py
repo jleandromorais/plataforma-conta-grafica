@@ -9,7 +9,9 @@ from pathlib import Path
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.excel_ret import ExcelRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.common.excel_final_destino import escolher_destino_excel_final
 from Src.Database.database import DatabasePMPV
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 _APP_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
            else os.path.dirname(os.path.abspath(__file__))
@@ -195,6 +197,16 @@ class TelaRET(ctk.CTkFrame):
             height=35,
             fg_color="#27ae60",
             hover_color="#229954"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            btn_frame,
+            text="➕ Excel Final (Módulo 9)",
+            command=self._adicionar_excel_final,
+            width=180,
+            height=35,
+            fg_color="#6c3483",
+            hover_color="#884ea0"
         ).pack(side="left", padx=5)
     
     def log(self, mensagem):
@@ -544,3 +556,33 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             f"RET (EC): {total_fmt}\n\n"
             f"{len(self.dados_processados)} documento(s) salvo(s) no banco."
         )
+
+    def _adicionar_excel_final(self):
+        if not hasattr(self, 'dados_processados') or not self.dados_processados:
+            messagebox.showwarning("Aviso", "Processe os PDFs do RET antes de adicionar ao Excel final.")
+            return
+
+        periodo = simpledialog.askstring(
+            "Excel Final (Módulo 9)",
+            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+            parent=self,
+        )
+        if periodo is None:
+            return
+
+        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+        calc = RegrasRET.calcular_ret(self.dados_processados)
+        total_geral = calc['ret']
+
+        self.consolidacao.salvar_ret(periodo_salvar, total_geral)
+        db = DatabasePMPV()
+        try:
+            db.salvar_ret_itens(periodo_salvar, self.dados_processados)
+        finally:
+            db.fechar()
+
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")

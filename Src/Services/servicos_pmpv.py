@@ -5,6 +5,60 @@ import pandas as pd
 # ==========================================
 class ExcelPMPV:
     """Lê e interpreta dados de ficheiros Excel usando pandas."""
+
+    @staticmethod
+    def _normalizar_mes(texto: str) -> str:
+        if texto is None:
+            return ""
+
+        txt = str(texto).strip().lower()
+        txt = txt.replace(".", "").replace("-", "/")
+        txt = " ".join(txt.split())
+
+        mapa = {
+            "janeiro": "jan", "jan": "jan",
+            "fevereiro": "fev", "fev": "fev", "feb": "fev",
+            "marco": "mar", "março": "mar", "mar": "mar",
+            "abril": "abr", "abr": "abr", "apr": "abr",
+            "maio": "mai", "mai": "mai", "may": "mai",
+            "junho": "jun", "jun": "jun",
+            "julho": "jul", "jul": "jul",
+            "agosto": "ago", "ago": "ago", "aug": "ago",
+            "setembro": "set", "set": "set", "sep": "set",
+            "outubro": "out", "out": "out", "oct": "out",
+            "novembro": "nov", "nov": "nov",
+            "dezembro": "dez", "dez": "dez", "dec": "dez",
+        }
+
+        if "/" in txt:
+            partes = [p.strip() for p in txt.split("/") if p.strip()]
+            if len(partes) >= 2:
+                mes_raw = partes[0]
+                ano_raw = partes[1]
+                mes_norm = mapa.get(mes_raw, mes_raw[:3])
+
+                ano = "".join(c for c in ano_raw if c.isdigit())
+                if len(ano) == 4:
+                    ano = ano[-2:]
+                elif len(ano) > 2:
+                    ano = ano[-2:]
+
+                return f"{mes_norm}/{ano}" if ano else mes_norm
+
+        if " " in txt:
+            partes = [p for p in txt.split(" ") if p]
+            if len(partes) >= 2:
+                mes_raw = partes[0]
+                ano_raw = partes[1]
+                mes_norm = mapa.get(mes_raw, mes_raw[:3])
+                ano = "".join(c for c in ano_raw if c.isdigit())
+                if len(ano) == 4:
+                    ano = ano[-2:]
+                elif len(ano) > 2:
+                    ano = ano[-2:]
+                return f"{mes_norm}/{ano}" if ano else mes_norm
+
+        return mapa.get(txt, txt[:3])
     
     @staticmethod
     def ler_dados_memoria_calculo(caminho_arquivo, mes_escolhido):
@@ -47,7 +101,16 @@ class ExcelPMPV:
         if not meses_cols:
             raise ValueError("Nenhuma coluna de mês encontrada.")
 
-        col_dados = next((ci for ci, lbl in meses_cols.items() if lbl.lower() == mes_escolhido.lower() or mes_escolhido.lower() in lbl.lower()), None)
+        mes_input_norm = ExcelPMPV._normalizar_mes(mes_escolhido)
+        col_dados = next(
+            (
+                ci
+                for ci, lbl in meses_cols.items()
+                if ExcelPMPV._normalizar_mes(lbl) == mes_input_norm
+                or mes_input_norm in ExcelPMPV._normalizar_mes(lbl)
+            ),
+            None,
+        )
         
         if col_dados is None:
             raise ValueError(f"Mês '{mes_escolhido}' não encontrado.")

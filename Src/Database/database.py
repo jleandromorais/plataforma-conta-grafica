@@ -1,9 +1,13 @@
 import sqlite3
+from pathlib import Path
 from typing import Dict, List
 
 
 class DatabasePMPV:
-    def __init__(self, db_path: str = "pmpv_data.db"):
+    def __init__(self, db_path: str | None = None):
+        if db_path is None:
+            raiz_projeto = Path(__file__).resolve().parents[2]
+            db_path = str(raiz_projeto / "pmpv_data.db")
         self.db_path = db_path
         self.conn = None
         self.cursor = None
@@ -133,6 +137,16 @@ class DatabasePMPV:
                 volume_consumo_proprio  REAL DEFAULT 0,
                 volume_final            REAL DEFAULT 0,
                 data_atualizacao        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS excel_final_sessoes (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome             TEXT NOT NULL,
+                caminho_arquivo  TEXT NOT NULL,
+                ativo            INTEGER DEFAULT 1,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -342,6 +356,10 @@ class DatabasePMPV:
         self.cursor.execute("SELECT periodo, scg, data_atualizacao FROM consolidacao ORDER BY data_criacao DESC")
         return [dict(row) for row in self.cursor.fetchall()]
 
+    def listar_consolidacao_completa(self) -> List[Dict]:
+        self.cursor.execute("SELECT * FROM consolidacao ORDER BY data_criacao DESC")
+        return [dict(row) for row in self.cursor.fetchall()]
+
     def apagar_periodo(self, periodo: str):
         self.cursor.execute("DELETE FROM consolidacao WHERE periodo = ?", (periodo,))
         self.conn.commit()
@@ -401,10 +419,15 @@ class DatabasePMPV:
             ))
         self.conn.commit()
 
-    def listar_auditoria_itens(self, periodo: str) -> List[Dict]:
-        self.cursor.execute(
-            "SELECT * FROM auditoria_itens WHERE periodo = ? ORDER BY empresa, tipo", (periodo,)
-        )
+    def listar_auditoria_itens(self, periodo: str | None = None) -> List[Dict]:
+        if periodo:
+            self.cursor.execute(
+                "SELECT * FROM auditoria_itens WHERE periodo = ? ORDER BY empresa, tipo", (periodo,)
+            )
+        else:
+            self.cursor.execute(
+                "SELECT * FROM auditoria_itens ORDER BY periodo DESC, empresa, tipo"
+            )
         return [dict(r) for r in self.cursor.fetchall()]
 
     def listar_periodos_auditoria(self) -> List[str]:
@@ -440,10 +463,15 @@ class DatabasePMPV:
             ))
         self.conn.commit()
 
-    def listar_ret_itens(self, periodo: str) -> List[Dict]:
-        self.cursor.execute(
-            "SELECT * FROM ret_itens WHERE periodo = ? ORDER BY tipo_encargo, empresa", (periodo,)
-        )
+    def listar_ret_itens(self, periodo: str | None = None) -> List[Dict]:
+        if periodo:
+            self.cursor.execute(
+                "SELECT * FROM ret_itens WHERE periodo = ? ORDER BY tipo_encargo, empresa", (periodo,)
+            )
+        else:
+            self.cursor.execute(
+                "SELECT * FROM ret_itens ORDER BY periodo DESC, tipo_encargo, empresa"
+            )
         return [dict(r) for r in self.cursor.fetchall()]
 
     def listar_periodos_ret(self) -> List[str]:
@@ -473,10 +501,15 @@ class DatabasePMPV:
             ))
         self.conn.commit()
 
-    def listar_concilia_itens(self, periodo: str) -> List[Dict]:
-        self.cursor.execute(
-            "SELECT * FROM concilia_itens WHERE periodo = ? ORDER BY categoria, arquivo", (periodo,)
-        )
+    def listar_concilia_itens(self, periodo: str | None = None) -> List[Dict]:
+        if periodo:
+            self.cursor.execute(
+                "SELECT * FROM concilia_itens WHERE periodo = ? ORDER BY categoria, arquivo", (periodo,)
+            )
+        else:
+            self.cursor.execute(
+                "SELECT * FROM concilia_itens ORDER BY periodo DESC, categoria, arquivo"
+            )
         return [dict(r) for r in self.cursor.fetchall()]
 
     def listar_periodos_concilia(self) -> List[str]:
@@ -525,6 +558,30 @@ class DatabasePMPV:
         row = self.cursor.fetchone()
         return dict(row) if row else None
 
+    def listar_cgf_resumos(self) -> List[Dict]:
+        self.cursor.execute("SELECT * FROM cgf_resumo ORDER BY data_atualizacao DESC")
+        return [dict(r) for r in self.cursor.fetchall()]
+
+    def salvar_sessao_excel_final(self, nome: str, caminho_arquivo: str, ativo: bool = True) -> int:
+        if ativo:
+            self.cursor.execute("UPDATE excel_final_sessoes SET ativo = 0")
+        self.cursor.execute(
+            """
+            INSERT INTO excel_final_sessoes (nome, caminho_arquivo, ativo, data_atualizacao)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (nome, caminho_arquivo, 1 if ativo else 0),
+        )
+        self.conn.commit()
+        return self.cursor.lastrowid
+
+    def buscar_sessao_excel_final_ativa(self) -> Dict | None:
+        self.cursor.execute(
+            "SELECT * FROM excel_final_sessoes WHERE ativo = 1 ORDER BY data_atualizacao DESC LIMIT 1"
+        )
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+
     # ==========================================
     # SESSÕES COM VOLUMES (PMPV)
     # ==========================================
@@ -541,14 +598,19 @@ class DatabasePMPV:
                 s.id,
                 s.nome,
                 strftime('%d/%m/%Y %H:%M', s.data_criacao) AS data_criacao,
-                COALESCE(r.volume_total, 0.0) AS vf,
+                COALESCE((
+                    SELECT r2.volume_total
+                    FROM resultados r2
+                    WHERE r2.sessao_id = s.id
+                    ORDER BY r2.id DESC
+                    LIMIT 1
+                ), 0.0) AS vf,
                 COALESCE((
                     SELECT SUM(dm.volume)
                     FROM dados_mes dm
                     WHERE dm.sessao_id = s.id
                 ), 0.0) AS vp
             FROM sessoes s
-            LEFT JOIN resultados r ON r.sessao_id = s.id
             ORDER BY s.data_criacao DESC
         """)
         return [dict(row) for row in self.cursor.fetchall()]

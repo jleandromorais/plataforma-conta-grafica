@@ -125,6 +125,21 @@ class ExcelConsolidado:
     """Gera o Relatório Consolidado completo a partir do banco de dados."""
 
     @staticmethod
+    def _agregar_consolidacao(registros: list[dict]) -> dict:
+        total = {
+            "cgr": 0.0,
+            "cgf": 0.0,
+            "ret": 0.0,
+            "rp": 0.0,
+            "rpv": 0.0,
+            "scg": 0.0,
+        }
+        for registro in registros:
+            for chave in total:
+                total[chave] += registro.get(chave, 0.0) or 0.0
+        return total
+
+    @staticmethod
     def exportar(periodo: str | None = None, nome_arquivo: str | None = None) -> str:
         """
         Gera o Excel consolidado.
@@ -174,23 +189,26 @@ class ExcelConsolidado:
             wb.remove(wb["Sheet"])
 
         # Coleta dados do BD
-        cons  = db.buscar_consolidacao(periodo or "")
+        cons_periodos = db.listar_consolidacao_completa()
+        cons = db.buscar_consolidacao(periodo) if periodo else ExcelConsolidado._agregar_consolidacao(cons_periodos)
         pmpv_sessoes = db.listar_sessoes_com_volumes()
-        audit_itens  = db.listar_auditoria_itens(periodo or "")
-        ret_itens    = db.listar_ret_itens(periodo or "")
-        conc_itens   = db.listar_concilia_itens(periodo or "")
-        cgf          = db.buscar_cgf_resumo(periodo or "")
-        sr           = db.buscar_sr(periodo or "")
+        audit_itens  = db.listar_auditoria_itens(periodo)
+        ret_itens    = db.listar_ret_itens(periodo)
+        conc_itens   = db.listar_concilia_itens(periodo)
+        cgf          = db.buscar_cgf_resumo(periodo) if periodo else None
+        cgf_lista    = [cgf] if periodo and cgf else db.listar_cgf_resumos()
+        sr           = db.buscar_sr(periodo) if periodo else None
+        sr_lista     = [sr] if periodo and sr else db.listar_sr()
         pmpv_mensal  = db.listar_pmpv_mensal()
 
         # Sheets
-        ExcelConsolidado._sheet_resumo(wb, cons, pmpv_sessoes, cgf, sr, periodo)
+        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, periodo)
         ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes)
         ExcelConsolidado._sheet_auditoria(wb, audit_itens, periodo)
         ExcelConsolidado._sheet_ret(wb, ret_itens, periodo)
         ExcelConsolidado._sheet_concilia(wb, conc_itens, periodo)
-        ExcelConsolidado._sheet_cgf(wb, cgf, periodo)
-        ExcelConsolidado._sheet_scg(wb, cons, sr, periodo)
+        ExcelConsolidado._sheet_cgf(wb, cgf if periodo else cgf_lista, periodo)
+        ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
 
         wb.save(final)
         wb.close()
@@ -205,7 +223,7 @@ class ExcelConsolidado:
     # ── Sheet 1: Resumo Executivo ────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_resumo(wb, cons, pmpv_sessoes, cgf, sr, periodo):
+    def _sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, periodo):
         ws = wb.create_sheet("📋 Resumo Executivo")
         ws.sheet_view.showGridLines = False
 
@@ -254,6 +272,8 @@ class ExcelConsolidado:
             ws.row_dimensions[row].height = 20
             ws.row_dimensions[row + 1].height = 28
 
+        sr_total = (sr_lista[0] if periodo and sr_lista else None) or None
+
         # CGR
         cgr_val = (cons or {}).get("cgr", 0.0)
         _card("🔍  CGR  (Auditoria XML)", _money_fmt(cgr_val), _BLUE, row, col=1, span=2)
@@ -272,8 +292,8 @@ class ExcelConsolidado:
         rp_val = (cons or {}).get("rp", 0.0)
         _card("📄  RP   (Conciliação)", _money_fmt(rp_val), _TEAL, row, col=3, span=2)
         # SR
-        sr_val = (sr or {}).get("sr", 0.0)
-        _card("📈  SR   (VP − VF) × PR", _money_fmt(sr_val), _NAVY, row, col=5, span=2)
+        sr_val = sum((item or {}).get("sr", 0.0) or 0.0 for item in sr_lista) if not periodo else (sr_total or {}).get("sr", 0.0)
+        _card("📈  SR   (Volume Prospectiva − VF) × PR", _money_fmt(sr_val), _NAVY, row, col=5, span=2)
         row += 3
 
         # SCG Final
@@ -304,7 +324,7 @@ class ExcelConsolidado:
             _section_title(ws, row, "📊  PMPV — Últimas Sessões Salvas", 6, _TEAL)
             row += 1
             _apply_header_row(ws, row,
-                ["Sessão", "Data", "VP (m³)", "VF (m³)", "PMPV (R$/m³)", "Preço Final"],
+                ["Sessão", "Data", "Volume Prospectiva (m³)", "VF (m³)", "PMPV (R$/m³)", "Preço Final"],
                 [30, 18, 16, 16, 16, 16], _TEAL)
             row += 1
             for i, s in enumerate(pmpv_sessoes[:10]):
@@ -312,6 +332,23 @@ class ExcelConsolidado:
                     [s.get("nome", ""), s.get("data_criacao", ""),
                      s.get("vp", 0.0), s.get("vf", 0.0), "", ""],
                     ["@", "@", _VOL, _VOL, _BRL, _BRL],
+                    alternate=(i % 2 == 1))
+                row += 1
+
+        if not periodo and cons_periodos:
+            row += 2
+            _section_title(ws, row, "📚  Consolidação por Período", 8, _NAVY)
+            row += 1
+            _apply_header_row(ws, row,
+                ["Período", "CGR", "CGF", "RPV", "RET", "RP", "SCG", "Atualizado"],
+                [18, 14, 14, 14, 14, 14, 14, 20], _NAVY)
+            row += 1
+            for i, item in enumerate(cons_periodos):
+                _apply_data_row(ws, row,
+                    [item.get("periodo", ""), item.get("cgr", 0.0), item.get("cgf", 0.0),
+                     item.get("rpv", 0.0), item.get("ret", 0.0), item.get("rp", 0.0),
+                     item.get("scg", 0.0), (item.get("data_atualizacao") or "")[:16]],
+                    ["@", _BRL, _BRL, _BRL, _BRL, _BRL, _BRL, "@"],
                     alternate=(i % 2 == 1))
                 row += 1
 
@@ -347,7 +384,7 @@ class ExcelConsolidado:
 
             _section_title(ws, row,
                 f"  Sessão: {nome}  |  Data: {data}  |  "
-                f"VP: {_vol_fmt(sessao.get('vp', 0))} m³  |  "
+                f"Volume Prospectiva: {_vol_fmt(sessao.get('vp', 0))} m³  |  "
                 f"VF: {_vol_fmt(sessao.get('vf', 0))} m³",
                 7, _TEAL)
             row += 1
@@ -415,10 +452,11 @@ class ExcelConsolidado:
         ws.row_dimensions[1].height = 30
 
         row = 3
-        cols  = ["Empresa", "Tipo", "Número",
-                 "Valor Bruto (R$)", "ICMS (R$)", "PIS (R$)", "COFINS (R$)",
-                 "Volume (m³)", "CGR Líquido (R$)", "Status"]
-        widths = [22, 8, 14, 18, 14, 14, 14, 14, 18, 10]
+        mostrar_periodo = periodo is None
+        cols  = (["Período"] if mostrar_periodo else []) + ["Empresa", "Tipo", "Número",
+             "Valor Bruto (R$)", "ICMS (R$)", "PIS (R$)", "COFINS (R$)",
+             "Volume (m³)", "CGR Líquido (R$)", "Status"]
+        widths = ([14] if mostrar_periodo else []) + [22, 8, 14, 18, 14, 14, 14, 14, 18, 10]
         _apply_header_row(ws, row, cols, widths, _BLUE)
         row += 1
 
@@ -439,17 +477,17 @@ class ExcelConsolidado:
             tot_cofins += cf; tot_vol += vol; tot_cgr += cgr
 
             _apply_data_row(ws, row,
-                [it.get("empresa", ""), it.get("tipo", ""), it.get("numero", ""),
+                ([it.get("periodo", "")] if mostrar_periodo else []) + [it.get("empresa", ""), it.get("tipo", ""), it.get("numero", ""),
                  vb, ic, ps, cf, vol, cgr, "OK"],
-                ["@", "@", "@", _BRL, _BRL, _BRL, _BRL, _VOL, _BRL, "@"],
+                (["@"] if mostrar_periodo else []) + ["@", "@", "@", _BRL, _BRL, _BRL, _BRL, _VOL, _BRL, "@"],
                 alternate=(i % 2 == 1))
             row += 1
 
         # Totais
         _apply_total_row(ws, row,
-            ["TOTAL", "", "", tot_bruto, tot_icms, tot_pis,
+            (["TOTAL"] if mostrar_periodo else []) + ["TOTAL", "", "", tot_bruto, tot_icms, tot_pis,
              tot_cofins, tot_vol, tot_cgr, ""],
-            ["@", "@", "@", _BRL, _BRL, _BRL, _BRL, _VOL, _BRL, "@"],
+            (["@"] if mostrar_periodo else []) + ["@", "@", "@", _BRL, _BRL, _BRL, _BRL, _VOL, _BRL, "@"],
             bg="D6EAF8")
 
         ws.column_dimensions["A"].width = 22
@@ -473,9 +511,10 @@ class ExcelConsolidado:
         ws.row_dimensions[1].height = 30
 
         row = 3
-        cols   = ["Arquivo", "Tipo Encargo", "Empresa", "Tipo Nota",
+        mostrar_periodo = periodo is None
+        cols   = (["Período"] if mostrar_periodo else []) + ["Arquivo", "Tipo Encargo", "Empresa", "Tipo Nota",
                   "Nº ND", "Vencimento", "Valor Total (R$)", "Moeda", "Contrib. EC"]
-        widths = [32, 16, 18, 12, 12, 14, 18, 8, 14]
+        widths = ([14] if mostrar_periodo else []) + [32, 16, 18, 12, 12, 14, 18, 8, 14]
         _apply_header_row(ws, row, cols, widths, _ORANGE)
         row += 1
 
@@ -494,17 +533,17 @@ class ExcelConsolidado:
             tipos[t_enc] = tipos.get(t_enc, 0.0) + vt
 
             _apply_data_row(ws, row,
-                [it.get("arquivo", ""), t_enc, it.get("empresa", ""),
+                ([it.get("periodo", "")] if mostrar_periodo else []) + [it.get("arquivo", ""), t_enc, it.get("empresa", ""),
                  it.get("nota_tipo", ""), it.get("numero_nd", ""),
                  it.get("data_vencimento", ""), vt,
                  it.get("moeda", "BRL"), it.get("contrib_ec", "")],
-                ["@", "@", "@", "@", "@", "@", _BRL, "@", "@"],
+                (["@"] if mostrar_periodo else []) + ["@", "@", "@", "@", "@", "@", _BRL, "@", "@"],
                 alternate=(i % 2 == 1))
             row += 1
 
         _apply_total_row(ws, row,
-            ["TOTAL", "", "", "", "", "", total, "", ""],
-            ["@", "@", "@", "@", "@", "@", _BRL, "@", "@"],
+            (["TOTAL"] if mostrar_periodo else []) + ["TOTAL", "", "", "", "", "", total, "", ""],
+            (["@"] if mostrar_periodo else []) + ["@", "@", "@", "@", "@", "@", _BRL, "@", "@"],
             bg="FAD7A0")
         row += 2
 
@@ -537,8 +576,9 @@ class ExcelConsolidado:
         ws.row_dimensions[1].height = 30
 
         row = 3
-        cols   = ["Arquivo", "Categoria", "Valor (R$)", "Status", "Método"]
-        widths = [40, 12, 18, 10, 30]
+        mostrar_periodo = periodo is None
+        cols   = (["Período"] if mostrar_periodo else []) + ["Arquivo", "Categoria", "Valor (R$)", "Status", "Método"]
+        widths = ([14] if mostrar_periodo else []) + [40, 12, 18, 10, 30]
         _apply_header_row(ws, row, cols, widths, _PURPLE)
         row += 1
 
@@ -557,19 +597,19 @@ class ExcelConsolidado:
                 tot_desp += val
 
             _apply_data_row(ws, row,
-                [it.get("arquivo", ""), cat, val,
+                ([it.get("periodo", "")] if mostrar_periodo else []) + [it.get("arquivo", ""), cat, val,
                  it.get("status", ""), it.get("metodo", "")],
-                ["@", "@", _BRL, "@", "@"],
+                (["@"] if mostrar_periodo else []) + ["@", "@", _BRL, "@", "@"],
                 alternate=(i % 2 == 1))
             row += 1
 
         saldo = tot_rec - tot_desp
         _apply_total_row(ws, row,
-            ["TOTAL RECEITA", "Receita", tot_rec, "", ""],
+            (["TOTAL RECEITA"] if mostrar_periodo else []) + ["TOTAL RECEITA", "Receita", tot_rec, "", ""],
             bg="D5F5E3")
         row += 1
         _apply_total_row(ws, row,
-            ["TOTAL DESPESA", "Despesa", tot_desp, "", ""],
+            (["TOTAL DESPESA"] if mostrar_periodo else []) + ["TOTAL DESPESA", "Despesa", tot_desp, "", ""],
             bg="FADBD8")
         row += 1
         bg_saldo = _GREEN if saldo >= 0 else _RED
@@ -592,7 +632,7 @@ class ExcelConsolidado:
     # ── Sheet 6: CGF ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_cgf(wb, cgf: dict | None, periodo: str | None):
+    def _sheet_cgf(wb, cgf: dict | list[dict] | None, periodo: str | None):
         ws = wb.create_sheet("📋 CGF")
         ws.sheet_view.showGridLines = False
 
@@ -605,6 +645,21 @@ class ExcelConsolidado:
         ws.row_dimensions[1].height = 30
 
         row = 3
+        if periodo is None:
+            registros = cgf or []
+            _apply_header_row(ws, row,
+                ["Período", "Volume Faturado", "Consumo Próprio", "Canceladas", "Devoluções", "Volume Final"],
+                [16, 18, 18, 16, 16, 16], _GOLD)
+            row += 1
+            for i, item in enumerate(registros):
+                _apply_data_row(ws, row,
+                    [item.get("periodo", ""), item.get("volume_faturado", 0.0), item.get("volume_consumo_proprio", 0.0),
+                     item.get("volume_canceladas", 0.0), item.get("volume_devolucoes", 0.0), item.get("volume_final", 0.0)],
+                    ["@", _VOL, _VOL, _VOL, _VOL, _VOL],
+                    alternate=(i % 2 == 1))
+                row += 1
+            return
+
         data = cgf or {}
         campos = [
             ("(+) Volume Faturado (s/ cons. próprio)", data.get("volume_faturado", 0.0), _ROW_NORM),
@@ -644,7 +699,7 @@ class ExcelConsolidado:
     # ── Sheet 7: SCG Final ───────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_scg(wb, cons: dict | None, sr: dict | None, periodo: str | None):
+    def _sheet_scg(wb, cons: dict | None, cons_periodos: list[dict], sr: dict | list[dict] | None, periodo: str | None):
         ws = wb.create_sheet("🧾 SCG Final")
         ws.sheet_view.showGridLines = False
 
@@ -657,6 +712,35 @@ class ExcelConsolidado:
         ws.row_dimensions[1].height = 30
 
         row = 3
+        if periodo is None:
+            _apply_header_row(ws, row,
+                ["Período", "CGR", "CGF", "RPV", "RET", "RP", "SCG"],
+                [18, 14, 14, 14, 14, 14, 14], _NAVY)
+            row += 1
+            for i, item in enumerate(cons_periodos):
+                _apply_data_row(ws, row,
+                    [item.get("periodo", ""), item.get("cgr", 0.0), item.get("cgf", 0.0),
+                     item.get("rpv", 0.0), item.get("ret", 0.0), item.get("rp", 0.0), item.get("scg", 0.0)],
+                    ["@", _BRL, _BRL, _BRL, _BRL, _BRL, _BRL],
+                    alternate=(i % 2 == 1))
+                row += 1
+
+            if sr:
+                row += 2
+                _section_title(ws, row, "  📈  SR por Período", 4, _NAVY)
+                row += 1
+                _apply_header_row(ws, row,
+                    ["Período", "VP (m³)", "VF (m³)", "SR (R$)"],
+                    [18, 18, 18, 18], _NAVY)
+                row += 1
+                for i, item in enumerate(sr):
+                    _apply_data_row(ws, row,
+                        [item.get("periodo", ""), item.get("vp", 0.0), item.get("vf", 0.0), item.get("sr", 0.0)],
+                        ["@", _VOL, _VOL, _BRL],
+                        alternate=(i % 2 == 1))
+                    row += 1
+            return
+
         data = cons or {}
 
         cgr = data.get("cgr", 0.0)

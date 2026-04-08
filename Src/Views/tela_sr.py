@@ -5,6 +5,8 @@ from tkinter import simpledialog
 
 from Src.Services.servicos_sr import ServicosSR
 from Src.Database.database import DatabasePMPV
+from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 
 BG = "#0f172a"
@@ -309,6 +311,17 @@ class TelaSR(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_row,
+            text="➕  Excel Final (Módulo 9)",
+            font=("Roboto", 12, "bold"),
+            height=42,
+            width=200,
+            fg_color="#6c3483",
+            hover_color="#884ea0",
+            command=self._adicionar_excel_final,
+        ).pack(side="left", padx=(10, 0))
+
+        ctk.CTkButton(
+            btn_row,
             text="🗑  Limpar",
             font=("Roboto", 12),
             height=42,
@@ -444,6 +457,36 @@ class TelaSR(ctk.CTkFrame):
         self.lbl_sr.configure(text="R$ 0,00", text_color=AMARELO)
         self.lbl_diff.configure(text="ΔV = 0,00 m³")
         self.lbl_origem.configure(text="")
+
+    def _adicionar_excel_final(self):
+        vp, vf, pr = self._obter_valores()
+        if vp == 0 and vf == 0 and pr == 0:
+            messagebox.showwarning("Aviso", "Preencha os campos de SR antes de adicionar ao Excel final.")
+            return
+
+        periodo = simpledialog.askstring(
+            "Excel Final (Módulo 9)",
+            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+            parent=self,
+        )
+        if periodo is None:
+            return
+
+        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+        diff = vp - vf
+        sr = diff * pr
+
+        db = DatabasePMPV()
+        try:
+            db.salvar_sr(periodo_salvar, vp, vf, pr, sr)
+        finally:
+            db.fechar()
+
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
 
 
 if __name__ == "__main__":

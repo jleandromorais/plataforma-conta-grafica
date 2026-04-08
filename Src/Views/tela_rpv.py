@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.Services.servicos_rpv import ServicosRPV
+from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 BG        = "#0f172a"
@@ -122,6 +124,9 @@ class TelaRPV(ctk.CTkFrame):
         ctk.CTkButton(btn_row, text="💾  Salvar RPV no banco", font=("Roboto", 13, "bold"), height=44, width=220,
                       fg_color=ROXO, hover_color="#7c3aed", command=self._salvar_rpv).pack(side="left", padx=(0, 10))
 
+        ctk.CTkButton(btn_row, text="➕  Excel Final (Módulo 9)", font=("Roboto", 12, "bold"), height=44, width=220,
+                  fg_color="#6c3483", hover_color="#884ea0", command=self._adicionar_excel_final).pack(side="left", padx=(0, 10))
+
         ctk.CTkButton(btn_row, text="🔄  Atualizar histórico", font=("Roboto", 12), height=44, width=170,
                       fg_color=INPUT_BG, hover_color=AZUL, command=self._atualizar_historico).pack(side="left")
 
@@ -230,3 +235,22 @@ class TelaRPV(ctk.CTkFrame):
         self.hist_box.insert("end", texto)
         
         self.hist_box.configure(state="disabled")
+
+    def _adicionar_excel_final(self):
+        periodo = self.combo_periodo.get()
+        if not periodo:
+            messagebox.showwarning("Aviso", "Selecione ou crie um período para adicionar ao Excel final.")
+            return
+
+        cgr = ServicosRPV.parse_brl(self.entry_cgr.get())
+        cgf = ServicosRPV.parse_brl(self.entry_cgf.get())
+        if cgr == 0 and cgf == 0:
+            messagebox.showwarning("Aviso", "Preencha CGR/CGF antes de adicionar ao Excel final.")
+            return
+
+        self.servicos.salvar_valores(periodo, cgr, cgf)
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")

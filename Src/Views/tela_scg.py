@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.Services.servicos_scg import ServicosSCG
+from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # ── Cores ────────────────────────────────────────────────────────────────────
 COR_CARD     = "#1e293b" 
@@ -170,6 +172,18 @@ class TelaSCG(ctk.CTkFrame):
         self.btn_calcular = ctk.CTkButton(row_res, text="⚡  CALCULAR SCG", font=("Roboto", 15, "bold"), height=50, width=220, fg_color=COR_VERMELHO, command=self._calcular_scg)
         self.btn_calcular.pack(side="left")
 
+        self.btn_excel_final = ctk.CTkButton(
+            row_res,
+            text="➕ Excel Final (Módulo 9)",
+            font=("Roboto", 13, "bold"),
+            height=50,
+            width=230,
+            fg_color="#6c3483",
+            hover_color="#884ea0",
+            command=self._adicionar_excel_final,
+        )
+        self.btn_excel_final.pack(side="left", padx=(10, 0))
+
         self.lbl_scg = ctk.CTkLabel(row_res, text="SCG =  R$ 0,00", font=("Roboto", 26, "bold"), text_color=COR_AMARELO)
         self.lbl_scg.pack(side="left", padx=30)
 
@@ -286,3 +300,15 @@ class TelaSCG(ctk.CTkFrame):
         self.hist_box.insert("end", texto)
             
         self.hist_box.configure(state="disabled")
+
+    def _adicionar_excel_final(self):
+        if not self.periodo_atual:
+            messagebox.showwarning("Aviso", "Selecione um período antes de gerar o Excel final.")
+            return
+
+        self.servicos.calcular_scg_oficial(self.periodo_atual)
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")

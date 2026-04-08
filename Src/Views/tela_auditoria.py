@@ -11,7 +11,9 @@ from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.common.excel_final_destino import escolher_destino_excel_final
 from Src.Database.database import DatabasePMPV
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # Mapeando variavel de controle para facilitar
 PDF_ATIVADO = True # Assumimos True se pdfplumber estiver instalado
@@ -179,6 +181,18 @@ class TelaAuditoria(ctk.CTkFrame):
         self.btn_salvar_scg = ctk.CTkButton(rodape_acoes, text="💾 SALVAR RESULTADO NO SCG", command=self._salvar_cgr_scg,
                                             font=("Roboto", 13, "bold"), height=38, fg_color="#27ae60", hover_color="#1e8449", state="disabled")
         self.btn_salvar_scg.pack(fill="x", pady=(0, 8))
+
+        self.btn_excel_final = ctk.CTkButton(
+            rodape_acoes,
+            text="➕ Adicionar ao Excel Final (Módulo 9)",
+            command=self._adicionar_excel_final,
+            font=("Roboto", 13, "bold"),
+            height=38,
+            fg_color="#6c3483",
+            hover_color="#884ea0",
+            state="disabled",
+        )
+        self.btn_excel_final.pack(fill="x", pady=(0, 8))
     
     # --- HELPERS ---
     def _atualizar_badge_modo(self):
@@ -558,6 +572,7 @@ class TelaAuditoria(ctk.CTkFrame):
         self.text_resultados.configure(state="disabled")
 
         self.btn_salvar_scg.configure(state="normal")
+        self.btn_excel_final.configure(state="normal")
         self._gerar_e_salvar_excel()
 
     def _gerar_e_salvar_excel(self):
@@ -621,3 +636,47 @@ class TelaAuditoria(ctk.CTkFrame):
             f"RPV calculado: R$ {rpv:,.2f}\n\n"
             f"{len(self.resultados)} item(ns) salvo(s) no banco."
         )
+
+    def _adicionar_excel_final(self):
+        cgr = getattr(self, 'cgr_liquido', 0.0)
+        if cgr == 0.0 and not self.resultados:
+            messagebox.showwarning("Aviso", "Execute a auditoria antes de adicionar ao Excel final.")
+            return
+
+        periodo = simpledialog.askstring(
+            "Excel Final (Módulo 9)",
+            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+            parent=self,
+        )
+        if periodo is None:
+            return
+
+        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+        self.consolidacao.salvar_cgr(periodo_salvar, cgr)
+
+        if self.resultados:
+            itens_dict = [
+                {
+                    "empresa": r.empresa,
+                    "tipo": r.tipo,
+                    "numero": r.numero,
+                    "valor_total": r.valor_total,
+                    "icms": r.icms,
+                    "pis": r.pis,
+                    "cofins": r.cofins,
+                    "volume_total": r.volume_total,
+                    "cgr_liquido": RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa),
+                }
+                for r in self.resultados
+            ]
+            db = DatabasePMPV()
+            try:
+                db.salvar_auditoria_itens(periodo_salvar, itens_dict)
+            finally:
+                db.fechar()
+
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")

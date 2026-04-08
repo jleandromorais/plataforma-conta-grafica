@@ -1,9 +1,12 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 from pathlib import Path
 
 from Src.Services.servicos_cgf import ServicosCGF
+from Src.Database.database import DatabasePMPV
+from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 APP_TITLE = "CGF - Somatório de Volume Faturado"
 APP_SIZE  = "1050x700"
@@ -157,6 +160,8 @@ class TelaCGF(ctk.CTkFrame):
         ctk.CTkButton(btn_row, text="▶ INICIAR CÁLCULO", fg_color=ACCENT_GREEN, hover_color=ACCENT_GREEN_HOVER, font=("Segoe UI", 12, "bold"), command=self.calculate_total).pack(side="right")
         self.btn_salvar_scg = ctk.CTkButton(btn_row, text="💾 Salvar CGF no SCG", fg_color=BG_INPUT, hover_color="#475569", text_color=FG_TEXT, state="disabled", command=self._salvar_cgf_scg)
         self.btn_salvar_scg.pack(side="right", padx=(0, 10))
+        self.btn_excel_final = ctk.CTkButton(btn_row, text="➕ Excel Final (Módulo 9)", fg_color="#6c3483", hover_color="#884ea0", text_color=FG_TEXT, state="disabled", command=self._adicionar_excel_final)
+        self.btn_excel_final.pack(side="right", padx=(0, 10))
 
         # Painel de Resumo
         res_box = ctk.CTkFrame(content, fg_color=BG_INPUT, corner_radius=8)
@@ -245,6 +250,7 @@ class TelaCGF(ctk.CTkFrame):
             self.selected_files, fat_vol_col, fat_cons_col, 
             fat_cons_val, canc_vol_col, dev_vol_col
         )
+        self._ultimo_resultado_cgf = resultado
 
         for linha in resultado["logs"]:
             self._log(linha)
@@ -253,6 +259,7 @@ class TelaCGF(ctk.CTkFrame):
         self.result_label.configure(text=f"Volume Final CGF: {self.volume_final_cgf:,.2f} m³")
         self._atualizar_cgf_rs()          
         self.btn_salvar_scg.configure(state="normal", fg_color=ACCENT_BLUE)
+        self.btn_excel_final.configure(state="normal", fg_color="#6c3483")
 
     def _atualizar_cgf_rs(self):
         try:
@@ -312,7 +319,66 @@ class TelaCGF(ctk.CTkFrame):
 
         try:
             rpv = self.servicos.salvar_cgf(periodo, valor_salvar)
+            resumo = getattr(self, "_ultimo_resultado_cgf", {})
+            db = DatabasePMPV()
+            try:
+                db.salvar_cgf_resumo(
+                    periodo,
+                    resumo.get("volume_faturado", 0.0),
+                    resumo.get("volume_canceladas", 0.0),
+                    resumo.get("volume_devolucoes", 0.0),
+                    resumo.get("volume_consumo_proprio", 0.0),
+                    resumo.get("volume_final", self.volume_final_cgf),
+                )
+            finally:
+                db.fechar()
             tipo = "R$ (Volume × PMPV)" if self.cgf_rs > 0 else "volume bruto (sem PMPV)"
             messagebox.showinfo("CGF Salvo ✅", f"Período: {periodo}\nCGF ({tipo}): {valor_salvar:,.2f}\nRPV = R$ {rpv:,.2f}")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao gravar no BD: {e}")
+
+    def _adicionar_excel_final(self):
+        if self.volume_final_cgf == 0.0:
+            messagebox.showwarning("Aviso", "Execute o cálculo de volume antes de adicionar ao Excel final.")
+            return
+
+        if self.cgf_rs == 0.0:
+            resp = messagebox.askyesno("PMPV não informado", "Deseja usar apenas o volume (sem PMPV) para salvar no módulo 9?")
+            if not resp:
+                return
+            valor_salvar = self.volume_final_cgf
+        else:
+            valor_salvar = self.cgf_rs
+
+        periodo = self.periodo_cgf.get().strip()
+        if not periodo:
+            periodo = simpledialog.askstring(
+                "Excel Final (Módulo 9)",
+                "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+                parent=self,
+            )
+            if periodo is None:
+                return
+
+        periodo_salvar = periodo.strip() if periodo and periodo.strip() else "Geral"
+        self.servicos.salvar_cgf(periodo_salvar, valor_salvar)
+
+        resumo = getattr(self, "_ultimo_resultado_cgf", {})
+        db = DatabasePMPV()
+        try:
+            db.salvar_cgf_resumo(
+                periodo_salvar,
+                resumo.get("volume_faturado", 0.0),
+                resumo.get("volume_canceladas", 0.0),
+                resumo.get("volume_devolucoes", 0.0),
+                resumo.get("volume_consumo_proprio", 0.0),
+                resumo.get("volume_final", self.volume_final_cgf),
+            )
+        finally:
+            db.fechar()
+
+        destino = escolher_destino_excel_final(parent=self)
+        if not destino:
+            return
+        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
