@@ -48,7 +48,11 @@ def _parse_float(val: str) -> float:
 
 
 def _fmt_vol(valor: float) -> str:
-    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    texto = f"{valor:,.7f}"
+    inteiro, decimal = texto.split(".")
+    inteiro = inteiro.replace(",", ".")
+    decimal = decimal.rstrip("0")
+    return f"{inteiro},{decimal}" if decimal else inteiro
 
 
 def _fmt_brl(valor: float) -> str:
@@ -350,7 +354,7 @@ class TelaSR(ctk.CTkFrame):
         self.combo_sessao.set(labels[0])
 
     def _carregar_do_banco(self):
-        """Preenche VP e VF a partir da sessão selecionada no combo."""
+        """Preenche VP da sessão PMPV e VF do cgf_resumo pelo período informado."""
         if not self._sessoes:
             messagebox.showinfo(
                 "Sem sessões",
@@ -363,15 +367,44 @@ class TelaSR(ctk.CTkFrame):
         sessao = self._sessoes[idx]
 
         vp = sessao.get("vp") or 0.0
-        vf = sessao.get("vf") or 0.0
+
+        # VF vem do cgf_resumo (processado pelo módulo CGF)
+        periodo = simpledialog.askstring(
+            "Período do VF",
+            "Informe o período para buscar o VF no CGF\n(ex: Dez/25 ou Nov/25):",
+            parent=self,
+        )
+
+        vf = 0.0
+        if periodo and periodo.strip():
+            from Src.Services.servicos_pmpv import ExcelPMPV
+            db = DatabasePMPV()
+            try:
+                resumo = db.buscar_cgf_resumo(periodo.strip())
+                if not resumo:
+                    periodo_norm = ExcelPMPV._normalizar_mes(periodo.strip())
+                    for item in db.listar_cgf_resumos():
+                        if ExcelPMPV._normalizar_mes(str(item.get("periodo", ""))) == periodo_norm:
+                            resumo = item
+                            break
+                if resumo and resumo.get("volume_final") is not None:
+                    vf = float(resumo["volume_final"])
+                else:
+                    messagebox.showwarning(
+                        "VF não encontrado",
+                        f"Nenhum dado CGF encontrado para '{periodo.strip()}'.\n"
+                        "Processe as NFs desse período no módulo CGF primeiro.\n\n"
+                        "VF foi deixado em 0.",
+                    )
+            finally:
+                db.fechar()
 
         self._set_entry(self.entry_vp, vp)
         self._set_entry(self.entry_vf, vf)
 
         self.lbl_origem.configure(
-            text=f"✅  Carregado da sessão: '{sessao['nome']}'  —  "
-                 f"VP = {_fmt_vol(vp)}  |  VF = {_fmt_vol(vf)}",
-            text_color=VERDE,
+            text=f"✅  Sessão: '{sessao['nome']}'  —  VP = {_fmt_vol(vp)}  |  VF = {_fmt_vol(vf)}",
+            text_color=VERDE if vf > 0 else AMARELO,
         )
         self._recalcular()
 
@@ -482,10 +515,10 @@ class TelaSR(ctk.CTkFrame):
         finally:
             db.fechar()
 
-        destino = escolher_destino_excel_final(parent=self)
+        destino = escolher_destino_excel_final(periodo=periodo.strip() if periodo.strip() else None, parent=self)
         if not destino:
             return
-        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        arquivo = ExcelConsolidado.exportar(periodo=periodo.strip() if periodo.strip() else None, nome_arquivo=destino)
         messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
 
 

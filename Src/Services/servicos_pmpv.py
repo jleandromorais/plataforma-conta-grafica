@@ -157,8 +157,10 @@ class RegrasPMPV:
         c_tot = 0.0
         v_tot_vf = 0.0
         vp_total = 0.0
+        vf_total = 0.0
         vp_por_mes = {} 
         vf_por_mes = {}
+        vf_calculo_por_mes = {}
         avisos = []
 
         for i, (k, linhas) in enumerate(dados_extraidos.items()):
@@ -166,17 +168,20 @@ class RegrasPMPV:
             mes_nome = lista_meses[(idx_start + i) % 12]
             vp_mes = 0.0
             vf_mes = 0.0
+            vf_calculo_mes = 0.0
 
             for l in linhas:
                 vol = l['volume']
                 if vol <= 0: continue
 
                 pr = l['molecula'] + l['transporte'] + l['logistica']
-                vf = vol * dias
+                vf_calculo = vol * dias
                 
-                c_tot += pr * vf
-                v_tot_vf += vf
-                vf_mes += vf
+                c_tot += pr * vf_calculo
+                v_tot_vf += vf_calculo
+                vf_calculo_mes += vf_calculo
+                vf_mes += vol
+                vf_total += vol
                 
                 vp_mes += vol
                 vp_total += vol
@@ -189,6 +194,7 @@ class RegrasPMPV:
             if vp_mes > 0:
                 vp_por_mes[mes_nome] = vp_mes
                 vf_por_mes[mes_nome] = vf_mes
+                vf_calculo_por_mes[mes_nome] = vf_calculo_mes
 
         if v_tot_vf == 0:
             raise ValueError("Volume Zero — nenhuma linha com volume preenchido.")
@@ -200,5 +206,9 @@ class RegrasPMPV:
             'volume_total': v_tot_vf, 'custo_total': c_tot,
             'pmpv': pmpv, 'conta_grafica': valor_cg, 'preco_final': final,
             'vp_mensal': vp_total, 'vp_por_mes': vp_por_mes,
-            'vf_por_mes': vf_por_mes, 'avisos': avisos
+            'vf_total': vf_total,
+            'vf_por_mes': vf_por_mes,
+            'volume_total_calculo': v_tot_vf,
+            'vf_calculo_por_mes': vf_calculo_por_mes,
+            'avisos': avisos
         }

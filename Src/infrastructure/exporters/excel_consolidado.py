@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import openpyxl
@@ -167,22 +168,8 @@ class ExcelConsolidado:
             p_slug = (periodo or "completo").replace("/", "-")
             nome_arquivo = f"Relatorio_ContaGrafica_{p_slug}_{ts}.xlsx"
 
-        # Evita sobrescrever arquivo aberto
-        base = nome_arquivo.replace(".xlsx", "")
-        final = nome_arquivo
-        cnt = 1
-        while True:
-            try:
-                with open(final, "w"):
-                    pass
-                os.remove(final)
-                break
-            except (PermissionError, IOError):
-                final = f"{base}_{cnt}.xlsx"
-                cnt += 1
-                if cnt > 50:
-                    final = f"{base}_{datetime.now().strftime('%H%M%S%f')}.xlsx"
-                    break
+        final = str(Path(nome_arquivo))
+        Path(final).parent.mkdir(parents=True, exist_ok=True)
 
         wb = openpyxl.Workbook()
         if "Sheet" in wb.sheetnames:
@@ -210,7 +197,13 @@ class ExcelConsolidado:
         ExcelConsolidado._sheet_cgf(wb, cgf if periodo else cgf_lista, periodo)
         ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
 
-        wb.save(final)
+        try:
+            wb.save(final)
+        except PermissionError as exc:
+            wb.close()
+            raise PermissionError(
+                f"Não foi possível atualizar o Excel final em '{final}'. Feche o arquivo se ele estiver aberto no Excel e tente novamente."
+            ) from exc
         wb.close()
 
         try:
@@ -427,7 +420,7 @@ class ExcelConsolidado:
                     ["RESULTADO DA SESSÃO", "",
                      "", "", "",
                      f"PMPV: {_money_fmt(res.get('pmpv_trimestral', 0))} /m³",
-                     f"VF Total: {_vol_fmt(res.get('volume_total', 0))} m³"],
+                     f"VF Total: {_vol_fmt(res.get('vf_total', res.get('volume_total', 0)))} m³"],
                     bg="D5F5E3")
                 row += 2
 

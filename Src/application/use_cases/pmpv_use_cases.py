@@ -93,6 +93,8 @@ class PMPVUseCases:
         self.repo.salvar_resultado(
             sessao_id,
             resultado.get("volume_total"),
+            resultado.get("vp_mensal"),
+            resultado.get("vf_total", resultado.get("volume_total")),
             resultado.get("custo_total"),
             resultado.get("pmpv"),
             resultado.get("conta_grafica"),

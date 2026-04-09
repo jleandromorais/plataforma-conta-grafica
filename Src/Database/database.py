@@ -52,6 +52,8 @@ class DatabasePMPV:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sessao_id INTEGER NOT NULL,
                 volume_total REAL,
+                vp_total REAL,
+                vf_total REAL,
                 custo_total REAL,
                 pmpv_trimestral REAL,
                 conta_grafica REAL,    -- Novo Campo
@@ -60,6 +62,8 @@ class DatabasePMPV:
                 FOREIGN KEY (sessao_id) REFERENCES sessoes (id) ON DELETE CASCADE
             )
         """)
+        self._garantir_coluna("resultados", "vp_total", "REAL")
+        self._garantir_coluna("resultados", "vf_total", "REAL")
         
         # Tabela de PMPV MENSAL — valor R$/m³ por período
         self.cursor.execute("""
@@ -178,6 +182,12 @@ class DatabasePMPV:
                             )
                         """)
         self.conn.commit()
+
+    def _garantir_coluna(self, tabela: str, coluna: str, definicao_sql: str):
+        self.cursor.execute(f"PRAGMA table_info({tabela})")
+        colunas = {row[1] for row in self.cursor.fetchall()}
+        if coluna not in colunas:
+            self.cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao_sql}")
     
     def criar_sessao(self, nome: str, observacoes: str = "") -> int:
         self.cursor.execute("INSERT INTO sessoes (nome, observacoes) VALUES (?, ?)", (nome, observacoes))
@@ -205,13 +215,16 @@ class DatabasePMPV:
             print(f"Erro DB: {e}")
             return False
 
-    def salvar_resultado(self, sessao_id: int, vol_tot: float, custo_tot: float, 
+    def salvar_resultado(self, sessao_id: int, vol_tot: float, vp_tot: float, vf_tot: float, custo_tot: float,
                         pmpv: float, cg: float, final: float) -> bool:
         try:
             self.cursor.execute("""
-                INSERT INTO resultados (sessao_id, volume_total, custo_total, pmpv_trimestral, conta_grafica, preco_final)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (sessao_id, vol_tot, custo_tot, pmpv, cg, final))
+                INSERT INTO resultados (
+                    sessao_id, volume_total, vp_total, vf_total, custo_total,
+                    pmpv_trimestral, conta_grafica, preco_final
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (sessao_id, vol_tot, vp_tot, vf_tot, custo_tot, pmpv, cg, final))
             self.conn.commit()
             return True
         except Exception as e:
@@ -563,17 +576,43 @@ class DatabasePMPV:
         return [dict(r) for r in self.cursor.fetchall()]
 
     def salvar_sessao_excel_final(self, nome: str, caminho_arquivo: str, ativo: bool = True) -> int:
+        self.cursor.execute(
+            "SELECT id FROM excel_final_sessoes WHERE nome = ? ORDER BY data_atualizacao DESC LIMIT 1",
+            (nome,),
+        )
+        row = self.cursor.fetchone()
         if ativo:
             self.cursor.execute("UPDATE excel_final_sessoes SET ativo = 0")
-        self.cursor.execute(
-            """
-            INSERT INTO excel_final_sessoes (nome, caminho_arquivo, ativo, data_atualizacao)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            (nome, caminho_arquivo, 1 if ativo else 0),
-        )
+
+        if row:
+            self.cursor.execute(
+                """
+                UPDATE excel_final_sessoes
+                SET caminho_arquivo = ?, ativo = ?, data_atualizacao = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (caminho_arquivo, 1 if ativo else 0, row[0]),
+            )
+            sessao_id = row[0]
+        else:
+            self.cursor.execute(
+                """
+                INSERT INTO excel_final_sessoes (nome, caminho_arquivo, ativo, data_atualizacao)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (nome, caminho_arquivo, 1 if ativo else 0),
+            )
+            sessao_id = self.cursor.lastrowid
         self.conn.commit()
-        return self.cursor.lastrowid
+        return sessao_id
+
+    def buscar_sessao_excel_final_por_nome(self, nome: str) -> Dict | None:
+        self.cursor.execute(
+            "SELECT * FROM excel_final_sessoes WHERE nome = ? ORDER BY data_atualizacao DESC LIMIT 1",
+            (nome,),
+        )
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
 
     def buscar_sessao_excel_final_ativa(self) -> Dict | None:
         self.cursor.execute(
@@ -581,6 +620,10 @@ class DatabasePMPV:
         )
         row = self.cursor.fetchone()
         return dict(row) if row else None
+
+    def desativar_sessao_excel_final_ativa(self):
+        self.cursor.execute("UPDATE excel_final_sessoes SET ativo = 0 WHERE ativo = 1")
+        self.conn.commit()
 
     # ==========================================
     # SESSÕES COM VOLUMES (PMPV)
@@ -590,27 +633,35 @@ class DatabasePMPV:
         """
         Lista todas as sessões salvas com seus respectivos VP e VF.
 
-        - VP = soma de 'volume' (m³/dia) de todos os registros de dados_mes da sessão.
-        - VF = volume_total gravado em resultados (vol × dias de cada empresa).
+        - VP = soma de 'volume' informado em dados_mes.
+        - VF = volume faturado real do trimestre, sem multiplicação pelos dias,
+          para manter a UI e o SR coerentes com a memória de cálculo.
         """
         self.cursor.execute("""
             SELECT
                 s.id,
                 s.nome,
                 strftime('%d/%m/%Y %H:%M', s.data_criacao) AS data_criacao,
-                COALESCE((
-                    SELECT r2.volume_total
-                    FROM resultados r2
-                    WHERE r2.sessao_id = s.id
-                    ORDER BY r2.id DESC
-                    LIMIT 1
-                ), 0.0) AS vf,
-                COALESCE((
+                COALESCE(r.vf_total, (
                     SELECT SUM(dm.volume)
                     FROM dados_mes dm
                     WHERE dm.sessao_id = s.id
+                ), 0.0) AS vf,
+                COALESCE(r.vp_total, (
+                    SELECT SUM(dm2.volume)
+                    FROM dados_mes dm2
+                    WHERE dm2.sessao_id = s.id
                 ), 0.0) AS vp
             FROM sessoes s
+            LEFT JOIN (
+                SELECT r1.*
+                FROM resultados r1
+                INNER JOIN (
+                    SELECT sessao_id, MAX(id) AS max_id
+                    FROM resultados
+                    GROUP BY sessao_id
+                ) ult ON ult.max_id = r1.id
+            ) r ON r.sessao_id = s.id
             ORDER BY s.data_criacao DESC
         """)
         return [dict(row) for row in self.cursor.fetchall()]

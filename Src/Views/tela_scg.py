@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.Services.servicos_scg import ServicosSCG
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import escolher_destino_excel_final, remover_excel_final_ativo
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # ── Cores ────────────────────────────────────────────────────────────────────
@@ -184,6 +184,18 @@ class TelaSCG(ctk.CTkFrame):
         )
         self.btn_excel_final.pack(side="left", padx=(10, 0))
 
+        self.btn_remover_excel_final = ctk.CTkButton(
+            row_res,
+            text="➖ Retirar Excel Final",
+            font=("Roboto", 12, "bold"),
+            height=50,
+            width=200,
+            fg_color=COR_INPUT,
+            hover_color=COR_VERMELHO,
+            command=self._remover_excel_final,
+        )
+        self.btn_remover_excel_final.pack(side="left", padx=(10, 0))
+
         self.lbl_scg = ctk.CTkLabel(row_res, text="SCG =  R$ 0,00", font=("Roboto", 26, "bold"), text_color=COR_AMARELO)
         self.lbl_scg.pack(side="left", padx=30)
 
@@ -307,8 +319,15 @@ class TelaSCG(ctk.CTkFrame):
             return
 
         self.servicos.calcular_scg_oficial(self.periodo_atual)
-        destino = escolher_destino_excel_final(parent=self)
+        destino = escolher_destino_excel_final(periodo=self.periodo_atual, parent=self)
         if not destino:
             return
-        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        arquivo = ExcelConsolidado.exportar(periodo=self.periodo_atual, nome_arquivo=destino)
         messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+
+    def _remover_excel_final(self):
+        removido, mensagem = remover_excel_final_ativo(parent=self)
+        if removido:
+            messagebox.showinfo("Excel Final", mensagem)
+        else:
+            messagebox.showwarning("Excel Final", mensagem)

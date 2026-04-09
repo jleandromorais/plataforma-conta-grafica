@@ -42,6 +42,8 @@ class PMPVRepository(Protocol):
         self,
         sessao_id: int,
         vol_tot: float,
+        vp_tot: float,
+        vf_tot: float,
         custo_tot: float,
         pmpv: float,
         cg: float,

@@ -119,7 +119,8 @@ class ExcelHandlerPMPV:
                 ws[f"B{row}"].fill = fill
             row += 1
 
-        write_res("Volume Total (Trimestre):", resultado["volume_total"], "#,##0")
+        vf_total = resultado.get("vf_total", resultado["volume_total"])
+        write_res("Volume Faturado (Trimestre):", vf_total, "#,##0.00")
         write_res("Custo Total (Trimestre):", resultado["custo_total"], "R$ #,##0.00")
         row += 1
         write_res("PMPV Calculado:", resultado["pmpv"], "R$ 0.0000", bold=True)

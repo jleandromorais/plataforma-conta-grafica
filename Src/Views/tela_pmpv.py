@@ -11,12 +11,21 @@ from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.Database.database import DatabasePMPV
 
 # ==========================================
 # 3. INTERFACE GRÁFICA (A Tela)
 # ==========================================
 class TelaPMPV(ctk.CTkFrame):
     """A interface principal do módulo PMPV."""
+
+    @staticmethod
+    def _fmt_volume(valor: float) -> str:
+        texto = f"{valor:,.2f}"
+        inteiro, decimal = texto.split(".")
+        inteiro = inteiro.replace(",", ".")
+        decimal = decimal.rstrip("0")
+        return f"{inteiro},{decimal}" if decimal else inteiro
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -32,6 +41,7 @@ class TelaPMPV(ctk.CTkFrame):
         self.dias_config = {"Mês 1": 30, "Mês 2": 30, "Mês 3": 30}
         self.dados_meses  = {}
         self.scroll_frames = {}
+        self.periodos_importados = {}
 
         self._setup_ui()
 
@@ -143,7 +153,7 @@ class TelaPMPV(ctk.CTkFrame):
 
     def _calc_row(self, d):
         tot = self._val(d['mol']) + self._val(d['trans']) + self._val(d['log'])
-        d['tot'].configure(text=f"{tot:.4f}")
+        d['tot'].configure(text=f"{tot:.2f}")
 
     def _val(self, e):
         try: return float(e.get().replace(',', '.'))
@@ -229,7 +239,7 @@ class TelaPMPV(ctk.CTkFrame):
 
         self.lbl_pmpv.configure(text=f"PMPV: R$ {self.res_final['pmpv']:.4f}")
         self.lbl_final.configure(text=f"PREÇO FINAL: R$ {self.res_final['preco_final']:.4f}")
-        self.lbl_vp.configure(text=f"Volume Prospectiva Total: {self.res_final['vp_mensal']:,.0f} m³")
+        self.lbl_vp.configure(text=f"Volume Prospectiva Total: {self._fmt_volume(self.res_final['vp_mensal'])} m³")
 
         if self.res_final['avisos']:
             messagebox.showinfo(
@@ -238,6 +248,8 @@ class TelaPMPV(ctk.CTkFrame):
                 f"Os campos abaixo estavam vazios e foram considerados 0:\n\n"
                 + "\n".join(self.res_final['avisos'])
             )
+
+
 
     def _importar_memoria_calculo(self):
         path = filedialog.askopenfilename(title="Selecione a Memória de Cálculo", filetypes=[("Excel", "*.xlsx *.xls")])
@@ -258,6 +270,7 @@ class TelaPMPV(ctk.CTkFrame):
             return
 
         mes_nome = self.tabview.get()
+        self.periodos_importados[mes_nome] = sel.strip()
         linhas = self.dados_meses[mes_nome]
         scroll = self.scroll_frames.get(mes_nome)
 
@@ -274,23 +287,106 @@ class TelaPMPV(ctk.CTkFrame):
                 d[campo].delete(0, "end")
                 if v: d[campo].insert(0, f"{v:.4f}")
             d["vol"].delete(0, "end")
-            d["vol"].insert(0, f"{dados['volume']:.0f}")
+            d["vol"].insert(0, f"{dados['volume']:.7f}")
             self._calc_row(d)
 
         messagebox.showinfo("Importado ✅", f"Mês: {sel} → {len(empresas_importadas)} empresa(s) carregada(s).")
 
+    def _tab_do_mes(self, mes_nome: str) -> str:
+        idx_start = self.lista_meses.index(self.combo_mes.get())
+        for i in range(1, 4):
+            nome_real = self.lista_meses[(idx_start + i - 1) % 12]
+            if nome_real == mes_nome:
+                return f"Mês {i}"
+        return ""
+
+    def _inferir_periodo_por_ancora(self, mes_nome: str) -> str:
+        tab_alvo = self._tab_do_mes(mes_nome)
+        if not tab_alvo:
+            return ""
+
+        try:
+            idx_alvo = int(tab_alvo.split(" ")[1]) - 1
+        except Exception:
+            return ""
+
+        mapa_abrev_idx = {
+            "jan": 0, "fev": 1, "mar": 2, "abr": 3,
+            "mai": 4, "jun": 5, "jul": 6, "ago": 7,
+            "set": 8, "out": 9, "nov": 10, "dez": 11,
+        }
+        lista_abrev = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+        for tab_origem, periodo_origem in self.periodos_importados.items():
+            if not periodo_origem:
+                continue
+
+            periodo_norm = ExcelPMPV._normalizar_mes(periodo_origem)
+            if "/" not in periodo_norm:
+                continue
+
+            mes_abrev, ano_txt = periodo_norm.split("/", 1)
+            if mes_abrev not in mapa_abrev_idx or not ano_txt.isdigit():
+                continue
+
+            try:
+                idx_origem = int(tab_origem.split(" ")[1]) - 1
+            except Exception:
+                continue
+
+            delta_tabs = idx_alvo - idx_origem
+            total_meses = int(ano_txt) * 12 + mapa_abrev_idx[mes_abrev] + delta_tabs
+            novo_ano = total_meses // 12
+            novo_mes_idx = total_meses % 12
+            return f"{lista_abrev[novo_mes_idx]}/{novo_ano:02d}"
+
+        return ""
+
+
+    def _periodo_do_mes(self, mes_nome: str) -> str:
+        """Dado um nome de mês (ex: 'Novembro'), retorna o período (ex: 'Nov/25') usando as importações."""
+        tab_mes = self._tab_do_mes(mes_nome)
+        periodo_direto = self.periodos_importados.get(tab_mes, "") if tab_mes else ""
+        if periodo_direto:
+            return periodo_direto
+        return self._inferir_periodo_por_ancora(mes_nome)
+
+    def _buscar_vf_do_cgf(self) -> tuple[dict[str, float], float]:
+        """Busca VF real de cada mês no cgf_resumo (calculado pelo módulo CGF)."""
+        vf_por_mes = {}
+        total = 0.0
+        db = DatabasePMPV()
+        try:
+            for mes_nome in (self.res_final or {}).get("vp_por_mes", {}).keys():
+                periodo = self._periodo_do_mes(mes_nome)
+                if not periodo:
+                    continue
+                periodo_norm = ExcelPMPV._normalizar_mes(periodo)
+                resumo = db.buscar_cgf_resumo(periodo)
+                if not resumo:
+                    for item in db.listar_cgf_resumos():
+                        if ExcelPMPV._normalizar_mes(str(item.get("periodo", ""))) == periodo_norm:
+                            resumo = item
+                            break
+                if resumo and resumo.get("volume_final") is not None:
+                    valor = float(resumo["volume_final"])
+                    vf_por_mes[mes_nome] = valor
+                    total += valor
+        finally:
+            db.fechar()
+        return vf_por_mes, total
+
     def _popup_vp(self):
         vp_por_mes = (self.res_final or {}).get('vp_por_mes', {})
-        vf_por_mes = (self.res_final or {}).get('vf_por_mes', {})
         vp_tot = (self.res_final or {}).get('vp_mensal', 0.0)
-        vf_tot = (self.res_final or {}).get('volume_total', 0.0)
 
         win = ctk.CTkToplevel(self)
-        win.title("Volumes por Mês")
-        win.geometry("450x300")
+        win.title("Volume Prospectiva por Mês")
+        win.geometry("380x280")
         win.grab_set()
 
-        ctk.CTkLabel(win, text="Volume Prospectiva vs Volume Faturado por Mês", font=("Roboto", 15, "bold")).pack(pady=(16, 8))
+        ctk.CTkLabel(win, text="Volume Prospectiva por Mês (VP)", font=("Roboto", 15, "bold")).pack(pady=(16, 8))
+        ctk.CTkLabel(win, text="VF vem do módulo CGF após processar as NFs", font=("Roboto", 11), text_color="#888").pack(pady=(0, 6))
         frame = ctk.CTkFrame(win, fg_color="#1e1e2e")
         frame.pack(fill="both", expand=True, padx=16, pady=4)
 
@@ -299,28 +395,22 @@ class TelaPMPV(ctk.CTkFrame):
         else:
             head = ctk.CTkFrame(frame, fg_color="transparent")
             head.pack(fill="x", padx=12, pady=5)
-            ctk.CTkLabel(head, text="Mês", font=("Roboto", 12, "bold"), width=120, anchor="w").pack(side="left")
-            ctk.CTkLabel(head, text="Volume Faturado", font=("Roboto", 12, "bold"), width=115, anchor="e").pack(side="right")
-            ctk.CTkLabel(head, text="Volume Prospectiva", font=("Roboto", 12, "bold"), width=130, anchor="e").pack(side="right", padx=10)
+            ctk.CTkLabel(head, text="Mês", font=("Roboto", 12, "bold"), width=140, anchor="w").pack(side="left")
+            ctk.CTkLabel(head, text="Volume Prospectiva", font=("Roboto", 12, "bold"), width=160, anchor="e").pack(side="right")
 
-            for mes in vp_por_mes.keys():
-                vp_val = vp_por_mes[mes]
-                vf_val = vf_por_mes.get(mes, 0.0)
-                
+            for mes, vp_val in vp_por_mes.items():
                 row = ctk.CTkFrame(frame, fg_color="transparent")
                 row.pack(fill="x", padx=12, pady=3)
-                ctk.CTkLabel(row, text=mes, font=("Roboto", 13), width=120, anchor="w").pack(side="left")
-                ctk.CTkLabel(row, text=f"{vf_val:,.0f} m³", font=("Roboto", 13), text_color="#e67e22", width=100, anchor="e").pack(side="right")
-                ctk.CTkLabel(row, text=f"{vp_val:,.0f} m³", font=("Roboto", 13, "bold"), text_color="#3498db", width=100, anchor="e").pack(side="right", padx=10)
+                ctk.CTkLabel(row, text=mes, font=("Roboto", 13), width=140, anchor="w").pack(side="left")
+                ctk.CTkLabel(row, text=f"{self._fmt_volume(vp_val)} m³", font=("Roboto", 13, "bold"), text_color="#3498db", width=160, anchor="e").pack(side="right")
 
             sep = ctk.CTkFrame(frame, height=1, fg_color="#444")
             sep.pack(fill="x", padx=12, pady=6)
-            
+
             row_tot = ctk.CTkFrame(frame, fg_color="transparent")
             row_tot.pack(fill="x", padx=12, pady=2)
-            ctk.CTkLabel(row_tot, text="TOTAL", font=("Roboto", 13, "bold"), width=120, anchor="w").pack(side="left")
-            ctk.CTkLabel(row_tot, text=f"{vf_tot:,.0f} m³", font=("Roboto", 13, "bold"), text_color="#d35400", width=100, anchor="e").pack(side="right")
-            ctk.CTkLabel(row_tot, text=f"{vp_tot:,.0f} m³", font=("Roboto", 13, "bold"), text_color="#1abc9c", width=100, anchor="e").pack(side="right", padx=10)
+            ctk.CTkLabel(row_tot, text="TOTAL", font=("Roboto", 13, "bold"), width=140, anchor="w").pack(side="left")
+            ctk.CTkLabel(row_tot, text=f"{self._fmt_volume(vp_tot)} m³", font=("Roboto", 13, "bold"), text_color="#1abc9c", width=160, anchor="e").pack(side="right")
 
         ctk.CTkButton(win, text="Fechar", command=win.destroy, width=100).pack(pady=12)
 
@@ -376,9 +466,12 @@ class TelaPMPV(ctk.CTkFrame):
         if not nome or not hasattr(self, 'res_final'): return
 
         dados = self._get_data_dict()
-
         self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
-        messagebox.showinfo("Sucesso", "Salvo!")
+        messagebox.showinfo(
+            "Sessão Salva",
+            f"VP salvo: {self._fmt_volume(self.res_final.get('vp_mensal', 0.0))} m³\n"
+            f"VF será carregado do módulo CGF ao usar o SR."
+        )
 
     def exportar(self):
         if not hasattr(self, 'res_final'): return messagebox.showwarning("Erro", "Calcule antes!")
@@ -411,10 +504,10 @@ class TelaPMPV(ctk.CTkFrame):
         if periodo is None:
             return
 
-        destino = escolher_destino_excel_final(parent=self)
+        destino = escolher_destino_excel_final(periodo=periodo.strip() if periodo and periodo.strip() else None, parent=self)
         if not destino:
             return
-        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        arquivo = ExcelConsolidado.exportar(periodo=periodo.strip() if periodo and periodo.strip() else None, nome_arquivo=destino)
         messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
 
     def _salvar_pmpv_mensal(self):

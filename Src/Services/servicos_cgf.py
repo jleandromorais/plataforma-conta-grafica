@@ -1,10 +1,59 @@
-import pandas as pd
+import re
+import unicodedata
 from pathlib import Path
+
+import pandas as pd
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePMPVRepository
 
 class ServicosCGF:
     """Especialista no processamento de planilhas (Excel/CSV) e cálculos do CGF."""
+
+    @staticmethod
+    def _normalizar_texto(valor: str) -> str:
+        texto = "" if valor is None else str(valor).strip().lower()
+        texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+        texto = re.sub(r"[^a-z0-9]+", " ", texto)
+        return " ".join(texto.split())
+
+    @staticmethod
+    def _converter_serie_numerica(serie: pd.Series) -> pd.Series:
+        if pd.api.types.is_numeric_dtype(serie):
+            return pd.to_numeric(serie, errors="coerce")
+
+        texto = serie.astype(str).str.strip()
+        texto = texto.str.replace(r"[^0-9,.-]", "", regex=True)
+
+        mascara_br = texto.str.contains(",", na=False) & texto.str.contains(r"\.", na=False)
+        texto.loc[mascara_br] = texto.loc[mascara_br].str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+
+        mascara_virgula = texto.str.contains(",", na=False) & ~texto.str.contains(r"\.", na=False)
+        texto.loc[mascara_virgula] = texto.loc[mascara_virgula].str.replace(",", ".", regex=False)
+
+        return pd.to_numeric(texto, errors="coerce")
+
+    @classmethod
+    def _resolver_coluna(cls, df: pd.DataFrame, col_configurada: str, aliases: list[str]) -> str | None:
+        if df is None or df.empty:
+            return None
+
+        mapa_colunas = {cls._normalizar_texto(col): col for col in df.columns}
+        candidatos = [col_configurada, *aliases]
+
+        for candidato in candidatos:
+            chave = cls._normalizar_texto(candidato)
+            if chave in mapa_colunas:
+                return mapa_colunas[chave]
+
+        for candidato in candidatos:
+            chave = cls._normalizar_texto(candidato)
+            if not chave:
+                continue
+            for col_norm, col_real in mapa_colunas.items():
+                if chave in col_norm or col_norm in chave:
+                    return col_real
+
+        return None
 
     @staticmethod
     def ler_tabela(path: str):
@@ -23,15 +72,26 @@ class ServicosCGF:
         """Cria uma máscara Booleana (True/False) identificando as linhas de consumo próprio."""
         mask = pd.Series([False] * len(df), index=df.index)
 
-        if col_configurada and col_configurada in df.columns and val_configurado:
-            serie = df[col_configurada].astype(str).str.upper().str.strip()
-            mask |= (serie == val_configurado.upper())
+        termos = [
+            "consumo",
+            "proprio",
+            "consumo proprio",
+            "cons proprio",
+            "cons prop",
+            "uso consumo",
+        ]
 
-        TERMOS = ["consumo", "proprio", "próprio", "consumo proprio", "consumo próprio", "cons. proprio", "cons proprio"]
+        if col_configurada and col_configurada in df.columns and val_configurado:
+            serie = df[col_configurada].map(ServicosCGF._normalizar_texto)
+            valor_norm = ServicosCGF._normalizar_texto(val_configurado)
+            mask |= (serie == valor_norm)
+            if valor_norm:
+                mask |= serie.str.contains(valor_norm, na=False, regex=False)
+
         for col in df.columns:
-            if df[col].dtype == object or str(df[col].dtype) == "string":
-                serie_col = df[col].astype(str).str.lower().str.strip()
-                for termo in TERMOS:
+            if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
+                serie_col = df[col].map(ServicosCGF._normalizar_texto)
+                for termo in termos:
                     mask |= serie_col.str.contains(termo, na=False, regex=False)
         return mask
 
@@ -57,9 +117,12 @@ class ServicosCGF:
             # Processamento de Notas Faturadas ou Complementares
             if "faturada" in nome_low or "complementar" in nome_low:
                 logs.append(f"🟢 FATURADA: {nome}")
-                if fat_col not in df.columns:
+                fat_col_real = self._resolver_coluna(df, fat_col, ["Volume Faturado", "Volume"])
+                if fat_col_real is None:
                     logs.append(f"   [!] Coluna '{fat_col}' ausente. Ignorado.\n")
                     continue
+                if fat_col_real != fat_col:
+                    logs.append(f"   [i] Coluna de faturado localizada automaticamente: '{fat_col_real}'")
                     
                 mask_cons = self.mascara_consumo(df, fat_cons_col, fat_cons_val)
                 qtd_cons = mask_cons.sum()
@@ -67,11 +130,11 @@ class ServicosCGF:
                 df_cons = df[mask_cons].copy()
                 df_sem_cons = df[~mask_cons].copy()
 
-                df_sem_cons[fat_col] = pd.to_numeric(df_sem_cons[fat_col], errors="coerce")
-                df_cons[fat_col]     = pd.to_numeric(df_cons[fat_col],     errors="coerce")
+                df_sem_cons[fat_col_real] = self._converter_serie_numerica(df_sem_cons[fat_col_real])
+                df_cons[fat_col_real] = self._converter_serie_numerica(df_cons[fat_col_real])
 
-                vol_fat  = df_sem_cons[fat_col].sum()
-                vol_cons = df_cons[fat_col].sum()
+                vol_fat  = df_sem_cons[fat_col_real].sum()
+                vol_cons = df_cons[fat_col_real].sum()
                 
                 total_faturado += float(vol_fat)
                 total_consumo_proprio += float(vol_cons)
@@ -85,18 +148,28 @@ class ServicosCGF:
             # Processamento de Canceladas / Denegadas
             elif "cancelad" in nome_low or "denegad" in nome_low:
                 logs.append(f"🔴 CANCELADAS: {nome}")
-                if canc_col in df.columns:
-                    df[canc_col] = pd.to_numeric(df[canc_col], errors="coerce")
-                    vol_canc = df[canc_col].sum()
+                canc_col_real = self._resolver_coluna(df, canc_col, ["Volume Canceladas", "Volume Denegadas", "Volume Cancelada"])
+                if canc_col_real is None:
+                    logs.append(f"   [!] Coluna de canceladas não encontrada a partir de '{canc_col}'.\n")
+                else:
+                    if canc_col_real != canc_col:
+                        logs.append(f"   [i] Coluna de canceladas localizada automaticamente: '{canc_col_real}'")
+                    df[canc_col_real] = self._converter_serie_numerica(df[canc_col_real])
+                    vol_canc = df[canc_col_real].sum()
                     total_canceladas += float(vol_canc)
                     logs.append(f"   - Canceladas: {vol_canc:,.2f}\n")
 
             # Processamento de Devoluções
             elif "devolu" in nome_low:
                 logs.append(f"🟡 DEVOLUÇÃO: {nome}")
-                if dev_col in df.columns:
-                    df[dev_col] = pd.to_numeric(df[dev_col], errors="coerce")
-                    vol_dev = df[dev_col].sum()
+                dev_col_real = self._resolver_coluna(df, dev_col, ["Volume Devolução", "Volume Devolucao", "Volume de Devolução", "Volume de Devolucao"])
+                if dev_col_real is None:
+                    logs.append(f"   [!] Coluna de devoluções não encontrada a partir de '{dev_col}'.\n")
+                else:
+                    if dev_col_real != dev_col:
+                        logs.append(f"   [i] Coluna de devoluções localizada automaticamente: '{dev_col_real}'")
+                    df[dev_col_real] = self._converter_serie_numerica(df[dev_col_real])
+                    vol_dev = df[dev_col_real].sum()
                     total_devolucoes += float(vol_dev)
                     logs.append(f"   - Devoluções: {vol_dev:,.2f}\n")
 

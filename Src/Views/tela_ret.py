@@ -581,8 +581,8 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         finally:
             db.fechar()
 
-        destino = escolher_destino_excel_final(parent=self)
+        destino = escolher_destino_excel_final(periodo=periodo_salvar, parent=self)
         if not destino:
             return
-        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
         messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")

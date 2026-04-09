@@ -55,8 +55,8 @@ class SqlitePMPVRepository(PMPVRepository):
     def salvar_dados_mes(self, sessao_id: int, mes: int, dados):
         return self.db.salvar_dados_mes(sessao_id, mes, dados)
 
-    def salvar_resultado(self, sessao_id: int, vol_tot: float, custo_tot: float, pmpv: float, cg: float, final: float):
-        return self.db.salvar_resultado(sessao_id, vol_tot, custo_tot, pmpv, cg, final)
+    def salvar_resultado(self, sessao_id: int, vol_tot: float, vp_tot: float, vf_tot: float, custo_tot: float, pmpv: float, cg: float, final: float):
+        return self.db.salvar_resultado(sessao_id, vol_tot, vp_tot, vf_tot, custo_tot, pmpv, cg, final)
 
     def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
         self.db.salvar_pmpv_mensal(periodo, pmpv)

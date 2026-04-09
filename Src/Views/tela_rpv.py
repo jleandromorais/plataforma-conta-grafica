@@ -249,8 +249,8 @@ class TelaRPV(ctk.CTkFrame):
             return
 
         self.servicos.salvar_valores(periodo, cgr, cgf)
-        destino = escolher_destino_excel_final(parent=self)
+        destino = escolher_destino_excel_final(periodo=periodo, parent=self)
         if not destino:
             return
-        arquivo = ExcelConsolidado.exportar(nome_arquivo=destino)
+        arquivo = ExcelConsolidado.exportar(periodo=periodo, nome_arquivo=destino)
         messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")

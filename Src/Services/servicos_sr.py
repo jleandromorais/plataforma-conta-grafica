@@ -8,10 +8,9 @@ class ServicosSR:
     Regras de negócio e acesso ao banco de dados para o módulo SR.
 
     SR = (VP − VF) × PR
-      - VP: Volume Produzido — soma dos volumes diários (m³/dia) de todas as
+        - VP: Volume Produzido — soma dos volumes informados de todas as
             empresas/meses de uma sessão salva no PMPV.
-      - VF: Volume Faturado — volume_total gravado em 'resultados'
-            (VP × dias de cada mês).
+        - VF: Volume Faturado — volume real do trimestre, sem ponderação por dias.
     """
 
     def __init__(self, db: DatabasePMPV | None = None):
