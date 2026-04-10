@@ -48,7 +48,7 @@ def _parse_float(val: str) -> float:
 
 
 def _fmt_vol(valor: float) -> str:
-    texto = f"{valor:,.7f}"
+    texto = f"{valor:,.2f}"
     inteiro, decimal = texto.split(".")
     inteiro = inteiro.replace(",", ".")
     decimal = decimal.rstrip("0")
@@ -73,6 +73,7 @@ class TelaSR(ctk.CTkFrame):
 
         self._servicos = ServicosSR()
         self._sessoes: list[dict] = []
+        self._periodos_vf: list[str] = []
 
         self._build_ui()
         self._carregar_sessoes()
@@ -87,7 +88,7 @@ class TelaSR(ctk.CTkFrame):
 
         ctk.CTkLabel(
             header,
-            text="📈  SR — Saldo Regulatório",
+            text="📈  SR — Saldo remanescente",
             font=("Roboto", 20, "bold"),
             text_color=TEXTO,
         ).pack(side="left", padx=24, pady=20)
@@ -111,10 +112,10 @@ class TelaSR(ctk.CTkFrame):
         ).pack(anchor="w", padx=18, pady=(12, 4))
 
         row_bd = ctk.CTkFrame(bd_card, fg_color="transparent")
-        row_bd.pack(fill="x", padx=18, pady=(0, 14))
+        row_bd.pack(fill="x", padx=18, pady=(0, 8))
 
         ctk.CTkLabel(
-            row_bd, text="Sessão:", font=("Roboto", 12), text_color=MUTED, width=60
+            row_bd, text="VP:", font=("Roboto", 12), text_color=MUTED, width=60
         ).pack(side="left")
 
         self.combo_sessao = ctk.CTkComboBox(
@@ -146,6 +147,29 @@ class TelaSR(ctk.CTkFrame):
             fg_color=INPUT_BG,
             hover_color=AZUL,
             command=self._carregar_sessoes,
+        ).pack(side="left")
+
+        row_vf = ctk.CTkFrame(bd_card, fg_color="transparent")
+        row_vf.pack(fill="x", padx=18, pady=(0, 14))
+
+        ctk.CTkLabel(
+            row_vf, text="Período VF:", font=("Roboto", 12), text_color=MUTED, width=80
+        ).pack(side="left")
+
+        self.combo_periodo_vf = ctk.CTkComboBox(
+            row_vf,
+            width=220,
+            font=("Roboto", 12),
+            state="readonly",
+            values=["(sem período CGF)"],
+        )
+        self.combo_periodo_vf.pack(side="left", padx=(6, 10))
+
+        ctk.CTkLabel(
+            row_vf,
+            text="Selecione o período para puxar o VF do CGF.",
+            font=("Roboto", 11),
+            text_color=MUTED,
         ).pack(side="left")
 
         # BADGE de origem
@@ -340,6 +364,7 @@ class TelaSR(ctk.CTkFrame):
     def _carregar_sessoes(self):
         """Atualiza o combo com as sessões disponíveis no banco de dados."""
         self._sessoes = self._servicos.listar_sessoes()
+        self._carregar_periodos_vf()
 
         if not self._sessoes:
             self.combo_sessao.configure(values=["(nenhuma sessão salva)"])
@@ -352,6 +377,28 @@ class TelaSR(ctk.CTkFrame):
         ]
         self.combo_sessao.configure(values=labels)
         self.combo_sessao.set(labels[0])
+
+    def _carregar_periodos_vf(self):
+        db = DatabasePMPV()
+        try:
+            self._periodos_vf = sorted(
+                {
+                    str(item.get("periodo", "")).strip()
+                    for item in db.listar_cgf_resumos()
+                    if str(item.get("periodo", "")).strip()
+                },
+                reverse=True,
+            )
+        finally:
+            db.fechar()
+
+        if not self._periodos_vf:
+            self.combo_periodo_vf.configure(values=["(sem período CGF)"])
+            self.combo_periodo_vf.set("(sem período CGF)")
+            return
+
+        self.combo_periodo_vf.configure(values=self._periodos_vf)
+        self.combo_periodo_vf.set(self._periodos_vf[0])
 
     def _carregar_do_banco(self):
         """Preenche VP da sessão PMPV e VF do cgf_resumo pelo período informado."""
@@ -369,11 +416,13 @@ class TelaSR(ctk.CTkFrame):
         vp = sessao.get("vp") or 0.0
 
         # VF vem do cgf_resumo (processado pelo módulo CGF)
-        periodo = simpledialog.askstring(
-            "Período do VF",
-            "Informe o período para buscar o VF no CGF\n(ex: Dez/25 ou Nov/25):",
-            parent=self,
-        )
+        periodo = self.combo_periodo_vf.get().strip()
+        if not periodo or periodo.startswith("("):
+            messagebox.showwarning(
+                "Período VF",
+                "Selecione um período de VF no painel antes de carregar.",
+            )
+            return
 
         vf = 0.0
         if periodo and periodo.strip():
@@ -403,7 +452,7 @@ class TelaSR(ctk.CTkFrame):
         self._set_entry(self.entry_vf, vf)
 
         self.lbl_origem.configure(
-            text=f"✅  Sessão: '{sessao['nome']}'  —  VP = {_fmt_vol(vp)}  |  VF = {_fmt_vol(vf)}",
+            text=f"✅  Sessão: '{sessao['nome']}'  —  Período VF: '{periodo}'  —  VP = {_fmt_vol(vp)}  |  VF = {_fmt_vol(vf)}",
             text_color=VERDE if vf > 0 else AMARELO,
         )
         self._recalcular()

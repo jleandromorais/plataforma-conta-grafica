@@ -78,7 +78,7 @@ class PlataformaFinanceira(ctk.CTk):
             {"text": "🔍 Auditoria XML", "command": self.abrir_auditoria},
             {"text": "📋 Volume CGF", "command": self.abrir_cgf},
             {"text": "🧾 RPV (CGR − CGF)", "command": self.abrir_rpv, "fg_color": "#f59e0b", "hover_color": "#d97706", "text_color": "black"},
-            {"text": "📈 SR (Volume Prospectiva − VF) × PR", "command": self.abrir_sr},
+            {"text": "📈 SR (Volume Prospectivo − VF) × PR", "command": self.abrir_sr},
             {"text": "💼 Consolidação SCG", "command": self.abrir_scg, "fg_color": "#8b5cf6", "hover_color": "#7c3aed"},
             {"text": "9️⃣ Excel Final Consolidado", "command": self.exportar_relatorio_consolidado, "fg_color": "#16a085", "hover_color": "#1abc9c"},
         ]
@@ -118,14 +118,14 @@ class PlataformaFinanceira(ctk.CTk):
         
         # --- LISTA DE DADOS PARA OS CARDS DO MENU INICIAL ---
         dados_dos_cards = [
-            {"linha": 0, "coluna": 0, "titulo": "📊 Módulo PMPV", "desc": "Cálculo trimestral\ncom Volume Prospectiva", "comando": self.abrir_pmpv},
+            {"linha": 0, "coluna": 0, "titulo": "📊 Módulo PMPV", "desc": "Cálculo trimestral\ncom Volume Prospectivo", "comando": self.abrir_pmpv},
             {"linha": 0, "coluna": 1, "titulo": "📄 Conciliação RP", "desc": "Subtração entre  \nReceita - Despesa das penalidades \nde PDFs via OCR", "comando": self.abrir_ocr},
             {"linha": 0, "coluna": 2, "titulo": "⚡ Sistema RET", "desc": "Processamento\nde encargos e NFs \nSoma de encargos", "comando": self.abrir_ret},
             {"linha": 1, "coluna": 2, "titulo": "🔍 Auditoria CGR", "desc": "Notas fiscais \n dos supridores e auditoria \n de PDF via OCR", "comando": self.abrir_auditoria},
             {"linha": 1, "coluna": 1, "titulo": "📋 Volume CGF", "desc": "Somatório de volume\nFaturada - Canceladas\n- Devoluções", "comando": self.abrir_cgf},
             {"linha": 1, "coluna": 0, "titulo": "🧾 RPV", "desc": "Requisição de\nPequeno Valor\nCGR − CGF", "comando": self.abrir_rpv},
             {"linha": 2, "coluna": 0, "titulo": "💼 Consolidação SCG", "desc": "Cálculo final\nSCG = RPV+RET+RP", "comando": self.abrir_scg},
-            {"linha": 2, "coluna": 1, "titulo": "📈 SR", "desc": "(Volume Prospectiva − VF) × PR\nSaldo regulatório", "comando": self.abrir_sr},
+            {"linha": 2, "coluna": 1, "titulo": "📈 SR", "desc": "(Volume Prospectivo − VF) × PR\nSaldo regulatório", "comando": self.abrir_sr},
             {"linha": 2, "coluna": 2, "titulo": "9️⃣ Excel Final", "desc": "Exporta todos os módulos\nem um único Excel\nconsolidado", "comando": self.exportar_relatorio_consolidado},
         ]
 

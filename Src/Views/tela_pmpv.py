@@ -90,7 +90,7 @@ class TelaPMPV(ctk.CTkFrame):
         self.lbl_final.pack()
         vp_row = ctk.CTkFrame(center, fg_color="transparent")
         vp_row.pack(pady=(4, 0))
-        self.lbl_vp = ctk.CTkLabel(vp_row, text="Volume Prospectiva Total: — m³", font=("Roboto", 13), text_color="#3498db")
+        self.lbl_vp = ctk.CTkLabel(vp_row, text="Volume Prospectivo Total: — m³", font=("Roboto", 13), text_color="#3498db")
         self.lbl_vp.pack(side="left")
         self.btn_vp_detail = ctk.CTkButton(vp_row, text="▼ por mês", command=self._popup_vp, width=90, height=22, font=("Roboto", 11), fg_color="#1a5276", hover_color="#2e86c1")
         self.btn_vp_detail.pack(side="left", padx=(8, 0))
@@ -239,7 +239,7 @@ class TelaPMPV(ctk.CTkFrame):
 
         self.lbl_pmpv.configure(text=f"PMPV: R$ {self.res_final['pmpv']:.4f}")
         self.lbl_final.configure(text=f"PREÇO FINAL: R$ {self.res_final['preco_final']:.4f}")
-        self.lbl_vp.configure(text=f"Volume Prospectiva Total: {self._fmt_volume(self.res_final['vp_mensal'])} m³")
+        self.lbl_vp.configure(text=f"Volume Prospectivo Total: {self._fmt_volume(self.res_final['vp_mensal'])} m³")
 
         if self.res_final['avisos']:
             messagebox.showinfo(
@@ -381,11 +381,11 @@ class TelaPMPV(ctk.CTkFrame):
         vp_tot = (self.res_final or {}).get('vp_mensal', 0.0)
 
         win = ctk.CTkToplevel(self)
-        win.title("Volume Prospectiva por Mês")
+        win.title("Volume Prospectivo por Mês")
         win.geometry("380x280")
         win.grab_set()
 
-        ctk.CTkLabel(win, text="Volume Prospectiva por Mês (VP)", font=("Roboto", 15, "bold")).pack(pady=(16, 8))
+        ctk.CTkLabel(win, text="Volume Prospectivo por Mês (VP)", font=("Roboto", 15, "bold")).pack(pady=(16, 8))
         ctk.CTkLabel(win, text="VF vem do módulo CGF após processar as NFs", font=("Roboto", 11), text_color="#888").pack(pady=(0, 6))
         frame = ctk.CTkFrame(win, fg_color="#1e1e2e")
         frame.pack(fill="both", expand=True, padx=16, pady=4)
@@ -396,7 +396,7 @@ class TelaPMPV(ctk.CTkFrame):
             head = ctk.CTkFrame(frame, fg_color="transparent")
             head.pack(fill="x", padx=12, pady=5)
             ctk.CTkLabel(head, text="Mês", font=("Roboto", 12, "bold"), width=140, anchor="w").pack(side="left")
-            ctk.CTkLabel(head, text="Volume Prospectiva", font=("Roboto", 12, "bold"), width=160, anchor="e").pack(side="right")
+            ctk.CTkLabel(head, text="Volume Prospectivo", font=("Roboto", 12, "bold"), width=160, anchor="e").pack(side="right")
 
             for mes, vp_val in vp_por_mes.items():
                 row = ctk.CTkFrame(frame, fg_color="transparent")

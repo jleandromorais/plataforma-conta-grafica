@@ -286,7 +286,7 @@ class ExcelConsolidado:
         _card("📄  RP   (Conciliação)", _money_fmt(rp_val), _TEAL, row, col=3, span=2)
         # SR
         sr_val = sum((item or {}).get("sr", 0.0) or 0.0 for item in sr_lista) if not periodo else (sr_total or {}).get("sr", 0.0)
-        _card("📈  SR   (Volume Prospectiva − VF) × PR", _money_fmt(sr_val), _NAVY, row, col=5, span=2)
+        _card("📈  SR   (Volume Prospectivo − VF) × PR", _money_fmt(sr_val), _NAVY, row, col=5, span=2)
         row += 3
 
         # SCG Final
@@ -317,7 +317,7 @@ class ExcelConsolidado:
             _section_title(ws, row, "📊  PMPV — Últimas Sessões Salvas", 6, _TEAL)
             row += 1
             _apply_header_row(ws, row,
-                ["Sessão", "Data", "Volume Prospectiva (m³)", "VF (m³)", "PMPV (R$/m³)", "Preço Final"],
+                ["Sessão", "Data", "Volume Prospectivo (m³)", "VF (m³)", "PMPV (R$/m³)", "Preço Final"],
                 [30, 18, 16, 16, 16, 16], _TEAL)
             row += 1
             for i, s in enumerate(pmpv_sessoes[:10]):
@@ -377,7 +377,7 @@ class ExcelConsolidado:
 
             _section_title(ws, row,
                 f"  Sessão: {nome}  |  Data: {data}  |  "
-                f"Volume Prospectiva: {_vol_fmt(sessao.get('vp', 0))} m³  |  "
+                f"Volume Prospectivo: {_vol_fmt(sessao.get('vp', 0))} m³  |  "
                 f"VF: {_vol_fmt(sessao.get('vf', 0))} m³",
                 7, _TEAL)
             row += 1

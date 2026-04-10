@@ -19,13 +19,13 @@ Na prática, a aplicação permite:
 
 Os módulos principais disponíveis na interface estão em [Src/main_dashboard.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/Src/main_dashboard.py).
 
-- `1. PMPV`: cálculo de PMPV, volume prospectiva, preço final e salvamento de sessões.
+- `1. PMPV`: cálculo de PMPV, volume prospectivo, preço final e salvamento de sessões.
 - `Conciliação RP`: leitura de PDFs de receita e despesa para apuração do saldo RP.
 - `RET`: processamento de encargos e documentos vinculados ao RET.
 - `Auditoria XML`: apuração de CGR a partir de XML e PDF/OCR.
 - `CGF`: consolidação de volumes faturados, cancelados, devolvidos e consumo próprio.
 - `RPV`: cálculo de `CGR - CGF`.
-- `SR`: cálculo de `(Volume Prospectiva - VF) × PR`.
+- `SR`: cálculo de `(Volume Prospectivo - VF) × PR`.
 - `SCG`: consolidação final com `RPV + RET + RP`.
 - `Módulo 9`: geração do Excel final consolidado.
 
