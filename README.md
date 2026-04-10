@@ -1,86 +1,57 @@
-# Plataforma Conta Gráfica
+# Plataforma Conta Grafica
 
-Sistema desktop e backend de apoio para apuração da Conta Gráfica, análise fiscal e consolidação operacional em um único Excel final.
+Sistema desktop em Python para apuracao de Conta Grafica, com modulos fiscais/operacionais e geracao de Excel consolidado (Modulo 9). O repositorio tambem inclui stack de backend (Airflow + PostgreSQL) para rotinas de dados e relatorios.
 
-O projeto combina interface local em Python com módulos especializados para cálculo, auditoria, leitura de arquivos e consolidação de resultados em banco SQLite e relatórios Excel.
+## O que este projeto faz
 
-## Visão Geral
+- Calcula PMPV por sessao e periodo.
+- Processa Auditoria XML (NF-e/CT-e) para apuracao de CGR.
+- Processa RET e Conciliacao RP a partir de PDFs.
+- Calcula CGF, RPV, SR e SCG.
+- Consolida os resultados em um unico Excel final (Modulo 9), com controle de sessoes e execucoes.
 
-Na prática, a aplicação permite:
-
-- calcular PMPV trimestral com volumes e preços por empresa;
-- importar memória de cálculo e salvar sessões PMPV;
-- auditar NF-e e CT-e por XML e, quando necessário, por PDF/OCR;
-- processar RET e Conciliação RP a partir de PDFs;
-- apurar CGF, RPV, SR e SCG;
-- consolidar tudo no Módulo 9, gerando um Excel final geral.
-
-## Módulos da Aplicação
-
-Os módulos principais disponíveis na interface estão em [Src/main_dashboard.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/Src/main_dashboard.py).
-
-- `1. PMPV`: cálculo de PMPV, volume prospectivo, preço final e salvamento de sessões.
-- `Conciliação RP`: leitura de PDFs de receita e despesa para apuração do saldo RP.
-- `RET`: processamento de encargos e documentos vinculados ao RET.
-- `Auditoria XML`: apuração de CGR a partir de XML e PDF/OCR.
-- `CGF`: consolidação de volumes faturados, cancelados, devolvidos e consumo próprio.
-- `RPV`: cálculo de `CGR - CGF`.
-- `SR`: cálculo de `(Volume Prospectivo - VF) × PR`.
-- `SCG`: consolidação final com `RPV + RET + RP`.
-- `Módulo 9`: geração do Excel final consolidado.
-
-## Como o Módulo 9 Funciona
-
-O Excel final consolidado é gerado por [Src/infrastructure/exporters/excel_consolidado.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/Src/infrastructure/exporters/excel_consolidado.py).
-
-Fluxo atual:
-
-1. Cada módulo salva seus dados no banco local `pmpv_data.db`.
-2. O botão `Adicionar ao Excel Final (Módulo 9)` salva ou atualiza os dados analisados do módulo atual.
-3. O sistema pergunta qual sessão/arquivo do Excel final deve ser usada.
-4. O relatório consolidado é gerado a partir do banco, com todos os dados já analisados.
-
-Importante:
-
-- o Excel final é geral por padrão;
-- a sessão ativa do Módulo 9 pode ser reutilizada entre módulos;
-- o PMPV salva sessão própria antes de entrar no consolidado;
-- CGF, RET, Auditoria, RP, SR, RPV e SCG também entram no mesmo fluxo.
-
-## Estrutura do Repositório
+## Arquitetura (visao rapida)
 
 ```text
 plataforma-conta-grafica/
-├── Src/
-│   ├── application/         # Casos de uso
-│   ├── common/              # Helpers utilitários
-│   ├── config/              # Tema e configurações de UI
-│   ├── Database/            # Banco SQLite e persistência base
-│   ├── domain/              # Portas e contratos
-│   ├── infrastructure/      # Exportadores, OCR, repositórios
-│   ├── Services/            # Regras de negócio por módulo
-│   ├── Views/               # Telas da aplicação
-│   └── main_dashboard.py    # Dashboard principal
-├── backend/                 # ETL, Airflow, DQ, monitoramento e reporting
-├── tests/                   # Testes automatizados
-├── docker-compose.yml
-├── requirements.txt
-├── pytest.ini
-├── start.py
-└── README.md
+|- Src/
+|  |- application/        # Casos de uso
+|  |- domain/             # Contratos e modelos
+|  |- Services/           # Regras de negocio por modulo
+|  |- Views/              # Telas (customtkinter)
+|  |- infrastructure/     # Exportadores, OCR, integracoes
+|  |- Database/           # Persistencia SQLite
+|  |- common/             # Helpers de fluxo e UI
+|  `- main_dashboard.py   # Janela principal
+|- backend/               # Airflow, ETL, DQ, reporting
+|- tests/                 # Testes automatizados
+|- main.py                # Entry point principal da UI
+|- start.py               # Bootstrap da stack Docker
+|- docker-compose.yml
+|- requirements.txt
+`- COMANDOS.md
 ```
 
-## Requisitos
+## Modulos da UI
 
-- Python 3.10 ou superior
-- Windows é o ambiente principal de uso
-- Docker Desktop é opcional para o backend com Airflow
+- PMPV
+- Conciliacao RP
+- RET
+- Auditoria XML
+- CGF
+- RPV
+- SR
+- SCG
+- Excel Final Consolidado (Modulo 9)
 
-Dependendo do ambiente local, a interface desktop também pode exigir bibliotecas visuais já utilizadas pelo projeto, como `customtkinter` e `Pillow`.
+## Pre-requisitos
 
-## Instalação Local
+- Windows (ambiente principal de uso)
+- Python 3.10+
+- PowerShell
+- Docker Desktop (opcional, para backend/Airflow)
 
-### PowerShell
+## Instalacao local
 
 ```powershell
 python -m venv .venv
@@ -88,31 +59,38 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Se houver uso de variáveis locais, copie também o arquivo de ambiente quando necessário:
+Dependencias principais em uso no projeto:
+
+- pandas
+- openpyxl
+- sqlalchemy
+- psycopg2-binary
+- python-dotenv
+- pytesseract
+- PyYAML
+- google-genai
+
+## Como executar
+
+### 1) Aplicacao desktop (recomendado)
 
 ```powershell
-Copy-Item .env.example .env
+python main.py
 ```
 
-## Execução
-
-### Interface Desktop
-
-Para abrir a aplicação principal:
+Alternativa direta:
 
 ```powershell
 python Src/main_dashboard.py
 ```
 
-### Inicialização da Stack com Docker
-
-O script [start.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/start.py) automatiza a subida do ambiente com Docker Compose:
+### 2) Stack backend com Docker (opcional)
 
 ```powershell
 python start.py
 ```
 
-Ou, manualmente:
+ou
 
 ```powershell
 docker-compose up -d
@@ -121,72 +99,90 @@ docker-compose up -d
 Airflow Web UI:
 
 - URL: http://localhost:8080
-- Usuário: `airflow`
-- Senha: `airflow`
+- Usuario: airflow
+- Senha: airflow
 
-## Fluxo Recomendado de Uso
+## Fluxo recomendado de operacao
 
-Quando a intenção for gerar o Excel final consolidado, o fluxo sugerido é:
+1. Execute os modulos por periodo (ex.: `Dez/2025`).
+2. Em cada modulo, use o botao `Adicionar ao Excel Final (Modulo 9)`.
+3. Escolha/reutilize a sessao de Excel final no modal CTk.
+4. Gere o consolidado final por periodo para evitar mistura de dados.
 
-1. Processar os módulos que interessam para o período.
-2. Salvar os dados em cada módulo ou usar o botão `Adicionar ao Excel Final (Módulo 9)`.
-3. Reutilizar a mesma sessão do Excel final quando solicitado.
-4. Ao final, abrir o Módulo 9 ou qualquer botão de adicionar e gerar o arquivo geral consolidado.
+## Modulo 9 (Excel Final) - Regras importantes
 
-Exemplo prático:
+O fluxo atual foi padronizado para evitar mistura de sessoes:
 
-1. PMPV: calcular, importar memória se necessário e salvar sessão.
-2. Auditoria XML: calcular CGR e salvar.
-3. CGF: calcular volume final e salvar.
-4. RET e Conciliação: processar e salvar.
-5. SCG: revisar consolidação.
-6. Gerar o Excel final geral.
+- A selecao de destino do Excel final ocorre em modal CTk (`Src/common/excel_final_destino.py`).
+- Cada inclusao registra execucao por chave logica: `nome_sessao + periodo + etapa`.
+- A exportacao consolidada usa periodo explicito (normalizado), evitando `periodo=None` por engano nas telas principais.
 
-## Banco de Dados Local
+Arquivos relevantes do fluxo:
 
-O projeto utiliza SQLite local para persistência operacional.
+- `Src/common/excel_final_destino.py`
+- `Src/infrastructure/exporters/excel_consolidado.py`
+- `Src/Database/database.py`
 
-Arquivos principais persistidos:
+## Banco de dados
 
-- `pmpv_data.db`: base principal da aplicação.
-- tabelas de sessões PMPV, consolidação, SR, CGF e itens detalhados.
+Persistencia principal local:
 
-O banco principal é usado como fonte de verdade para o Excel consolidado.
+- `pmpv_data.db` (SQLite)
+
+Tabelas importantes para o Modulo 9:
+
+- `excel_final_sessoes`
+- `excel_final_execucoes`
+- tabelas de dados por modulo (`ret_itens`, `auditoria_itens`, `concilia_itens`, `cgf_resumo`, `sr_resultados`, `consolidacao`)
 
 ## Testes
 
-Para rodar a suíte de testes:
+Rodar suite completa:
 
 ```powershell
 python -m pytest
 ```
 
-O projeto já possui configuração em [pytest.ini](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/pytest.ini).
+Rodar testes focados do fluxo Excel Final:
 
-## Comandos Úteis
+```powershell
+python -m pytest tests/test_excel_final_flow.py tests/test_excel_consolidado_none.py -q
+```
 
-Há uma lista adicional em [COMANDOS.md](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/COMANDOS.md) com exemplos de:
+## Comandos uteis
 
-- subida da stack;
-- verificação de containers;
-- logs do Airflow;
-- troubleshooting;
-- comandos de teste.
+Veja `COMANDOS.md` para atalhos de:
 
-## Observações Importantes
+- subida e operacao do Docker
+- logs do Airflow/PostgreSQL
+- troubleshooting
+- testes especificos
 
-- Não commitar `.env` real.
-- Não commitar bancos locais, relatórios gerados e massas grandes de dados.
-- OCR e leitura por Gemini dependem de configuração e disponibilidade do ambiente.
-- Parte do backend foi pensada para uso recorrente com Airflow, mas a aplicação desktop pode ser usada de forma independente.
+## Troubleshooting
 
-## Pontos de Entrada Relevantes
+### Excel final mistura periodos
 
-- Dashboard principal: [Src/main_dashboard.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/Src/main_dashboard.py)
-- Banco local: [Src/Database/database.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/Src/Database/database.py)
-- Exportador Excel final: [Src/infrastructure/exporters/excel_consolidado.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/Src/infrastructure/exporters/excel_consolidado.py)
-- Inicialização Docker: [start.py](c:/Users/jose.demorais/Downloads/Plataforma/plataforma-conta-grafica/start.py)
+- Garanta que o periodo foi informado no modal de periodo do modulo.
+- Reuse a sessao correta do Excel final no modal de destino.
+- Verifique registros em `excel_final_execucoes`.
 
-## Licença
+### Arquivo Excel nao atualiza
 
-Defina a licença do projeto antes de distribuição externa. Se a intenção for publicação aberta, uma opção comum é MIT.
+- Feche o arquivo no Excel e tente novamente.
+- Gere para um novo caminho temporario e valide.
+
+### RET nao aparece no consolidado
+
+- Confirme que o RET foi processado e salvo no periodo correto.
+- Confirme que foi usado `Adicionar ao Excel Final (Modulo 9)` no RET.
+
+## Contribuicao
+
+1. Crie branch de feature/fix.
+2. Rode testes antes do commit.
+3. Faça commits semanticos curtos e objetivos.
+4. Abra PR com contexto funcional e tecnico.
+
+## Licenca
+
+Licenca ainda nao definida no repositorio.
