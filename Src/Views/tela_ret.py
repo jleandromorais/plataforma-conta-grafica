@@ -586,5 +586,5 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             return
         destino, nome_sessao, periodo_norm, execucao = meta_execucao
         # Export only the selected period to avoid mixing sessions
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
         messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa RET registrada (execução #{execucao}).")

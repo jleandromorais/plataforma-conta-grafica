@@ -678,6 +678,6 @@ class TelaAuditoria(ctk.CTkFrame):
         meta_execucao = registrar_execucao_excel_final(etapa="Auditoria XML", periodo=periodo_salvar, parent=self)
         if not meta_execucao:
             return
-        destino, _, _, execucao = meta_execucao
-        arquivo = ExcelConsolidado.exportar(periodo=None, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nEtapa Auditoria XML registrada (execução #{execucao}).")
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa Auditoria XML registrada (execução #{execucao}).")

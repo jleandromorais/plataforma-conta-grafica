@@ -129,17 +129,16 @@ def registrar_execucao_excel_final(
     Returns:
         tuple(caminho_arquivo, nome_sessao, periodo_normalizado, execucao) ou None.
     """
-    caminho = escolher_destino_excel_final(periodo=periodo, parent=parent)
-    if not caminho:
+    escolha = escolher_destino_excel_final(periodo=periodo, parent=parent)
+    if not escolha:
         return None
+    caminho, nome_sessao = escolha
 
     periodo_norm = _normalizar_periodo(periodo)
     etapa_norm = (etapa or "").strip() or "ETAPA"
 
     db = DatabasePMPV()
     try:
-        sessao_ativa = db.buscar_sessao_excel_final_ativa() or {}
-        nome_sessao = (sessao_ativa.get("nome") or "Geral").strip() or "Geral"
         execucao = db.registrar_execucao_excel_final(
             nome_sessao=nome_sessao,
             periodo=periodo_norm,

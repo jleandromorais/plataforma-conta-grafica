@@ -322,9 +322,9 @@ class TelaSCG(ctk.CTkFrame):
         meta_execucao = registrar_execucao_excel_final(etapa="SCG", periodo=self.periodo_atual, parent=self)
         if not meta_execucao:
             return
-        destino, _, _, execucao = meta_execucao
-        arquivo = ExcelConsolidado.exportar(periodo=None, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nEtapa SCG registrada (execução #{execucao}).")
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa SCG registrada (execução #{execucao}).")
 
     def _remover_excel_final(self):
         removido, mensagem = remover_excel_final_ativo(parent=self)
