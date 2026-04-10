@@ -47,6 +47,53 @@ class TestDatabasePMPV:
         # Verifica tabela resultados
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='resultados'")
         assert cursor.fetchone() is not None
+
+        # Verifica tabela de progresso do Excel final
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='excel_final_execucoes'")
+        assert cursor.fetchone() is not None
+
+    def test_registrar_execucao_excel_final_incrementa_execucao(self, db_temp):
+        exec_1 = db_temp.registrar_execucao_excel_final(
+            nome_sessao="Sessao Geral",
+            periodo="Dez/2025",
+            etapa="RET",
+            caminho_arquivo="C:/tmp/final.xlsx",
+        )
+        exec_2 = db_temp.registrar_execucao_excel_final(
+            nome_sessao="Sessao Geral",
+            periodo="Dez/2025",
+            etapa="RET",
+            caminho_arquivo="C:/tmp/final.xlsx",
+        )
+
+        assert exec_1 == 1
+        assert exec_2 == 2
+
+        linhas = db_temp.listar_execucoes_excel_final(nome_sessao="Sessao Geral", periodo="Dez/2025")
+        assert len(linhas) == 1
+        assert linhas[0]["etapa"] == "RET"
+        assert linhas[0]["execucao"] == 2
+
+    def test_registrar_execucao_excel_final_separa_por_etapa(self, db_temp):
+        db_temp.registrar_execucao_excel_final(
+            nome_sessao="Sessao Geral",
+            periodo="Dez/2025",
+            etapa="RET",
+            caminho_arquivo="C:/tmp/final.xlsx",
+        )
+        db_temp.registrar_execucao_excel_final(
+            nome_sessao="Sessao Geral",
+            periodo="Dez/2025",
+            etapa="Auditoria XML",
+            caminho_arquivo="C:/tmp/final.xlsx",
+        )
+
+        linhas = db_temp.listar_execucoes_excel_final(nome_sessao="Sessao Geral", periodo="Dez/2025")
+        etapas = {linha["etapa"] for linha in linhas}
+
+        assert len(linhas) == 2
+        assert "RET" in etapas
+        assert "Auditoria XML" in etapas
     
     def test_criar_sessao(self, db_temp):
         """Testa a criação de uma nova sessão"""

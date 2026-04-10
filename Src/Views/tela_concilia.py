@@ -11,7 +11,7 @@ from Src.Services.servicos_concilia import RegrasConcilia
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
@@ -219,8 +219,9 @@ class TelaConciliador(ctk.CTkFrame):
             finally:
                 db.fechar()
 
-        destino = escolher_destino_excel_final(periodo=periodo_salvar, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="Conciliação RP", periodo=periodo_salvar, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, _, _, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=None, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nEtapa Conciliação RP registrada (execução #{execucao}).")

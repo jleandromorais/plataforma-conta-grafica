@@ -10,7 +10,7 @@ from Src.Services.servicos_pmpv import ExcelPMPV
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.Database.database import DatabasePMPV
 
 # ==========================================
@@ -504,11 +504,13 @@ class TelaPMPV(ctk.CTkFrame):
         if periodo is None:
             return
 
-        destino = escolher_destino_excel_final(periodo=periodo.strip() if periodo and periodo.strip() else None, parent=self)
-        if not destino:
+        periodo_salvar = periodo.strip() if periodo and periodo.strip() else "Geral"
+        meta_execucao = registrar_execucao_excel_final(etapa="PMPV", periodo=periodo_salvar, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=periodo.strip() if periodo and periodo.strip() else None, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, _, _, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=None, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nEtapa PMPV registrada (execução #{execucao}).")
 
     def _salvar_pmpv_mensal(self):
         if not hasattr(self, 'res_final'): return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")

@@ -155,6 +155,19 @@ class DatabasePMPV:
         """)
 
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS excel_final_execucoes (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome_sessao      TEXT NOT NULL,
+                periodo          TEXT NOT NULL,
+                etapa            TEXT NOT NULL,
+                execucao         INTEGER NOT NULL DEFAULT 1,
+                caminho_arquivo  TEXT NOT NULL,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(nome_sessao, periodo, etapa)
+            )
+        """)
+
+        self.cursor.execute("""
                             
                             CREATE TABLE IF NOT EXISTS  consolidacao(
                                 id INTEGER PRIMARY KEY  AUTOINCREMENT,
@@ -621,9 +634,109 @@ class DatabasePMPV:
         row = self.cursor.fetchone()
         return dict(row) if row else None
 
+    def listar_sessoes_excel_final(self) -> List[Dict]:
+        self.cursor.execute(
+            """
+            SELECT *
+            FROM excel_final_sessoes
+            ORDER BY ativo DESC, data_atualizacao DESC
+            """
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
     def desativar_sessao_excel_final_ativa(self):
         self.cursor.execute("UPDATE excel_final_sessoes SET ativo = 0 WHERE ativo = 1")
         self.conn.commit()
+
+    def registrar_execucao_excel_final(
+        self,
+        nome_sessao: str,
+        periodo: str,
+        etapa: str,
+        caminho_arquivo: str,
+    ) -> int:
+        """
+        Registra execução por etapa no Excel final cumulativo.
+
+        Chave lógica: nome_sessao + periodo + etapa
+        - Se já existir, incrementa o contador `execucao` e atualiza timestamp/caminho.
+        - Se não existir, cria com `execucao = 1`.
+        """
+        self.cursor.execute(
+            """
+            SELECT id, execucao
+            FROM excel_final_execucoes
+            WHERE nome_sessao = ? AND periodo = ? AND etapa = ?
+            LIMIT 1
+            """,
+            (nome_sessao, periodo, etapa),
+        )
+        row = self.cursor.fetchone()
+
+        if row:
+            novo_valor = int(row["execucao"] or 0) + 1
+            self.cursor.execute(
+                """
+                UPDATE excel_final_execucoes
+                SET execucao = ?, caminho_arquivo = ?, data_atualizacao = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (novo_valor, caminho_arquivo, row["id"]),
+            )
+            self.conn.commit()
+            return novo_valor
+
+        self.cursor.execute(
+            """
+            INSERT INTO excel_final_execucoes
+                (nome_sessao, periodo, etapa, execucao, caminho_arquivo, data_atualizacao)
+            VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+            """,
+            (nome_sessao, periodo, etapa, caminho_arquivo),
+        )
+        self.conn.commit()
+        return 1
+
+    def listar_execucoes_excel_final(self, nome_sessao: str | None = None, periodo: str | None = None) -> List[Dict]:
+        if nome_sessao and periodo:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                WHERE nome_sessao = ? AND periodo = ?
+                ORDER BY data_atualizacao DESC, etapa
+                """,
+                (nome_sessao, periodo),
+            )
+        elif nome_sessao:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                WHERE nome_sessao = ?
+                ORDER BY data_atualizacao DESC, periodo, etapa
+                """,
+                (nome_sessao,),
+            )
+        elif periodo:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                WHERE periodo = ?
+                ORDER BY data_atualizacao DESC, nome_sessao, etapa
+                """,
+                (periodo,),
+            )
+        else:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                ORDER BY data_atualizacao DESC, nome_sessao, periodo, etapa
+                """
+            )
+        return [dict(r) for r in self.cursor.fetchall()]
 
     # ==========================================
     # SESSÕES COM VOLUMES (PMPV)

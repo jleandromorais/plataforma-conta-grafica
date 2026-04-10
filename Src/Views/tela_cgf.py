@@ -5,7 +5,7 @@ from pathlib import Path
 
 from Src.Services.servicos_cgf import ServicosCGF
 from Src.Database.database import DatabasePMPV
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 APP_TITLE = "CGF - Somatório de Volume Faturado"
@@ -377,8 +377,9 @@ class TelaCGF(ctk.CTkFrame):
         finally:
             db.fechar()
 
-        destino = escolher_destino_excel_final(periodo=periodo_salvar, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="CGF", periodo=periodo_salvar, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, _, _, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=None, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nEtapa CGF registrada (execução #{execucao}).")

@@ -56,12 +56,23 @@ def _align(h="left", v="center", wrap=False) -> Alignment:
     return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
 
 
-def _money_fmt(val: float) -> str:
-    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def _to_float(val: Any, default: float = 0.0) -> float:
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
 
 
-def _vol_fmt(val: float) -> str:
-    return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def _money_fmt(val: Any) -> str:
+    num = _to_float(val)
+    return f"R$ {num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _vol_fmt(val: Any) -> str:
+    num = _to_float(val)
+    return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _apply_header_row(ws, row_num: int, labels: list[str],
@@ -82,7 +93,9 @@ def _apply_data_row(ws, row_num: int, values: list[Any],
     bg = _ROW_ALT if alternate else _ROW_NORM
     fmts = fmts or ["@"] * len(values)
     for col_idx, (val, fmt) in enumerate(zip(values, fmts), start=1):
+        cell_value = _to_float(val) if fmt != "@" else ("" if val is None else val)
         cell = ws.cell(row=row_num, column=col_idx, value=val)
+        cell.value = cell_value
         cell.fill = _fill(bg)
         cell.font = _font(bold=(bold_last and col_idx == len(values)))
         cell.alignment = _align("right" if fmt != "@" else "left")
@@ -94,7 +107,9 @@ def _apply_total_row(ws, row_num: int, values: list[Any],
                      fmts: list[str] | None = None, bg: str = _SUMMARY):
     fmts = fmts or ["@"] * len(values)
     for col_idx, (val, fmt) in enumerate(zip(values, fmts), start=1):
+        cell_value = _to_float(val) if fmt != "@" else ("" if val is None else val)
         cell = ws.cell(row=row_num, column=col_idx, value=val)
+        cell.value = cell_value
         cell.fill = _fill(bg)
         cell.font = _font(bold=True, size=11)
         cell.alignment = _align("right" if fmt != "@" else "left")
@@ -187,6 +202,7 @@ class ExcelConsolidado:
         sr           = db.buscar_sr(periodo) if periodo else None
         sr_lista     = [sr] if periodo and sr else db.listar_sr()
         pmpv_mensal  = db.listar_pmpv_mensal()
+        execucoes    = db.listar_execucoes_excel_final(periodo=periodo) if periodo else db.listar_execucoes_excel_final()
 
         # Sheets
         ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, periodo)
@@ -196,6 +212,7 @@ class ExcelConsolidado:
         ExcelConsolidado._sheet_concilia(wb, conc_itens, periodo)
         ExcelConsolidado._sheet_cgf(wb, cgf if periodo else cgf_lista, periodo)
         ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_progresso(wb, execucoes, periodo)
 
         try:
             wb.save(final)
@@ -829,3 +846,53 @@ class ExcelConsolidado:
         ws.column_dimensions["B"].width = 22
         ws.column_dimensions["C"].width = 10
         ws.column_dimensions["D"].width = 30
+
+    # ── Sheet 8: Progresso por Etapa ───────────────────────────────────────
+
+    @staticmethod
+    def _sheet_progresso(wb, execucoes: list[dict], periodo: str | None):
+        ws = wb.create_sheet("📈 Progresso Execuções")
+        ws.sheet_view.showGridLines = False
+
+        ws.merge_cells("A1:F1")
+        t = ws["A1"]
+        t.value = f"PROGRESSÃO DO EXCEL FINAL  |  Período: {periodo or 'Todos'}"
+        t.fill = _fill("2C3E50")
+        t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("center")
+        ws.row_dimensions[1].height = 30
+
+        row = 3
+        _apply_header_row(
+            ws,
+            row,
+            ["Sessão", "Período", "Etapa", "Execução", "Atualizado", "Arquivo"],
+            [24, 14, 22, 12, 20, 46],
+            "2C3E50",
+        )
+        row += 1
+
+        if not execucoes:
+            ws.cell(
+                row=row,
+                column=1,
+                value="Nenhuma execução de etapa registrada no fluxo cumulativo.",
+            )
+            return
+
+        for i, item in enumerate(execucoes):
+            _apply_data_row(
+                ws,
+                row,
+                [
+                    item.get("nome_sessao", ""),
+                    item.get("periodo", ""),
+                    item.get("etapa", ""),
+                    int(item.get("execucao", 0) or 0),
+                    str(item.get("data_atualizacao", ""))[:19],
+                    item.get("caminho_arquivo", ""),
+                ],
+                ["@", "@", "@", _NUM, "@", "@"],
+                alternate=(i % 2 == 1),
+            )
+            row += 1

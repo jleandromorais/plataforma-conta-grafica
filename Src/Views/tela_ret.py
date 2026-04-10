@@ -9,7 +9,7 @@ from pathlib import Path
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.excel_ret import ExcelRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -201,9 +201,9 @@ class TelaRET(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_frame,
-            text="➕ Excel Final (Módulo 9)",
+            text="➕ Adicionar ao Excel Final (Módulo 9)",
             command=self._adicionar_excel_final,
-            width=180,
+            width=240,
             height=35,
             fg_color="#6c3483",
             hover_color="#884ea0"
@@ -581,8 +581,10 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         finally:
             db.fechar()
 
-        destino = escolher_destino_excel_final(periodo=periodo_salvar, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="RET", periodo=periodo_salvar, parent=self)
+        if not meta_execucao:
             return
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        # Export only the selected period to avoid mixing sessions
         arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa RET registrada (execução #{execucao}).")
