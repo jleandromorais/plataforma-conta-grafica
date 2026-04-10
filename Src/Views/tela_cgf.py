@@ -5,7 +5,7 @@ from pathlib import Path
 
 from Src.Services.servicos_cgf import ServicosCGF
 from Src.Database.database import DatabasePMPV
-from Src.common.excel_final_destino import registrar_execucao_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 APP_TITLE = "CGF - Somatório de Volume Faturado"
@@ -352,15 +352,16 @@ class TelaCGF(ctk.CTkFrame):
 
         periodo = self.periodo_cgf.get().strip()
         if not periodo:
-            periodo = simpledialog.askstring(
-                "Excel Final (Módulo 9)",
-                "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+            periodo = solicitar_periodo_excel_final(
                 parent=self,
+                titulo="Excel Final (Módulo 9) - CGF",
+                mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
+                valor_inicial=self.periodo_cgf.get().strip(),
             )
-            if periodo is None:
+            if not periodo:
                 return
 
-        periodo_salvar = periodo.strip() if periodo and periodo.strip() else "Geral"
+        periodo_salvar = periodo.strip()
         self.servicos.salvar_cgf(periodo_salvar, valor_salvar)
 
         resumo = getattr(self, "_ultimo_resultado_cgf", {})

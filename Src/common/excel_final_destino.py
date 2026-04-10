@@ -11,6 +11,59 @@ from Src.Database.database import DatabasePMPV
 def _normalizar_periodo(periodo: str | None) -> str:
     return (periodo or "").strip() or "Geral"
 
+
+def solicitar_periodo_excel_final(
+    parent=None,
+    titulo: str = "Período do Excel Final",
+    mensagem: str = "Informe o período (ex: Dez/2025):",
+    valor_inicial: str = "",
+) -> str | None:
+    """Solicita período em modal CTk e retorna string normalizada.
+
+    Retorna `None` quando cancelado. Não aceita período vazio.
+    """
+    modal = ctk.CTkToplevel(parent)
+    modal.title(titulo)
+    modal.geometry("520x220")
+    modal.resizable(False, False)
+
+    result: str | None = None
+
+    ctk.CTkLabel(modal, text=titulo, font=("Roboto", 15, "bold")).pack(pady=(14, 8), padx=14, anchor="w")
+    ctk.CTkLabel(modal, text=mensagem, font=("Roboto", 12)).pack(pady=(0, 8), padx=14, anchor="w")
+
+    entry = ctk.CTkEntry(modal, placeholder_text="Ex.: Dez/2025")
+    entry.pack(fill="x", padx=14, pady=(0, 6))
+    if valor_inicial:
+        entry.insert(0, valor_inicial)
+    entry.focus_set()
+
+    info_label = ctk.CTkLabel(modal, text="", text_color="#ff6b6b", font=("Roboto", 11))
+    info_label.pack(fill="x", padx=14, pady=(0, 4), anchor="w")
+
+    btn_frame = ctk.CTkFrame(modal)
+    btn_frame.pack(side="bottom", fill="x", pady=12)
+
+    def on_ok():
+        nonlocal result
+        periodo = (entry.get() or "").strip()
+        if not periodo:
+            info_label.configure(text="Período obrigatório para evitar mistura de sessões.")
+            return
+        result = periodo
+        modal.destroy()
+
+    def on_cancel():
+        modal.destroy()
+
+    ctk.CTkButton(btn_frame, text="Cancelar", command=on_cancel, width=120).pack(side="right", padx=12)
+    ctk.CTkButton(btn_frame, text="Confirmar", command=on_ok, width=120, fg_color="#2196F3").pack(side="right")
+
+    modal.transient(parent)
+    modal.grab_set()
+    modal.wait_window()
+    return result
+
 def escolher_destino_excel_final(periodo: str | None = None, parent=None) -> tuple[str, str] | None:
     """Mostra um modal CTk para escolher/criar a sessão do Excel final.
 

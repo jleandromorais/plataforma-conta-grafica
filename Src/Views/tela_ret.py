@@ -9,7 +9,7 @@ from pathlib import Path
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.excel_ret import ExcelRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import registrar_execucao_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -562,15 +562,15 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             messagebox.showwarning("Aviso", "Processe os PDFs do RET antes de adicionar ao Excel final.")
             return
 
-        periodo = simpledialog.askstring(
-            "Excel Final (Módulo 9)",
-            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+        periodo = solicitar_periodo_excel_final(
             parent=self,
+            titulo="Excel Final (Módulo 9) - RET",
+            mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
         )
-        if periodo is None:
+        if not periodo:
             return
 
-        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+        periodo_salvar = periodo.strip()
         calc = RegrasRET.calcular_ret(self.dados_processados)
         total_geral = calc['ret']
 

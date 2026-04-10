@@ -10,7 +10,7 @@ from Src.Services.servicos_pmpv import ExcelPMPV
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
-from Src.common.excel_final_destino import registrar_execucao_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
 from Src.Database.database import DatabasePMPV
 
 # ==========================================
@@ -488,23 +488,19 @@ class TelaPMPV(ctk.CTkFrame):
         if not hasattr(self, 'res_final'):
             return messagebox.showwarning("Aviso", "Calcule o PMPV antes de adicionar ao Excel final.")
 
-        nome_padrao = datetime.now().strftime("PMPV_%d%m%Y_%H%M")
-        nome = simpledialog.askstring("Sessão PMPV", "Nome da sessão PMPV para o Excel final:", initialvalue=nome_padrao, parent=self)
-        if not nome or not nome.strip():
-            return
+        nome = datetime.now().strftime("PMPV_%d%m%Y_%H%M")
         dados = self._get_data_dict()
-        self.use_cases.salvar_sessao_completa(nome.strip(), dados, self.res_final)
+        self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
 
-        periodo = simpledialog.askstring(
-            "Excel final (Módulo 9)",
-            "Período para o relatório final (ex: Dez/2025).\nDeixe em branco para incluir todos:",
+        periodo = solicitar_periodo_excel_final(
             parent=self,
+            titulo="Excel Final (Módulo 9) - PMPV",
+            mensagem="Informe o período do relatório final (ex: Dez/2025):",
         )
-
-        if periodo is None:
+        if not periodo:
             return
 
-        periodo_salvar = periodo.strip() if periodo and periodo.strip() else "Geral"
+        periodo_salvar = periodo.strip()
         meta_execucao = registrar_execucao_excel_final(etapa="PMPV", periodo=periodo_salvar, parent=self)
         if not meta_execucao:
             return
