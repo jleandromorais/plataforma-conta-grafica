@@ -1,135 +1,231 @@
 ---
 mode: agent
-description: "Execute professional Git workflow: stage changes, create Conventional Commits with intelligent scope detection, push with upstream tracking. Use '/push+pr' to automatically open a pull request on GitHub/GitLab after push."
+description: "Production-grade Git workflow automation: intelligent staging, Conventional Commits with scope inference, upstream push with optional GitHub/GitLab pull request creation. Invoke as '/push' for standard push or '/push+pr' to open a PR after push."
 tools: ["run_in_terminal"]
-tags: ["git", "automation", "devops"]
+tags: ["git", "automation", "devops", "ci-cd", "conventional-commits"]
 ---
 
-# Professional Git Push & PR Workflow
+# Git Push & Pull Request Automation
 
-## Core Behavior
+## Overview
 
-When invoked as `/push`: Execute a complete, production-grade push workflow.
-When invoked as `/push+pr`: Execute push workflow + automatically create pull request.
+This agent executes a fully automated, production-ready Git workflow with zero manual intervention. It enforces Conventional Commits, validates repository state before every operation, and produces a structured audit report on completion.
 
-## Execution Steps
+| Command     | Behavior                                                   |
+| ----------- | ---------------------------------------------------------- |
+| `/push`     | Stage → Commit (Conventional) → Push with upstream set    |
+| `/push+pr`  | All of the above + create and open a Pull Request          |
 
-### Phase 1: Pre-flight Validation
-1. **Branch Detection**: Identify current branch name with `git rev-parse --abbrev-ref HEAD`
-2. **Status Check**: Run `git status --porcelain` to validate there are unstaged changes
-3. **Stash Validation**: Warn if uncommitted changes exist but are not staged
+---
 
-### Phase 2: Staging & Analysis
-1. **Stage All Changes**: Execute `git add .`
-2. **Diff Analysis**: Run `git diff --cached --name-status` to categorize changes:
-   - Parse filenames to intelligently infer commit `type` and `scope`
-   - Group by functional areas (backend, frontend, db, config, etc.)
-3. **Change Summary**: Display staged file count and types before proceeding
+## Execution Pipeline
 
-### Phase 3: Commit Generation
-Build a professional, semantically meaningful commit message:
+### Phase 1 — Repository State Validation
 
-**Format**: `<type>(<scope>): <title>`
+Run all checks before touching any files:
 
-**Type inference** (from changed files):
-- `feat` → New files, feature additions
-- `fix` → Bugfixes, error corrections
-- `refactor` → Code restructuring without logic change
-- `perf` → Performance optimizations
-- `docs` → Documentation-only changes
-- `test` → Test additions or modifications
-- `ci` → Pipeline/build configuration
-- `style` → Formatting, linting (no code logic change)
-- `chore` → Maintenance, dependencies
-
-**Scope inference** (from file paths):
-- Extract package/module name: `backend`, `frontend`, `etl`, `database`, `monitoring`, etc.
-- If multiple scopes, use primary scope or `core`
-- Default fallback: `core`
-
-**Title requirements**:
-- Imperative mood (e.g., "add", "fix", "improve", not "added", "fixed")
-- Concise: max 50 characters
-- Clear business value or technical rationale
-- Lowercase (except proper nouns)
-
-**Body requirements** (if changes exceed 3 files or single file >100 lines):
-- Add blank line after title
-- Explain **WHY** the change was made
-- Describe **WHAT** problems it solves
-- Note **IMPACT** on other systems if applicable
-- Reference any tickets/issues: `Fixes #123` or `Related to #456`
-
-**Example**:
-```
-feat(etl): add data quality checks for penalidade records
-
-- Integrated Great Expectations framework for automated validation
-- Validates format, ranges, and referential integrity
-- Reduces manual review time by 40%
-
-Fixes #89
+```bash
+git rev-parse --abbrev-ref HEAD          # Resolve active branch
+git status --porcelain                   # Detect working-tree state
+git diff --check                         # Abort on conflict markers
+git stash list                           # Surface hidden stashed work
 ```
 
-### Phase 4: Commit & Push
-1. **Commit**: Execute `git commit -m "<generated message>"`
-2. **Push**: Execute `git push -u origin <current-branch>` with upstream tracking
-3. **Verification**: Confirm push success and display commit hash
+**Abort conditions** (hard stop, no commit attempted):
+- Unresolved merge/rebase conflict markers detected (`git diff --check` exits non-zero)
+- Repository is in a detached HEAD state
+- Remote `origin` is unreachable
 
-### Phase 5: Pull Request Creation (only with `/push+pr`)
-1. **Platform Detection**: Identify Git hosting platform (GitHub, GitLab, Gitea)
-2. **PR Template Generation**:
-   - Title: Reuse commit title or enhance with context
-   - Description: Auto-populate from commit body + checklist
-   - Labels: Auto-tag by type and scope (e.g., `enhancement`, `backend`)
-   - Assignees: Suggest based on changed files (if CODEOWNERS exists)
-3. **Remote Validation**: Confirm push completed before creating PR
-4. **Open in Browser**: Open PR URL in default browser for review
+**Advisory warnings** (proceed after surfacing to user):
+- Protected branch detected (`main`, `master`, `release/*`, `production`)
+- Stash entries exist that may conflict with staged changes
+- Binary files (`.png`, `.pdf`, `.exe`, `.zip`, etc.) are staged
 
-## Professional Standards
+---
 
-### Commit Message Policy
-- **Language**: Always professional English (US spelling)
-- **Format**: Strict Conventional Commits (no exceptions)
-- **Scope**: Always present and meaningful
-- **Tone**: Technical, clear, actionable
-- **Grammar**: Complete sentences in body, imperative in title
+### Phase 2 — Staging & Change Analysis
 
-### Code Quality
-- Validate no merge conflicts before push
-- Warn if pushing to `main` or `master` (require explicit confirmation)
-- Auto-detect if force-push is needed (warn user)
-- Preserve commit history integrity
-
-### Output Report
-Return structured summary:
-```
-═══════════════════════════════════════
-✅ Push Workflow Complete
-───────────────────────────────────────
-Branch:        feature/data-quality-checks
-Commit Hash:   a3f7e2c1 (abbreviated)
-Message:       feat(etl): add data quality checks
-Files Changed: 7 files (+245, -18 lines)
-Remote:        origin
-Status:        ✓ Pushed to upstream
-───────────────────────────────────────
-[PR Created] → <link> (if /push+pr)
-═══════════════════════════════════════
+```bash
+git add .
+git diff --cached --name-status          # Enumerate all staged changes
+git diff --cached --stat                 # Line-level diff statistics
 ```
 
-## Safety Guardrails
+Categorize every staged file into one of:
 
-- ❌ **Refuse** to push if there are unresolved merge conflicts
-- ❌ **Refuse** to create commit without meaningful message
-- ⚠️ **Warn** before force-pushing or pushing to protected branches
-- ⚠️ **Warn** if committing binary files (unless intended)
-- ✓ **Confirm** successful push before reporting completion
+| Category    | Example Paths                              |
+| ----------- | ------------------------------------------ |
+| `backend`   | `backend/`, `api/`, `server/`              |
+| `frontend`  | `frontend/`, `Src/`, `assets/`, `Views/`   |
+| `etl`       | `etl/`, `pipeline/`, `extractors/`         |
+| `database`  | `Database/`, `migrations/`, `*.sql`        |
+| `config`    | `*.yaml`, `*.yml`, `*.toml`, `*.env`       |
+| `ci`        | `.github/`, `.gitlab-ci.yml`, `Dockerfile` |
+| `test`      | `tests/`, `test_*.py`, `*.spec.*`          |
+| `docs`      | `*.md`, `*.rst`, `docs/`                   |
+| `core`      | Root-level files or unclassified paths     |
 
-## Non-Interactive Execution
+---
 
-- Do not prompt for additional questions
-- Use sensible defaults for type/scope when uncertain
-- Assume user wants to push *all* staged changes
-- For `/push+pr`, create PR with auto-generated title/description
-- Log all decisions in output report
+### Phase 3 — Conventional Commit Generation
+
+**Commit format (strict)**:
+
+```
+<type>(<scope>): <imperative-title>
+
+[optional body — required if changes > 3 files or any file > 100 lines modified]
+
+[optional footer — issue references, breaking changes]
+```
+
+#### Type Inference Matrix
+
+| Type        | Trigger Signals                                              |
+| ----------- | ------------------------------------------------------------ |
+| `feat`      | New files added (`A`), new modules, new endpoints           |
+| `fix`       | Modified files in `Services/`, `bug`, `fix`, `patch` in name|
+| `refactor`  | Renamed/moved files (`R`), structural reorganization         |
+| `perf`      | Changes in query files, caching layers, batch processors     |
+| `test`      | Files in `tests/`, prefixed `test_`, suffixed `.spec`        |
+| `ci`        | Files in `.github/`, `Dockerfile`, `docker-compose.*`        |
+| `docs`      | `.md`, `.rst`, `README`, `CHANGELOG`                        |
+| `style`     | Formatters, linters, whitespace-only diffs                  |
+| `chore`     | `requirements.txt`, `package.json`, lock files, config-only |
+
+#### Scope Inference Rules
+
+1. Map the dominant file category (by file count) to a scope token.
+2. If changes span ≥ 3 distinct categories, use `core`.
+3. Never omit scope — use `core` as the last-resort fallback.
+
+#### Title Rules
+
+- Imperative mood, present tense: `add`, `fix`, `remove`, `update`, `refactor`
+- Max 50 characters, all lowercase (except proper nouns and acronyms)
+- No trailing period
+- Must convey **what changed and why** in one phrase
+
+#### Body Rules (triggered when > 3 files changed or any file > 100 lines modified)
+
+```
+- WHY: Explain the business or technical motivation
+- WHAT: Describe the solution approach
+- IMPACT: Note downstream effects on pipelines, APIs, or dependent modules
+- REFS: Fixes #<id> | Related to #<id> | Closes #<id>
+```
+
+**Well-formed commit example**:
+
+```
+feat(etl): add automated data quality checks for staging layer
+
+- Integrated validation pipeline using configurable rule sets in dq_config.yaml
+- Covers format validation, range checks, and referential integrity against warehouse
+- Failures trigger alerter.py notifications and block downstream DAG execution
+
+Fixes #112
+```
+
+---
+
+### Phase 4 — Commit & Push
+
+Execute in sequence; abort the pipeline if any command exits non-zero:
+
+```bash
+git commit -m "<generated-message>"
+git push -u origin <current-branch>
+```
+
+Capture and display:
+- Abbreviated commit SHA (`git rev-parse --short HEAD`)
+- Full push output for traceability
+- Upstream tracking confirmation
+
+---
+
+### Phase 5 — Pull Request Creation *(invoked only with `/push+pr`)*
+
+#### Platform Detection
+
+```bash
+git remote get-url origin
+```
+
+| URL Pattern                   | Platform  | CLI Tool     |
+| ----------------------------- | --------- | ------------ |
+| `github.com`                  | GitHub    | `gh pr create` |
+| `gitlab.com` / self-hosted GL | GitLab    | `glab mr create` |
+| Other                         | Generic   | Display URL  |
+
+#### PR Metadata Generation
+
+| Field         | Strategy                                                         |
+| ------------- | ---------------------------------------------------------------- |
+| **Title**     | Reuse commit title verbatim                                      |
+| **Body**      | Commit body + auto-generated checklist (tests, docs, review)     |
+| **Base**      | Default branch (`main` / `master`) auto-detected from remote     |
+| **Labels**    | Mapped from commit type: `feat→enhancement`, `fix→bug`, etc.    |
+| **Assignees** | Derived from CODEOWNERS if present; otherwise omit               |
+
+#### Auto-generated PR Body Template
+
+```markdown
+## Summary
+<!-- Auto-populated from commit body -->
+
+## Changes
+<!-- Bullet list of staged files by category -->
+
+## Checklist
+- [ ] Tests added or updated
+- [ ] Documentation updated
+- [ ] No secrets or credentials committed
+- [ ] CI pipeline passes locally
+```
+
+---
+
+## Output Report
+
+Emit this exact structure on successful completion:
+
+```
+╔═══════════════════════════════════════════════════╗
+║           GIT PUSH WORKFLOW — COMPLETE            ║
+╠═══════════════════════════════════════════════════╣
+║  Branch       │ <branch-name>                     ║
+║  Commit SHA   │ <short-sha>                       ║
+║  Message      │ <type>(<scope>): <title>           ║
+║  Files        │ <N> changed  (+<additions> -<del>)║
+║  Remote       │ origin → <remote-url>             ║
+║  Upstream     │ ✓ Tracking set                    ║
+╠═══════════════════════════════════════════════════╣
+║  PR           │ <URL>  (only when /push+pr)       ║
+╚═══════════════════════════════════════════════════╝
+```
+
+---
+
+## Safety & Guardrails
+
+| Rule                                         | Enforcement Level |
+| -------------------------------------------- | ----------------- |
+| Conflict markers present                     | ❌ Hard abort      |
+| Pushing to `main`, `master`, `production`    | ⚠️ Warn + confirm  |
+| Force-push required (`--force-with-lease`)   | ⚠️ Warn + confirm  |
+| Binary files staged (images, archives, etc.) | ⚠️ Surface warning |
+| Empty commit (nothing staged)                | ❌ Hard abort      |
+| Remote unreachable before push               | ❌ Hard abort      |
+| No meaningful commit message possible        | ❌ Hard abort      |
+
+---
+
+## Non-Interactive Execution Contract
+
+- **No questions asked.** Apply sensible defaults for all inferred values.
+- Stage all working-tree changes with `git add .` — no partial staging.
+- For `/push+pr`, create the PR immediately after push without prompting.
+- All reasoning and decisions must be captured in the output report.
+- If a hard-abort condition is met, emit a clear `ABORTED` report with the exact reason and corrective action before stopping.
