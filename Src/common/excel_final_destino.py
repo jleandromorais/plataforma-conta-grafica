@@ -6,10 +6,11 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from Src.Database.database import DatabasePMPV
+from Src.common.periodos import normalizar_periodo
 
 
 def _normalizar_periodo(periodo: str | None) -> str:
-    return (periodo or "").strip() or "Geral"
+    return normalizar_periodo(periodo) or "Geral"
 
 
 def solicitar_periodo_excel_final(
@@ -46,7 +47,7 @@ def solicitar_periodo_excel_final(
 
     def on_ok():
         nonlocal result
-        periodo = (entry.get() or "").strip()
+        periodo = _normalizar_periodo(entry.get())
         if not periodo:
             info_label.configure(text="Período obrigatório para evitar mistura de sessões.")
             return
