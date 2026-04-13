@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.Services.servicos_rpv import ServicosRPV
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
@@ -249,8 +249,9 @@ class TelaRPV(ctk.CTkFrame):
             return
 
         self.servicos.salvar_valores(periodo, cgr, cgf)
-        destino = escolher_destino_excel_final(periodo=periodo, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="RPV", periodo=periodo, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=periodo, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa RPV registrada (execução #{execucao}).")

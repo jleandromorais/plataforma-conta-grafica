@@ -1,135 +1,188 @@
 ---
 mode: agent
-description: "Execute professional Git workflow: stage changes, create Conventional Commits with intelligent scope detection, push with upstream tracking. Use '/push+pr' to automatically open a pull request on GitHub/GitLab after push."
-tools: ["run_in_terminal"]
+description: "Executa workflow Git profissional: analisa alterações, gera Conventional Commits em português com detecção inteligente de escopo, faz commit e push. Use '/push' para commit+push ou '/push+pr' para também abrir pull request."
+tools: ["run_in_terminal", "get_changed_files"]
 tags: ["git", "automation", "devops"]
 ---
 
-# Professional Git Push & PR Workflow
+# Workflow Profissional de Git Push
 
-## Core Behavior
+## Comportamento Principal
 
-When invoked as `/push`: Execute a complete, production-grade push workflow.
-When invoked as `/push+pr`: Execute push workflow + automatically create pull request.
+Quando invocado como `/push`: Executa workflow completo de commit + push.
+Quando invocado como `/push+pr`: Executa push + cria pull request automaticamente.
 
-## Execution Steps
+**REGRA ABSOLUTA**: Todas as mensagens de commit devem ser escritas em **português brasileiro (pt-BR)**, seguindo Conventional Commits.
 
-### Phase 1: Pre-flight Validation
-1. **Branch Detection**: Identify current branch name with `git rev-parse --abbrev-ref HEAD`
-2. **Status Check**: Run `git status --porcelain` to validate there are unstaged changes
-3. **Stash Validation**: Warn if uncommitted changes exist but are not staged
+## Etapas de Execução
 
-### Phase 2: Staging & Analysis
-1. **Stage All Changes**: Execute `git add .`
-2. **Diff Analysis**: Run `git diff --cached --name-status` to categorize changes:
-   - Parse filenames to intelligently infer commit `type` and `scope`
-   - Group by functional areas (backend, frontend, db, config, etc.)
-3. **Change Summary**: Display staged file count and types before proceeding
+### Fase 1: Validação Pré-voo
 
-### Phase 3: Commit Generation
-Build a professional, semantically meaningful commit message:
+Execute **todos** os comandos abaixo em sequência:
 
-**Format**: `<type>(<scope>): <title>`
-
-**Type inference** (from changed files):
-- `feat` → New files, feature additions
-- `fix` → Bugfixes, error corrections
-- `refactor` → Code restructuring without logic change
-- `perf` → Performance optimizations
-- `docs` → Documentation-only changes
-- `test` → Test additions or modifications
-- `ci` → Pipeline/build configuration
-- `style` → Formatting, linting (no code logic change)
-- `chore` → Maintenance, dependencies
-
-**Scope inference** (from file paths):
-- Extract package/module name: `backend`, `frontend`, `etl`, `database`, `monitoring`, etc.
-- If multiple scopes, use primary scope or `core`
-- Default fallback: `core`
-
-**Title requirements**:
-- Imperative mood (e.g., "add", "fix", "improve", not "added", "fixed")
-- Concise: max 50 characters
-- Clear business value or technical rationale
-- Lowercase (except proper nouns)
-
-**Body requirements** (if changes exceed 3 files or single file >100 lines):
-- Add blank line after title
-- Explain **WHY** the change was made
-- Describe **WHAT** problems it solves
-- Note **IMPACT** on other systems if applicable
-- Reference any tickets/issues: `Fixes #123` or `Related to #456`
-
-**Example**:
 ```
-feat(etl): add data quality checks for penalidade records
-
-- Integrated Great Expectations framework for automated validation
-- Validates format, ranges, and referential integrity
-- Reduces manual review time by 40%
-
-Fixes #89
+git rev-parse --abbrev-ref HEAD
+git status --porcelain
+git log --oneline -1
 ```
 
-### Phase 4: Commit & Push
-1. **Commit**: Execute `git commit -m "<generated message>"`
-2. **Push**: Execute `git push -u origin <current-branch>` with upstream tracking
-3. **Verification**: Confirm push success and display commit hash
+**Critérios de bloqueio** (não prosseguir):
+- Se `git status --porcelain` retornar vazio → informar "Nenhuma alteração para commitar"
+- Se existirem conflitos de merge (`UU` no status) → informar e abortar
 
-### Phase 5: Pull Request Creation (only with `/push+pr`)
-1. **Platform Detection**: Identify Git hosting platform (GitHub, GitLab, Gitea)
-2. **PR Template Generation**:
-   - Title: Reuse commit title or enhance with context
-   - Description: Auto-populate from commit body + checklist
-   - Labels: Auto-tag by type and scope (e.g., `enhancement`, `backend`)
-   - Assignees: Suggest based on changed files (if CODEOWNERS exists)
-3. **Remote Validation**: Confirm push completed before creating PR
-4. **Open in Browser**: Open PR URL in default browser for review
+**Alertas** (prosseguir com aviso):
+- Se branch for `main` ou `master` → avisar e pedir confirmação explícita
+- Se houver arquivos binários grandes (>.db, .exe, .zip) → avisar
 
-## Professional Standards
+### Fase 2: Análise das Alterações
 
-### Commit Message Policy
-- **Language**: Always professional English (US spelling)
-- **Format**: Strict Conventional Commits (no exceptions)
-- **Scope**: Always present and meaningful
-- **Tone**: Technical, clear, actionable
-- **Grammar**: Complete sentences in body, imperative in title
+1. Executar `git add .` para preparar todas as alterações
+2. Executar `git diff --cached --stat` para obter resumo estatístico
+3. Executar `git diff --cached --name-status` para categorizar cada arquivo:
+   - `A` = Adicionado, `M` = Modificado, `D` = Removido, `R` = Renomeado
+4. Usar a ferramenta `get_changed_files` para analisar o conteúdo das alterações em detalhe
+5. Agrupar arquivos por área funcional (ver inferência de escopo abaixo)
 
-### Code Quality
-- Validate no merge conflicts before push
-- Warn if pushing to `main` or `master` (require explicit confirmation)
-- Auto-detect if force-push is needed (warn user)
-- Preserve commit history integrity
+### Fase 3: Geração do Commit
 
-### Output Report
-Return structured summary:
+Construir mensagem de commit profissional e semântica.
+
+**Formato obrigatório**: `<tipo>(<escopo>): <título em português>`
+
+#### Inferência de Tipo
+
+| Tipo       | Quando usar                                        |
+|------------|-----------------------------------------------------|
+| `feat`     | Novo arquivo, nova funcionalidade, nova capacidade  |
+| `fix`      | Correção de bug, erro, comportamento incorreto      |
+| `refactor` | Reestruturação sem mudança de comportamento          |
+| `perf`     | Otimização de desempenho                             |
+| `docs`     | Apenas documentação (README, comentários, prompts)   |
+| `test`     | Adição ou modificação de testes                      |
+| `ci`       | Pipelines, Docker, CI/CD, build                      |
+| `style`    | Formatação, lint (sem mudança de lógica)             |
+| `chore`    | Manutenção, dependências, configs gerais             |
+
+#### Inferência de Escopo (por caminho dos arquivos)
+
+| Caminho contém          | Escopo sugerido    |
+|--------------------------|---------------------|
+| `Src/Views/`            | `ui`               |
+| `Src/Services/`         | `servicos`         |
+| `Src/Database/`         | `banco`            |
+| `Src/common/`           | `comum`            |
+| `Src/config/`           | `config`           |
+| `Src/domain/`           | `dominio`          |
+| `Src/infrastructure/`   | `infra`            |
+| `backend/etl/`          | `etl`              |
+| `backend/data_quality/` | `qualidade-dados`  |
+| `backend/monitoring/`   | `monitoramento`    |
+| `backend/airflow/`      | `airflow`          |
+| `tests/`                | `testes`           |
+| `.github/`              | `ci`               |
+| `Excel/`                | `excel`            |
+| Múltiplos escopos       | usar o escopo principal ou `core` |
+
+#### Regras do Título
+
+- **Idioma**: Português brasileiro
+- **Modo verbal**: Imperativo (ex: "adicionar", "corrigir", "melhorar", NÃO "adicionado", "corrigido")
+- **Tamanho**: Máximo 72 caracteres na linha do título
+- **Tom**: Técnico, claro, descritivo do valor da mudança
+- **Caixa**: Minúsculas (exceto nomes próprios e siglas como PMPV, CGF, SR, SCG, RET)
+
+#### Regras do Corpo (obrigatório se >3 arquivos ou >100 linhas alteradas)
+
+- Linha em branco após o título
+- Explicar **POR QUE** a mudança foi feita
+- Descrever **O QUE** foi alterado (lista com `-`)
+- Mencionar **IMPACTO** em outros módulos se aplicável
+- Referenciar issues: `Resolve #123` ou `Relacionado a #456`
+
+#### Exemplos de Commits Profissionais
+
+**Commit simples**:
 ```
-═══════════════════════════════════════
-✅ Push Workflow Complete
-───────────────────────────────────────
-Branch:        feature/data-quality-checks
-Commit Hash:   a3f7e2c1 (abbreviated)
-Message:       feat(etl): add data quality checks
-Files Changed: 7 files (+245, -18 lines)
-Remote:        origin
-Status:        ✓ Pushed to upstream
-───────────────────────────────────────
-[PR Created] → <link> (if /push+pr)
-═══════════════════════════════════════
+fix(banco): corrigir normalização de período nas consultas PMPV
 ```
 
-## Safety Guardrails
+**Commit com corpo**:
+```
+feat(etl): adicionar validação de qualidade para registros de penalidade
 
-- ❌ **Refuse** to push if there are unresolved merge conflicts
-- ❌ **Refuse** to create commit without meaningful message
-- ⚠️ **Warn** before force-pushing or pushing to protected branches
-- ⚠️ **Warn** if committing binary files (unless intended)
-- ✓ **Confirm** successful push before reporting completion
+- Integrar framework de validação automática nos dados de entrada
+- Validar formato, faixas numéricas e integridade referencial
+- Cobrir cenários de período curto (Dez/25) e longo (Dez/2025)
 
-## Non-Interactive Execution
+Resolve #89
+```
 
-- Do not prompt for additional questions
-- Use sensible defaults for type/scope when uncertain
-- Assume user wants to push *all* staged changes
-- For `/push+pr`, create PR with auto-generated title/description
-- Log all decisions in output report
+**Commit de refatoração**:
+```
+refactor(servicos): extrair lógica de normalização de períodos para módulo comum
+
+- Mover normalizar_periodo() e variantes_periodo() para Src/common/periodos.py
+- Atualizar database.py e excel_final_destino.py para usar módulo compartilhado
+- Eliminar duplicação de lógica entre 4 módulos
+```
+
+**Commit de testes**:
+```
+test(banco): adicionar testes para exclusão completa de período
+
+- Testar remoção de variantes legadas (Dez/25, DEZ/25, Dez/2025)
+- Testar exclusão em cascata nas tabelas pmpv, auditoria, consolidação
+- Validar que períodos não relacionados permanecem intactos
+```
+
+### Fase 4: Commit e Push
+
+1. **Commit**: `git commit -m "<mensagem gerada>"`
+   - Se o corpo for necessário, usar formato multi-linha com `-m` separados
+2. **Push**: `git push -u origin <branch-atual>`
+3. **Verificação**: Confirmar sucesso e exibir hash do commit
+
+### Fase 5: Pull Request (apenas com `/push+pr`)
+
+1. Detectar plataforma (GitHub/GitLab)
+2. Gerar PR com:
+   - **Título**: Reutilizar título do commit em português
+   - **Descrição**: Popular com corpo do commit + checklist de revisão
+   - **Labels**: Por tipo e escopo (ex: `melhoria`, `correção`, `backend`)
+3. Exibir link do PR criado
+
+## Relatório Final
+
+Sempre exibir ao final:
+
+```
+═══════════════════════════════════════════
+  Push Concluído
+───────────────────────────────────────────
+  Branch:       <nome-da-branch>
+  Commit:       <hash-abreviado>
+  Mensagem:     <tipo(escopo): título>
+  Alterações:   <N> arquivos (+X, -Y linhas)
+  Remote:       origin
+  Status:       Enviado com sucesso
+───────────────────────────────────────────
+  PR: <link> (se /push+pr)
+═══════════════════════════════════════════
+```
+
+## Proteções de Segurança
+
+- **BLOQUEAR** se houver conflitos de merge não resolvidos
+- **BLOQUEAR** se a mensagem de commit for genérica ou vazia
+- **ALERTAR** antes de push em branches protegidas (main/master)
+- **ALERTAR** se detectar force-push necessário
+- **ALERTAR** se houver arquivos binários sendo commitados
+- **CONFIRMAR** push bem-sucedido antes de reportar conclusão
+
+## Execução Não-Interativa
+
+- Não fazer perguntas adicionais — usar padrões sensatos
+- Inferir tipo e escopo automaticamente a partir dos arquivos alterados
+- Assumir que o usuário quer commitar **todas** as alterações staged
+- Registrar todas as decisões no relatório final
+- Se houver múltiplos commits lógicos distintos, fazer UM commit coeso que cubra tudo

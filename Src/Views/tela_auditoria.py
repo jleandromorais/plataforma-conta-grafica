@@ -11,7 +11,7 @@ from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -643,15 +643,15 @@ class TelaAuditoria(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Execute a auditoria antes de adicionar ao Excel final.")
             return
 
-        periodo = simpledialog.askstring(
-            "Excel Final (Módulo 9)",
-            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+        periodo = solicitar_periodo_excel_final(
             parent=self,
+            titulo="Excel Final (Módulo 9) - Auditoria XML",
+            mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
         )
-        if periodo is None:
+        if not periodo:
             return
 
-        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+        periodo_salvar = periodo.strip()
         self.consolidacao.salvar_cgr(periodo_salvar, cgr)
 
         if self.resultados:
@@ -675,8 +675,9 @@ class TelaAuditoria(ctk.CTkFrame):
             finally:
                 db.fechar()
 
-        destino = escolher_destino_excel_final(periodo=periodo_salvar, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="Auditoria XML", periodo=periodo_salvar, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa Auditoria XML registrada (execução #{execucao}).")

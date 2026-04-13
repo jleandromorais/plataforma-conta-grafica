@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.Services.servicos_scg import ServicosSCG
-from Src.common.excel_final_destino import escolher_destino_excel_final, remover_excel_final_ativo
+from Src.common.excel_final_destino import registrar_execucao_excel_final, remover_excel_final_ativo
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # ── Cores ────────────────────────────────────────────────────────────────────
@@ -319,11 +319,12 @@ class TelaSCG(ctk.CTkFrame):
             return
 
         self.servicos.calcular_scg_oficial(self.periodo_atual)
-        destino = escolher_destino_excel_final(periodo=self.periodo_atual, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="SCG", periodo=self.periodo_atual, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=self.periodo_atual, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa SCG registrada (execução #{execucao}).")
 
     def _remover_excel_final(self):
         removido, mensagem = remover_excel_final_ativo(parent=self)

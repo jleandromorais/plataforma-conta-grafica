@@ -9,7 +9,7 @@ from pathlib import Path
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.excel_ret import ExcelRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -201,9 +201,9 @@ class TelaRET(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_frame,
-            text="➕ Excel Final (Módulo 9)",
+            text="➕ Adicionar ao Excel Final (Módulo 9)",
             command=self._adicionar_excel_final,
-            width=180,
+            width=240,
             height=35,
             fg_color="#6c3483",
             hover_color="#884ea0"
@@ -562,15 +562,15 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             messagebox.showwarning("Aviso", "Processe os PDFs do RET antes de adicionar ao Excel final.")
             return
 
-        periodo = simpledialog.askstring(
-            "Excel Final (Módulo 9)",
-            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+        periodo = solicitar_periodo_excel_final(
             parent=self,
+            titulo="Excel Final (Módulo 9) - RET",
+            mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
         )
-        if periodo is None:
+        if not periodo:
             return
 
-        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+        periodo_salvar = periodo.strip()
         calc = RegrasRET.calcular_ret(self.dados_processados)
         total_geral = calc['ret']
 
@@ -581,8 +581,10 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         finally:
             db.fechar()
 
-        destino = escolher_destino_excel_final(periodo=periodo_salvar, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="RET", periodo=periodo_salvar, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        # Export only the selected period to avoid mixing sessions
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa RET registrada (execução #{execucao}).")

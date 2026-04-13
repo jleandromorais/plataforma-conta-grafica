@@ -2,6 +2,8 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, List
 
+from Src.common.periodos import normalizar_periodo, variantes_periodo
+
 
 class DatabasePMPV:
     def __init__(self, db_path: str | None = None):
@@ -155,6 +157,19 @@ class DatabasePMPV:
         """)
 
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS excel_final_execucoes (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome_sessao      TEXT NOT NULL,
+                periodo          TEXT NOT NULL,
+                etapa            TEXT NOT NULL,
+                execucao         INTEGER NOT NULL DEFAULT 1,
+                caminho_arquivo  TEXT NOT NULL,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(nome_sessao, periodo, etapa)
+            )
+        """)
+
+        self.cursor.execute("""
                             
                             CREATE TABLE IF NOT EXISTS  consolidacao(
                                 id INTEGER PRIMARY KEY  AUTOINCREMENT,
@@ -188,6 +203,69 @@ class DatabasePMPV:
         colunas = {row[1] for row in self.cursor.fetchall()}
         if coluna not in colunas:
             self.cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao_sql}")
+
+    @staticmethod
+    def _normalizar_periodo(periodo: str | None) -> str:
+        return normalizar_periodo(periodo)
+
+    @staticmethod
+    def _variantes_periodo(periodo: str | None) -> tuple[str, ...]:
+        return variantes_periodo(periodo)
+
+    def _buscar_por_periodo(self, tabela: str, periodo: str | None, order_by: str = "data_atualizacao DESC, rowid DESC") -> List[Dict]:
+        variantes = self._variantes_periodo(periodo)
+        if not variantes:
+            return []
+        placeholders = ", ".join("?" for _ in variantes)
+        self.cursor.execute(
+            f"SELECT * FROM {tabela} WHERE periodo IN ({placeholders}) ORDER BY {order_by}",
+            variantes,
+        )
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def _primeiro_por_periodo(self, tabela: str, periodo: str | None, order_by: str = "data_atualizacao DESC, rowid DESC") -> Dict | None:
+        linhas = self._buscar_por_periodo(tabela, periodo, order_by=order_by)
+        return linhas[0] if linhas else None
+
+    def _merge_registros_periodo(self, registros: List[Dict], periodo: str | None, campos_numericos: tuple[str, ...]) -> Dict | None:
+        if not registros:
+            return None
+
+        base = dict(registros[0])
+        periodo_normalizado = self._normalizar_periodo(periodo or base.get("periodo"))
+        if periodo_normalizado:
+            base["periodo"] = periodo_normalizado
+
+        for registro in registros[1:]:
+            for campo in campos_numericos:
+                atual = base.get(campo)
+                novo = registro.get(campo)
+                if atual in (None, 0, 0.0) and novo not in (None, 0, 0.0):
+                    base[campo] = novo
+            if (registro.get("data_atualizacao") or "") > (base.get("data_atualizacao") or ""):
+                base["data_atualizacao"] = registro.get("data_atualizacao")
+        return base
+
+    def _deduplicar_periodos(self, registros: List[Dict], campos_numericos: tuple[str, ...] = ()) -> List[Dict]:
+        agrupados: dict[str, List[Dict]] = {}
+        ordem: list[str] = []
+        for registro in registros:
+            chave = self._normalizar_periodo(registro.get("periodo")) or str(registro.get("periodo") or "").strip()
+            if chave not in agrupados:
+                agrupados[chave] = []
+                ordem.append(chave)
+            agrupados[chave].append(registro)
+
+        resultado: list[Dict] = []
+        for chave in ordem:
+            if campos_numericos:
+                mesclado = self._merge_registros_periodo(agrupados[chave], chave, campos_numericos)
+            else:
+                mesclado = dict(agrupados[chave][0])
+                mesclado["periodo"] = chave
+            if mesclado:
+                resultado.append(mesclado)
+        return resultado
     
     def criar_sessao(self, nome: str, observacoes: str = "") -> int:
         self.cursor.execute("INSERT INTO sessoes (nome, observacoes) VALUES (?, ?)", (nome, observacoes))
@@ -241,12 +319,17 @@ class DatabasePMPV:
     
     def _garantir_periodo(self, periodo: str):
         """Cria o período na tabela consolidacao se ainda não existir."""
-        self.cursor.execute("SELECT id FROM consolidacao WHERE periodo = ?", (periodo,))
+        periodo = self._normalizar_periodo(periodo)
+        self.cursor.execute(
+            "SELECT id FROM consolidacao WHERE periodo IN ({}) LIMIT 1".format(", ".join("?" for _ in self._variantes_periodo(periodo))),
+            self._variantes_periodo(periodo),
+        )
         if not self.cursor.fetchone():
             self.criar_periodo_consolidacao(periodo)
 
     def criar_periodo_consolidacao(self, periodo: str, obs: str = "") -> int:
         """Cria um novo período de consolidação"""
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute(
             "INSERT INTO consolidacao (periodo, observacoes) VALUES (?, ?)", 
             (periodo, obs)
@@ -255,6 +338,7 @@ class DatabasePMPV:
         return self.cursor.lastrowid
     
     def atualizar_cgr(self, periodo: str, valor: float):
+        periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
         """Atualiza o CGR (Auditoria XML)"""
         self.cursor.execute("""
@@ -265,6 +349,7 @@ class DatabasePMPV:
         self.conn.commit()
     
     def atualizar_ret(self, periodo: str, valor: float):
+        periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
         """Atualiza o RET (Módulo RET)"""
         self.cursor.execute("""
@@ -275,6 +360,7 @@ class DatabasePMPV:
         self.conn.commit()
     
     def atualizar_rp(self, periodo: str, valor: float):
+        periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
         """Atualiza o RP (Conciliação)"""
         self.cursor.execute("""
@@ -286,6 +372,7 @@ class DatabasePMPV:
             
     def atualizar_cgf(self, periodo: str, valor: float):
         """Atualiza somente o CGF (Volume Faturado)."""
+        periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
         self.cursor.execute("""
             UPDATE consolidacao
@@ -296,6 +383,7 @@ class DatabasePMPV:
 
     def atualizar_campos_consolidacao(self, periodo: str, **campos: float):
         """Atualiza vários campos de consolidação em uma única operação."""
+        periodo = self._normalizar_periodo(periodo)
         campos_validos = {
             chave: valor
             for chave, valor in campos.items()
@@ -324,6 +412,7 @@ class DatabasePMPV:
         """Compatibilidade legada: delega o cálculo oficial ao serviço."""
         from Src.Services.servicos_consolidacao import ServicosConsolidacao
 
+        periodo = self._normalizar_periodo(periodo)
         dados = self.buscar_consolidacao(periodo) or {}
         rpv = ServicosConsolidacao.calcular_rpv(
             dados.get("cgr") or 0.0,
@@ -334,6 +423,7 @@ class DatabasePMPV:
 
     def atualizar_rpv_cgf(self, periodo: str, rpv: float, cgf: float):
         """Atualiza RPV e CGF (valores manuais)"""
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute("""
             UPDATE consolidacao
             SET rpv = ?, cgf = ?, data_atualizacao = CURRENT_TIMESTAMP
@@ -345,6 +435,7 @@ class DatabasePMPV:
         """Compatibilidade legada: delega o cálculo oficial ao serviço."""
         from Src.Services.servicos_consolidacao import ServicosConsolidacao
 
+        periodo = self._normalizar_periodo(periodo)
         dados = self.buscar_consolidacao(periodo)
         if not dados:
             return 0.0
@@ -360,22 +451,48 @@ class DatabasePMPV:
     
     def buscar_consolidacao(self, periodo: str) -> dict:
         """Busca dados de consolidação de um período"""
-        self.cursor.execute("SELECT * FROM consolidacao WHERE periodo = ?", (periodo,))
-        row = self.cursor.fetchone()
-        return dict(row) if row else None
+        registros = self._buscar_por_periodo("consolidacao", periodo, order_by="data_atualizacao DESC, id DESC")
+        return self._merge_registros_periodo(registros, periodo, ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
     
     def listar_periodos(self) -> List:
         """Lista todos os períodos de consolidação"""
         self.cursor.execute("SELECT periodo, scg, data_atualizacao FROM consolidacao ORDER BY data_criacao DESC")
-        return [dict(row) for row in self.cursor.fetchall()]
+        return self._deduplicar_periodos([dict(row) for row in self.cursor.fetchall()], ("scg",))
 
     def listar_consolidacao_completa(self) -> List[Dict]:
         self.cursor.execute("SELECT * FROM consolidacao ORDER BY data_criacao DESC")
-        return [dict(row) for row in self.cursor.fetchall()]
+        return self._deduplicar_periodos([dict(row) for row in self.cursor.fetchall()], ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
 
     def apagar_periodo(self, periodo: str):
-        self.cursor.execute("DELETE FROM consolidacao WHERE periodo = ?", (periodo,))
+        variantes = self._variantes_periodo(periodo)
+        placeholders = ", ".join("?" for _ in variantes)
+        self.cursor.execute(f"DELETE FROM consolidacao WHERE periodo IN ({placeholders})", variantes)
         self.conn.commit()
+
+    def apagar_periodo_completo(self, periodo: str) -> Dict[str, int]:
+        variantes = self._variantes_periodo(periodo)
+        if not variantes:
+            return {}
+
+        placeholders = ", ".join("?" for _ in variantes)
+        tabelas = (
+            "consolidacao",
+            "pmpv_mensal",
+            "sr_resultados",
+            "cgf_resumo",
+            "auditoria_itens",
+            "ret_itens",
+            "concilia_itens",
+            "excel_final_execucoes",
+        )
+
+        removidos: Dict[str, int] = {}
+        for tabela in tabelas:
+            self.cursor.execute(f"DELETE FROM {tabela} WHERE periodo IN ({placeholders})", variantes)
+            removidos[tabela] = int(self.cursor.rowcount or 0)
+
+        self.conn.commit()
+        return removidos
         
         
         
@@ -385,6 +502,7 @@ class DatabasePMPV:
 
     def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
         """Grava (ou substitui) o PMPV em R$/m³ para um período mensal."""
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute("""
             INSERT OR REPLACE INTO pmpv_mensal (periodo, pmpv, data_atualizacao)
             VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -393,10 +511,7 @@ class DatabasePMPV:
 
     def buscar_pmpv_mensal(self, periodo: str):
         """Retorna o PMPV em R$/m³ para o período, ou None se não encontrado."""
-        self.cursor.execute(
-            "SELECT pmpv FROM pmpv_mensal WHERE periodo = ?", (periodo,)
-        )
-        row = self.cursor.fetchone()
+        row = self._primeiro_por_periodo("pmpv_mensal", periodo)
         return float(row["pmpv"]) if row else None
 
     def listar_pmpv_mensal(self) -> List[Dict]:
@@ -404,7 +519,7 @@ class DatabasePMPV:
         self.cursor.execute(
             "SELECT periodo, pmpv, data_atualizacao FROM pmpv_mensal ORDER BY data_atualizacao DESC"
         )
-        return [dict(r) for r in self.cursor.fetchall()]
+        return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("pmpv",))
 
     # ==========================================
     # AUDITORIA XML
@@ -412,6 +527,7 @@ class DatabasePMPV:
 
     def salvar_auditoria_itens(self, periodo: str, itens: List[Dict]):
         """Apaga os itens existentes do período e salva a nova lista."""
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute("DELETE FROM auditoria_itens WHERE periodo = ?", (periodo,))
         for it in itens:
             self.cursor.execute("""
@@ -434,9 +550,8 @@ class DatabasePMPV:
 
     def listar_auditoria_itens(self, periodo: str | None = None) -> List[Dict]:
         if periodo:
-            self.cursor.execute(
-                "SELECT * FROM auditoria_itens WHERE periodo = ? ORDER BY empresa, tipo", (periodo,)
-            )
+            registros = self._buscar_por_periodo("auditoria_itens", periodo, order_by="empresa, tipo, id DESC")
+            return registros
         else:
             self.cursor.execute(
                 "SELECT * FROM auditoria_itens ORDER BY periodo DESC, empresa, tipo"
@@ -447,7 +562,12 @@ class DatabasePMPV:
         self.cursor.execute(
             "SELECT DISTINCT periodo FROM auditoria_itens ORDER BY periodo DESC"
         )
-        return [r[0] for r in self.cursor.fetchall()]
+        vistos = []
+        for row in self.cursor.fetchall():
+            periodo = self._normalizar_periodo(row[0])
+            if periodo and periodo not in vistos:
+                vistos.append(periodo)
+        return vistos
 
     # ==========================================
     # RET
@@ -455,6 +575,7 @@ class DatabasePMPV:
 
     def salvar_ret_itens(self, periodo: str, itens: List[Dict]):
         """Apaga os itens existentes do período e salva a nova lista."""
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute("DELETE FROM ret_itens WHERE periodo = ?", (periodo,))
         for it in itens:
             self.cursor.execute("""
@@ -478,9 +599,8 @@ class DatabasePMPV:
 
     def listar_ret_itens(self, periodo: str | None = None) -> List[Dict]:
         if periodo:
-            self.cursor.execute(
-                "SELECT * FROM ret_itens WHERE periodo = ? ORDER BY tipo_encargo, empresa", (periodo,)
-            )
+            registros = self._buscar_por_periodo("ret_itens", periodo, order_by="tipo_encargo, empresa, id DESC")
+            return registros
         else:
             self.cursor.execute(
                 "SELECT * FROM ret_itens ORDER BY periodo DESC, tipo_encargo, empresa"
@@ -491,7 +611,12 @@ class DatabasePMPV:
         self.cursor.execute(
             "SELECT DISTINCT periodo FROM ret_itens ORDER BY periodo DESC"
         )
-        return [r[0] for r in self.cursor.fetchall()]
+        vistos = []
+        for row in self.cursor.fetchall():
+            periodo = self._normalizar_periodo(row[0])
+            if periodo and periodo not in vistos:
+                vistos.append(periodo)
+        return vistos
 
     # ==========================================
     # CONCILIAÇÃO RP
@@ -499,6 +624,7 @@ class DatabasePMPV:
 
     def salvar_concilia_itens(self, periodo: str, itens: List[Dict]):
         """Apaga os itens existentes do período e salva a nova lista."""
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute("DELETE FROM concilia_itens WHERE periodo = ?", (periodo,))
         for it in itens:
             self.cursor.execute("""
@@ -516,9 +642,8 @@ class DatabasePMPV:
 
     def listar_concilia_itens(self, periodo: str | None = None) -> List[Dict]:
         if periodo:
-            self.cursor.execute(
-                "SELECT * FROM concilia_itens WHERE periodo = ? ORDER BY categoria, arquivo", (periodo,)
-            )
+            registros = self._buscar_por_periodo("concilia_itens", periodo, order_by="categoria, arquivo, id DESC")
+            return registros
         else:
             self.cursor.execute(
                 "SELECT * FROM concilia_itens ORDER BY periodo DESC, categoria, arquivo"
@@ -529,13 +654,19 @@ class DatabasePMPV:
         self.cursor.execute(
             "SELECT DISTINCT periodo FROM concilia_itens ORDER BY periodo DESC"
         )
-        return [r[0] for r in self.cursor.fetchall()]
+        vistos = []
+        for row in self.cursor.fetchall():
+            periodo = self._normalizar_periodo(row[0])
+            if periodo and periodo not in vistos:
+                vistos.append(periodo)
+        return vistos
 
     # ==========================================
     # SR
     # ==========================================
 
     def salvar_sr(self, periodo: str, vp: float, vf: float, pr: float, sr: float):
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute("""
             INSERT OR REPLACE INTO sr_resultados (periodo, vp, vf, pr, sr, data_atualizacao)
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -543,13 +674,11 @@ class DatabasePMPV:
         self.conn.commit()
 
     def buscar_sr(self, periodo: str) -> Dict:
-        self.cursor.execute("SELECT * FROM sr_resultados WHERE periodo = ?", (periodo,))
-        row = self.cursor.fetchone()
-        return dict(row) if row else None
+        return self._primeiro_por_periodo("sr_resultados", periodo)
 
     def listar_sr(self) -> List[Dict]:
         self.cursor.execute("SELECT * FROM sr_resultados ORDER BY data_atualizacao DESC")
-        return [dict(r) for r in self.cursor.fetchall()]
+        return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("vp", "vf", "pr", "sr"))
 
     # ==========================================
     # CGF RESUMO
@@ -557,6 +686,7 @@ class DatabasePMPV:
 
     def salvar_cgf_resumo(self, periodo: str, volume_faturado: float, volume_canceladas: float,
                            volume_devolucoes: float, volume_consumo_proprio: float, volume_final: float):
+        periodo = self._normalizar_periodo(periodo)
         self.cursor.execute("""
             INSERT OR REPLACE INTO cgf_resumo
                 (periodo, volume_faturado, volume_canceladas, volume_devolucoes,
@@ -567,13 +697,17 @@ class DatabasePMPV:
         self.conn.commit()
 
     def buscar_cgf_resumo(self, periodo: str) -> Dict:
-        self.cursor.execute("SELECT * FROM cgf_resumo WHERE periodo = ?", (periodo,))
-        row = self.cursor.fetchone()
-        return dict(row) if row else None
+        return self._primeiro_por_periodo("cgf_resumo", periodo)
 
     def listar_cgf_resumos(self) -> List[Dict]:
         self.cursor.execute("SELECT * FROM cgf_resumo ORDER BY data_atualizacao DESC")
-        return [dict(r) for r in self.cursor.fetchall()]
+        return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], (
+            "volume_faturado",
+            "volume_canceladas",
+            "volume_devolucoes",
+            "volume_consumo_proprio",
+            "volume_final",
+        ))
 
     def salvar_sessao_excel_final(self, nome: str, caminho_arquivo: str, ativo: bool = True) -> int:
         self.cursor.execute(
@@ -621,9 +755,113 @@ class DatabasePMPV:
         row = self.cursor.fetchone()
         return dict(row) if row else None
 
+    def listar_sessoes_excel_final(self) -> List[Dict]:
+        self.cursor.execute(
+            """
+            SELECT *
+            FROM excel_final_sessoes
+            ORDER BY ativo DESC, data_atualizacao DESC
+            """
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
     def desativar_sessao_excel_final_ativa(self):
         self.cursor.execute("UPDATE excel_final_sessoes SET ativo = 0 WHERE ativo = 1")
         self.conn.commit()
+
+    def registrar_execucao_excel_final(
+        self,
+        nome_sessao: str,
+        periodo: str,
+        etapa: str,
+        caminho_arquivo: str,
+    ) -> int:
+        """
+        Registra execução por etapa no Excel final cumulativo.
+
+        Chave lógica: nome_sessao + periodo + etapa
+        - Se já existir, incrementa o contador `execucao` e atualiza timestamp/caminho.
+        - Se não existir, cria com `execucao = 1`.
+        """
+        periodo = self._normalizar_periodo(periodo)
+        self.cursor.execute(
+            """
+            SELECT id, execucao
+            FROM excel_final_execucoes
+            WHERE nome_sessao = ? AND periodo = ? AND etapa = ?
+            LIMIT 1
+            """,
+            (nome_sessao, periodo, etapa),
+        )
+        row = self.cursor.fetchone()
+
+        if row:
+            novo_valor = int(row["execucao"] or 0) + 1
+            self.cursor.execute(
+                """
+                UPDATE excel_final_execucoes
+                SET execucao = ?, caminho_arquivo = ?, data_atualizacao = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (novo_valor, caminho_arquivo, row["id"]),
+            )
+            self.conn.commit()
+            return novo_valor
+
+        self.cursor.execute(
+            """
+            INSERT INTO excel_final_execucoes
+                (nome_sessao, periodo, etapa, execucao, caminho_arquivo, data_atualizacao)
+            VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+            """,
+            (nome_sessao, periodo, etapa, caminho_arquivo),
+        )
+        self.conn.commit()
+        return 1
+
+    def listar_execucoes_excel_final(self, nome_sessao: str | None = None, periodo: str | None = None) -> List[Dict]:
+        if periodo:
+            variantes = self._variantes_periodo(periodo)
+            placeholders = ", ".join("?" for _ in variantes)
+        if nome_sessao and periodo:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                WHERE nome_sessao = ? AND periodo IN ({})
+                ORDER BY data_atualizacao DESC, etapa
+                """.format(placeholders),
+                (nome_sessao, *variantes),
+            )
+        elif nome_sessao:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                WHERE nome_sessao = ?
+                ORDER BY data_atualizacao DESC, periodo, etapa
+                """,
+                (nome_sessao,),
+            )
+        elif periodo:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                WHERE periodo IN ({})
+                ORDER BY data_atualizacao DESC, nome_sessao, etapa
+                """.format(placeholders),
+                variantes,
+            )
+        else:
+            self.cursor.execute(
+                """
+                SELECT *
+                FROM excel_final_execucoes
+                ORDER BY data_atualizacao DESC, nome_sessao, periodo, etapa
+                """
+            )
+        return [dict(r) for r in self.cursor.fetchall()]
 
     # ==========================================
     # SESSÕES COM VOLUMES (PMPV)

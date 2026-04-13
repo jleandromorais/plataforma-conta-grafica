@@ -40,10 +40,13 @@ class ServicosConsolidacao:
         rpv = dados.get("rpv")
         scg = dados.get("scg")
 
-        if rpv is None:
-            rpv = ServicosConsolidacao.calcular_rpv(cgr, cgf)
-        if scg is None:
-            scg = ServicosConsolidacao.calcular_scg(cgr, cgf, ret, rp)
+        rpv_calculado = ServicosConsolidacao.calcular_rpv(cgr, cgf)
+        scg_calculado = ServicosConsolidacao.calcular_scg(cgr, cgf, ret, rp)
+
+        if rpv is None or abs(float(rpv) - rpv_calculado) > 1e-9:
+            rpv = rpv_calculado
+        if scg is None or abs(float(scg) - scg_calculado) > 1e-9:
+            scg = scg_calculado
 
         normalizado = dict(dados)
         normalizado.update({

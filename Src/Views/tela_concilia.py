@@ -11,7 +11,7 @@ from Src.Services.servicos_concilia import RegrasConcilia
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
-from Src.common.excel_final_destino import escolher_destino_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
@@ -191,15 +191,15 @@ class TelaConciliador(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Processe a Conciliação antes de adicionar ao Excel final.")
             return
 
-        periodo = simpledialog.askstring(
-            "Excel Final (Módulo 9)",
-            "Período para salvar e gerar o Excel final (ex: Dez/2025):\nDeixe em branco para gerar com todos os períodos.",
+        periodo = solicitar_periodo_excel_final(
             parent=self,
+            titulo="Excel Final (Módulo 9) - Conciliação RP",
+            mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
         )
-        if periodo is None:
+        if not periodo:
             return
 
-        periodo_salvar = periodo.strip() if periodo.strip() else "Geral"
+        periodo_salvar = periodo.strip()
 
         self.consolidacao.salvar_rp(periodo_salvar, saldo)
         if itens:
@@ -219,8 +219,9 @@ class TelaConciliador(ctk.CTkFrame):
             finally:
                 db.fechar()
 
-        destino = escolher_destino_excel_final(periodo=periodo_salvar, parent=self)
-        if not destino:
+        meta_execucao = registrar_execucao_excel_final(etapa="Conciliação RP", periodo=periodo_salvar, parent=self)
+        if not meta_execucao:
             return
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_salvar, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}")
+        destino, nome_sessao, periodo_norm, execucao = meta_execucao
+        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa Conciliação RP registrada (execução #{execucao}).")
