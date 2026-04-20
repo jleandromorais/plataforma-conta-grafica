@@ -8,6 +8,7 @@ from queue import Queue, Empty
 import pandas as pd
 
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
+from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
@@ -28,6 +29,7 @@ class TelaAuditoria(ctk.CTkFrame):
         self.empresas_selecionadas = []
         self.excel_path = None
         self.df_excel = None
+        self.comparacao_notas = None
         self.resultados = []
 
         self.valor_total_geral  = 0.0
@@ -45,6 +47,10 @@ class TelaAuditoria(ctk.CTkFrame):
         self._thread_carregamento: threading.Thread | None = None
 
         self.modo_fonte = tk.StringVar(value="XML")
+        self.tipo_excel_var = tk.StringVar(value="conta_grafica")
+        self.periodo_comparacao_var = tk.StringVar(value="")
+        self._periodo_norm_execucao = ""
+        self.periodo_comparacao_var.trace_add("write", lambda *_: self._verificar_habilitacao())
 
         self._setup_ui()
     
@@ -88,22 +94,41 @@ class TelaAuditoria(ctk.CTkFrame):
         
         self.checkboxes_empresas = []
         
-        # ========== PASSO 3: EXCEL ==========
+        # ========== PASSO 3: EXCEL E PERÍODO ==========
         frame_excel = ctk.CTkFrame(container)
         frame_excel.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(frame_excel, text="📊 Passo 3: Selecione o arquivo Excel de referência",
-                     font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
-        
+
+        ctk.CTkLabel(frame_excel, text="📊 Passo 3: Selecione o Excel e o período (opcional para comparar)",
+                     font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=(5, 2))
+
+        frame_tipo_excel = ctk.CTkFrame(frame_excel, fg_color="transparent")
+        frame_tipo_excel.pack(fill="x", padx=10, pady=(0, 4))
+        ctk.CTkLabel(frame_tipo_excel, text="Tipo:", font=("Roboto", 12)).pack(side="left", padx=(0, 8))
+        ctk.CTkRadioButton(frame_tipo_excel, text="Conta Gráfica", variable=self.tipo_excel_var,
+                           value="conta_grafica", font=("Roboto", 12)).pack(side="left", padx=6)
+        ctk.CTkRadioButton(frame_tipo_excel, text="Outra planilha", variable=self.tipo_excel_var,
+                           value="outra", font=("Roboto", 12)).pack(side="left", padx=6)
+
         btn_excel_frame = ctk.CTkFrame(frame_excel, fg_color="transparent")
-        btn_excel_frame.pack(fill="x", padx=10, pady=5)
-        
-        ctk.CTkButton(btn_excel_frame, text="📄 Selecionar Excel", 
+        btn_excel_frame.pack(fill="x", padx=10, pady=3)
+        ctk.CTkButton(btn_excel_frame, text="📄 Selecionar Excel",
                       command=self.selecionar_excel,
                       fg_color="#27ae60", hover_color="#2ecc71").pack(side="left", padx=5)
-        
         self.lbl_excel = ctk.CTkLabel(btn_excel_frame, text="Nenhum arquivo selecionado", text_color="gray")
         self.lbl_excel.pack(side="left", padx=10)
+
+        frame_periodo_excel = ctk.CTkFrame(frame_excel, fg_color="transparent")
+        frame_periodo_excel.pack(fill="x", padx=10, pady=(2, 8))
+        ctk.CTkLabel(frame_periodo_excel, text="Mês/Ano:", font=("Roboto", 12)).pack(side="left", padx=(0, 6))
+        self.entry_periodo_comparacao = ctk.CTkEntry(
+            frame_periodo_excel,
+            placeholder_text="jan26  ou  jan/2026",
+            width=190,
+            textvariable=self.periodo_comparacao_var,
+        )
+        self.entry_periodo_comparacao.pack(side="left", padx=4)
+        ctk.CTkLabel(frame_periodo_excel, text="(para comparação de notas)",
+                     text_color="gray", font=("Roboto", 11)).pack(side="left", padx=4)
         
         # ========== PAINEL: MODO DE LEITURA ==========
         frame_modo = ctk.CTkFrame(container)
@@ -170,7 +195,7 @@ class TelaAuditoria(ctk.CTkFrame):
         frame_btns = ctk.CTkFrame(rodape_acoes, fg_color="transparent")
         frame_btns.pack(fill="x", pady=(0, 6))
 
-        self.btn_auditar = ctk.CTkButton(frame_btns, text="📊 GERAR RELATÓRIO EXCEL", command=self.iniciar_auditoria,
+        self.btn_auditar = ctk.CTkButton(frame_btns, text="📊 EXECUTAR AUDITORIA", command=self.iniciar_auditoria,
                                          font=("Roboto", 14, "bold"), height=42, fg_color="#1a5276", hover_color="#2e86c1", state="disabled")
         self.btn_auditar.pack(side="left", expand=True, fill="x", padx=(0, 8))
 
@@ -208,6 +233,12 @@ class TelaAuditoria(ctk.CTkFrame):
         self.lbl_cgr_bruto.configure(text=f"Σ Bruto: R$ {bruto:,.2f}")
         self.lbl_cgr_icms.configure(text=f"ICMS: R$ {icms:,.2f}")
         self.lbl_cgr_liquido.configure(text=f"CGR Líquido: R$ {liquido:,.2f}")
+
+    def _periodo_normalizado(self) -> str:
+        from Src.common.periodos import normalizar_periodo
+
+        periodo_str = self.periodo_comparacao_var.get().strip()
+        return normalizar_periodo(periodo_str) if periodo_str else ""
 
     # --- SELEÇÃO ---
     def selecionar_pasta(self):
@@ -258,7 +289,17 @@ class TelaAuditoria(ctk.CTkFrame):
 
     def _worker_carregar_excel(self, arquivo: str):
         try:
-            df = pd.read_excel(arquivo)
+            planilhas = pd.read_excel(arquivo, sheet_name=None)
+            frames = []
+            for nome_aba, df_aba in planilhas.items():
+                if df_aba is None or df_aba.empty:
+                    continue
+                df_tmp = df_aba.copy()
+                df_tmp["__sheet_name__"] = str(nome_aba)
+                frames.append(df_tmp)
+            if not frames:
+                raise ValueError("A planilha selecionada não contém abas com dados.")
+            df = pd.concat(frames, ignore_index=True, sort=False)
             self._fila_carregamento.put(("excel_ok", arquivo, df))
         except Exception as e:
             self._fila_carregamento.put(("excel_error", str(e)))
@@ -314,18 +355,31 @@ class TelaAuditoria(ctk.CTkFrame):
             return
 
         empresas_sel = [emp for emp, var, _ in self.checkboxes_empresas if var.get()]
+        periodo_ok = bool(self._periodo_normalizado())
+        excel_ok = self.df_excel is not None
         self.btn_somatorio.configure(state="normal" if self.pasta_selecionada else "disabled")
         if self.pasta_selecionada and empresas_sel:
             self.btn_auditar.configure(state="normal")
-            if self.excel_path:
+            if excel_ok and periodo_ok:
                 self.lbl_status.configure(
-                    text=f"Pronto! {len(empresas_sel)} empresas selecionadas + Excel carregado",
-                    text_color="#27ae60"
+                    text=(
+                        f"Pronto para auditar: {len(empresas_sel)} empresa(s). "
+                        "Comparação de divergências habilitada."
+                    ),
+                    text_color="#27ae60",
+                )
+            elif excel_ok and not periodo_ok:
+                self.lbl_status.configure(
+                    text=(
+                        "Auditoria habilitada. Preencha Mês/Ano válido para incluir "
+                        "divergências no Excel."
+                    ),
+                    text_color="#f39c12",
                 )
             else:
                 self.lbl_status.configure(
-                    text=f"Pronto! {len(empresas_sel)} empresas selecionadas (sem Excel)",
-                    text_color="#f39c12"
+                    text="Auditoria habilitada (sem comparação com Excel).",
+                    text_color="#f39c12",
                 )
         else:
             self.btn_auditar.configure(state="disabled")
@@ -339,6 +393,8 @@ class TelaAuditoria(ctk.CTkFrame):
         if not self.pasta_selecionada or not empresas:
             messagebox.showwarning("Aviso", "Selecione uma pasta e ao menos uma empresa.")
             return
+
+        self._periodo_norm_execucao = self._periodo_normalizado()
 
         self._alterar_estado_processamento(True)
         self.text_resultados.delete("1.0", "end")
@@ -569,30 +625,153 @@ class TelaAuditoria(ctk.CTkFrame):
         self.text_resultados.delete("1.0", "end")
         self.text_resultados.insert("end", f"Auditoria Concluída: {n_xmls} XMLs, {n_pdfs} PDFs\n\n")
         self.text_resultados.insert("end", f"CGR Líquido: R$ {self.cgr_liquido:,.2f}\n")
+        comparou = self._comparar_com_conta_grafica()
+        if comparou and self.comparacao_notas:
+            comp = self.comparacao_notas
+            n_div = len(comp.notas_apenas_nossa) + len(comp.notas_apenas_conta_grafica)
+            self.text_resultados.insert("end", f"\n{'='*50}\n")
+            self.text_resultados.insert("end", f"COMPARAÇÃO  ({comp.periodo})\n")
+            self.text_resultados.insert("end", f"{'='*50}\n")
+
+            # Diagnóstico de abas
+            abas = getattr(comp, "sheets_excel", [])
+            abas_match = getattr(comp, "sheets_periodo_match", [])
+            if abas:
+                self.text_resultados.insert("end", f"Abas na planilha: {', '.join(abas)}\n")
+            if abas_match:
+                self.text_resultados.insert("end", f"Aba usada: {', '.join(abas_match)}\n")
+            elif abas:
+                self.text_resultados.insert(
+                    "end",
+                    f"⚠️  NENHUMA aba corresponde a '{comp.periodo}'!\n"
+                    f"   Verifique se o arquivo correto foi selecionado.\n",
+                )
+
+            self.text_resultados.insert("end", f"\nNotas em ambas (confirmadas): {comp.qtd_em_ambas}\n")
+            self.text_resultados.insert("end", f"Só na auditoria (não na planilha): {len(comp.notas_apenas_nossa)}\n")
+            self.text_resultados.insert("end", f"Só na planilha (não na auditoria): {len(comp.notas_apenas_conta_grafica)}\n")
+            self.text_resultados.insert("end", f"Total divergências: {n_div}\n")
+            self._exibir_divergencias_no_texto(comp)
+            if comp.avisos:
+                self.text_resultados.insert("end", "\nAlertas:\n")
+                for aviso in comp.avisos:
+                    self.text_resultados.insert("end", f"  • {aviso}\n")
+        else:
+            self.text_resultados.insert(
+                "end",
+                "\nComparação não executada. "
+                "Selecione um Excel e informe Mês/Ano válido (ex: jan26) para comparar divergências.\n",
+            )
         self.text_resultados.configure(state="disabled")
 
         self.btn_salvar_scg.configure(state="normal")
         self.btn_excel_final.configure(state="normal")
         self._gerar_e_salvar_excel()
 
+    def _exibir_divergencias_no_texto(self, comp, limite: int = 25):
+        self.text_resultados.insert("end", "\nDivergências detalhadas:\n")
+
+        self.text_resultados.insert("end", "\n1) Notas só na auditoria:\n")
+        if comp.notas_apenas_nossa:
+            for item in comp.notas_apenas_nossa[:limite]:
+                self.text_resultados.insert(
+                    "end",
+                    f"- {item.get('numero', '')} | {item.get('empresa', '')} | {item.get('tipo', '')}\n",
+                )
+            restante_nossa = len(comp.notas_apenas_nossa) - limite
+            if restante_nossa > 0:
+                self.text_resultados.insert("end", f"- ... e mais {restante_nossa} nota(s)\n")
+        else:
+            self.text_resultados.insert("end", "- Nenhuma\n")
+
+        self.text_resultados.insert("end", "\n2) Notas só no Excel selecionado:\n")
+        if comp.notas_apenas_conta_grafica:
+            for item in comp.notas_apenas_conta_grafica[:limite]:
+                self.text_resultados.insert(
+                    "end",
+                    f"- {item.get('numero', '')} | linha {item.get('linha_excel', '')}\n",
+                )
+            restante_excel = len(comp.notas_apenas_conta_grafica) - limite
+            if restante_excel > 0:
+                self.text_resultados.insert("end", f"- ... e mais {restante_excel} nota(s)\n")
+        else:
+            self.text_resultados.insert("end", "- Nenhuma\n")
+
+    def _comparar_com_conta_grafica(self) -> bool:
+        self.comparacao_notas = None
+        if self.df_excel is None:
+            return False
+
+        periodo = self._periodo_norm_execucao or self._periodo_normalizado()
+
+        if not periodo:
+            return False
+
+        tipo_label = "Conta Gráfica" if self.tipo_excel_var.get() == "conta_grafica" else "Planilha"
+        try:
+            self.comparacao_notas = ComparadorContaGrafica.comparar(
+                resultados=self.resultados,
+                df_excel=self.df_excel,
+                periodo=periodo,
+            )
+            comp = self.comparacao_notas
+            n_div = len(comp.notas_apenas_nossa) + len(comp.notas_apenas_conta_grafica)
+            abas_match = getattr(comp, "sheets_periodo_match", [])
+            abas_todas = getattr(comp, "sheets_excel", [])
+
+            if not abas_match and abas_todas:
+                self.lbl_status.configure(
+                    text=f"⚠️ Aba '{periodo}' NÃO encontrada na planilha | abas: {', '.join(abas_todas[:4])}",
+                    text_color="#e67e22",
+                )
+            else:
+                self.lbl_status.configure(
+                    text=f"✅ {tipo_label} ({comp.periodo}) | confirmadas: {comp.qtd_em_ambas} | divergências: {n_div}",
+                    text_color="#27ae60" if comp.qtd_em_ambas > 0 else "#e67e22",
+                )
+            return True
+        except Exception as e:
+            self.comparacao_notas = None
+            self.lbl_status.configure(text="⚠️ Falha ao comparar notas com o Excel", text_color="#f39c12")
+            messagebox.showwarning(
+                "Comparação indisponível",
+                f"Não foi possível comparar com a planilha selecionada:\n{e}",
+            )
+            return False
+
     def _gerar_e_salvar_excel(self):
         if not self.resultados:
             return
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_name = f"Relatorio_Auditoria_{timestamp}.xlsx"
+        default_name = f"Auditoria_{timestamp}.xlsx"
         path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel", "*.xlsx")],
             initialfile=default_name,
-            title="Salvar Relatório Excel",
+            title="Salvar Excel da Auditoria",
         )
         if not path:
             return
         try:
             ExcelAuditoria.gerar_relatorio_auditoria(
-                self.resultados, path, cgr_total=self.cgr_liquido
+                self.resultados,
+                path,
+                cgr_total=self.cgr_liquido,
+                comparacao=self.comparacao_notas,
             )
-            messagebox.showinfo("✅ Exportado", f"Relatório salvo em:\n{path}")
+            if self.comparacao_notas:
+                qtd_div = len(self.comparacao_notas.notas_apenas_nossa) + len(self.comparacao_notas.notas_apenas_conta_grafica)
+                messagebox.showinfo(
+                    "✅ Exportado",
+                    f"Excel da auditoria salvo em:\n{path}\n\n"
+                    f"Divergências identificadas: {qtd_div}",
+                )
+            else:
+                messagebox.showinfo(
+                    "✅ Exportado",
+                    "Excel da auditoria salvo sem comparação de divergências.\n"
+                    "Para incluir divergências, selecione um Excel e informe Mês/Ano válido.",
+                )
         except Exception as e:
             messagebox.showerror("Erro ao Exportar", f"Falha ao gerar o Excel:\n{e}")
 

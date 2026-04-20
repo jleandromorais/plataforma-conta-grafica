@@ -46,6 +46,22 @@ _MES_NUMERO = {
     12: "Dez",
 }
 
+# Mapeamento abreviação → nome completo normalizado (sem acentos)
+_ABREV_TO_FULL = {
+    "jan": "janeiro",
+    "fev": "fevereiro",
+    "mar": "marco",
+    "abr": "abril",
+    "mai": "maio",
+    "jun": "junho",
+    "jul": "julho",
+    "ago": "agosto",
+    "set": "setembro",
+    "out": "outubro",
+    "nov": "novembro",
+    "dez": "dezembro",
+}
+
 
 def _limpar_texto(valor: str | None) -> str:
     texto = "" if valor is None else str(valor).strip()
@@ -70,6 +86,7 @@ def normalizar_periodo(periodo: str | None) -> str:
     if not texto:
         return ""
 
+    # Formato com separador: "jan/26", "jan/2026", "01/2026"
     match_mes = re.fullmatch(r"([A-Za-zÀ-ÿ]+|\d{1,2})/(\d{2}|\d{4})", texto)
     if match_mes:
         mes_bruto, ano_bruto = match_mes.groups()
@@ -86,6 +103,15 @@ def normalizar_periodo(periodo: str | None) -> str:
     if match_trimestre:
         trimestre, ano_bruto = match_trimestre.groups()
         return f"{trimestre.upper()}/{_normalizar_ano(ano_bruto)}"
+
+    # Formato sem separador: "jan26", "jan2026", "janeiro26", "fev25"
+    match_sem_sep = re.fullmatch(r"([A-Za-zÀ-ÿ]+)(\d{2}|\d{4})", texto)
+    if match_sem_sep:
+        mes_bruto, ano_bruto = match_sem_sep.groups()
+        ano = _normalizar_ano(ano_bruto)
+        mes_nome = _MESES.get(_normalizar_token(mes_bruto))
+        if mes_nome:
+            return f"{mes_nome}/{ano}"
 
     return texto
 
