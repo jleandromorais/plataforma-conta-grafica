@@ -3,6 +3,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 import os
 import threading
+import tempfile
+import zipfile
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -22,9 +25,12 @@ class TelaConciliador(ctk.CTkFrame):
         
         self.path_rec = tk.StringVar()
         self.path_desp = tk.StringVar()
+        self.var_excel_bonito = tk.BooleanVar(value=False)
         self.status_ocr_txt = "✅ MOTOR OCR ATIVO" if OCR_ENABLED else "❌ OCR NÃO ENCONTRADO"
         self.cor_ocr = "#27ae60" if OCR_ENABLED else "#c0392b"
         self.consolidacao = ServicosConsolidacao()
+        self._tmp_zip_extract_dirs = []
+        self._destino_excel_concilia = None
 
         self._setup_ui()
 
@@ -50,6 +56,16 @@ class TelaConciliador(ctk.CTkFrame):
         self.btn_run = ctk.CTkButton(self, text="⚡ PROCESSAR E CONCILIAR", command=self.iniciar_thread, 
                                     font=("Roboto", 16, "bold"), height=50, fg_color="#2980b9")
         self.btn_run.pack(fill="x", padx=40, pady=(20, 5))
+
+        self.chk_excel_bonito = ctk.CTkCheckBox(
+            self,
+            text="Gerar Excel bonito (layout detalhado)",
+            variable=self.var_excel_bonito,
+            onvalue=True,
+            offvalue=False,
+            font=("Roboto", 12, "bold"),
+        )
+        self.chk_excel_bonito.pack(anchor="w", padx=40, pady=(0, 10))
 
         self.btn_salvar_scg = ctk.CTkButton(self, text="💾 SALVAR SALDO (RP) NO SCG", command=self._salvar_rp_scg,
                                            font=("Roboto", 13, "bold"), height=38, fg_color="#27ae60", state="disabled")
@@ -100,6 +116,19 @@ class TelaConciliador(ctk.CTkFrame):
         if not self.path_rec.get() and not self.path_desp.get():
             messagebox.showwarning("Aviso", "Selecione pelo menos uma pasta!")
             return
+
+        nome_padrao = f"Conciliacao_{datetime.now().strftime('%H%M%S')}.xlsx"
+        destino = filedialog.asksaveasfilename(
+            title="Salvar relatório de Conciliação",
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+            initialfile=nome_padrao,
+        )
+        if not destino:
+            self.log_message("Operação cancelada: destino do Excel não informado.")
+            return
+
+        self._destino_excel_concilia = Path(destino)
         self.btn_run.configure(state="disabled", text="Processando...")
         self.progress.start()
         threading.Thread(target=self.rodar_processamento, daemon=True).start()
@@ -109,8 +138,8 @@ class TelaConciliador(ctk.CTkFrame):
             p_rec = Path(self.path_rec.get()) if self.path_rec.get() else None
             p_desp = Path(self.path_desp.get()) if self.path_desp.get() else None
 
-            arquivos_rec = list(p_rec.rglob("*.pdf")) if p_rec else []
-            arquivos_desp = list(p_desp.rglob("*.pdf")) if p_desp else []
+            arquivos_rec = self._coletar_pdfs(p_rec) if p_rec else []
+            arquivos_desp = self._coletar_pdfs(p_desp) if p_desp else []
 
             itens = []
             if arquivos_rec:
@@ -124,15 +153,26 @@ class TelaConciliador(ctk.CTkFrame):
                 self.log_message("Nenhum PDF processado.")
                 return
 
-            nome_excel = f"Conciliacao_{datetime.now().strftime('%H%M%S')}.xlsx"
-            caminho_final = Path(os.getcwd()) / nome_excel
+            caminho_final = self._destino_excel_concilia or (Path(os.getcwd()) / f"Conciliacao_{datetime.now().strftime('%H%M%S')}.xlsx")
 
-            tot_rec, tot_desp = ExcelConcilia.gerar_relatorio(caminho_final, itens)
-            self._ultimo_saldo_rp = tot_rec - tot_desp
+            layout_bonito = bool(self.var_excel_bonito.get())
+            if layout_bonito:
+                self.log_message("Modo Excel bonito ativado.")
+
+            tot_rec, tot_desp = ExcelConcilia.gerar_relatorio(caminho_final, itens, layout_bonito=layout_bonito)
+            saldo_receita_menos_despesa = tot_rec - tot_desp
+            saldo_despesa_menos_receita = tot_desp - tot_rec
+            self._ultimo_saldo_rp = saldo_despesa_menos_receita
             self._ultimos_itens_concilia = itens
 
+            self.log_message("--- RESUMO DA CONCILIAÇÃO ---")
+            self.log_message(f"Total Receita: R$ {format_brl_plain(tot_rec)}")
+            self.log_message(f"Total Despesa: R$ {format_brl_plain(tot_desp)}")
+            self.log_message(f"Saldo (Despesa - Receita): R$ {format_brl_plain(saldo_despesa_menos_receita)}")
+            self.log_message(f"Conferência (Receita - Despesa): R$ {format_brl_plain(saldo_receita_menos_despesa)}")
+
             self.log_message(f"CONCLUÍDO! Salvo em: {caminho_final}")
-            msg = f"Finalizado!\nSaldo: R$ {format_brl_plain(self._ultimo_saldo_rp)}"
+            msg = f"Finalizado!\nSaldo (Despesa - Receita): R$ {format_brl_plain(self._ultimo_saldo_rp)}"
             messagebox.showinfo("Sucesso", msg)
             self.btn_salvar_scg.configure(state="normal")
             self.btn_excel_final.configure(state="normal")
@@ -141,7 +181,48 @@ class TelaConciliador(ctk.CTkFrame):
             self.log_message(f"ERRO: {e}")
             messagebox.showerror("Erro", str(e))
         finally:
+            self._limpar_temporarios_zip()
             self.restaurar_interface()
+
+    def _coletar_pdfs(self, pasta: Path):
+        """Coleta PDFs diretos e também PDFs contidos em ZIPs dentro da pasta."""
+        if not pasta or not pasta.exists():
+            return []
+
+        pdfs = list(pasta.rglob("*.pdf"))
+        zips = list(pasta.rglob("*.zip"))
+
+        if zips:
+            self.log_message(f"Detectado(s) {len(zips)} ZIP(s) em {pasta.name}. Extraindo PDFs...")
+
+        for zip_path in zips:
+            try:
+                with zipfile.ZipFile(zip_path, "r") as zf:
+                    nomes_pdf = [n for n in zf.namelist() if n.lower().endswith(".pdf")]
+                    if not nomes_pdf:
+                        continue
+
+                    tmp_dir = tempfile.mkdtemp(prefix="concilia_zip_")
+                    self._tmp_zip_extract_dirs.append(tmp_dir)
+
+                    for nome in nomes_pdf:
+                        zf.extract(nome, path=tmp_dir)
+                        pdfs.append(Path(tmp_dir) / nome)
+
+                self.log_message(f"ZIP lido: {zip_path.name} ({len(nomes_pdf)} PDF(s))")
+            except Exception as e:
+                self.log_message(f"Falha ao ler ZIP {zip_path.name}: {e}")
+
+        return pdfs
+
+    def _limpar_temporarios_zip(self):
+        """Remove diretórios temporários usados para extração de ZIPs."""
+        for d in self._tmp_zip_extract_dirs:
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+        self._tmp_zip_extract_dirs = []
 
     def _salvar_rp_scg(self):
         periodo = simpledialog.askstring(
