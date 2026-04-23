@@ -70,6 +70,11 @@ def _money_fmt(val: Any) -> str:
     return f"R$ {num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _money4_fmt(val: Any) -> str:
+    num = _to_float(val)
+    return f"R$ {num:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def _vol_fmt(val: Any) -> str:
     num = _to_float(val)
     return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -201,17 +206,23 @@ class ExcelConsolidado:
         cgf_lista    = [cgf] if periodo and cgf else db.listar_cgf_resumos()
         sr           = db.buscar_sr(periodo) if periodo else None
         sr_lista     = [sr] if periodo and sr else db.listar_sr()
+        pr           = db.buscar_pr(periodo) if periodo else None
+        pr_lista     = [pr] if periodo and pr else db.listar_pr()
+        pv           = db.buscar_pv(periodo) if periodo else None
+        pv_lista     = [pv] if periodo and pv else db.listar_pv()
         pmpv_mensal  = db.listar_pmpv_mensal()
         execucoes    = db.listar_execucoes_excel_final(periodo=periodo) if periodo else db.listar_execucoes_excel_final()
 
         # Sheets
-        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, periodo)
+        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, periodo)
         ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes)
         ExcelConsolidado._sheet_auditoria(wb, audit_itens, periodo)
         ExcelConsolidado._sheet_ret(wb, ret_itens, periodo)
         ExcelConsolidado._sheet_concilia(wb, conc_itens, periodo)
         ExcelConsolidado._sheet_cgf(wb, cgf if periodo else cgf_lista, periodo)
         ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
+        ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
         ExcelConsolidado._sheet_progresso(wb, execucoes, periodo)
 
         try:
@@ -233,7 +244,7 @@ class ExcelConsolidado:
     # ── Sheet 1: Resumo Executivo ────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, periodo):
+    def _sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, periodo):
         ws = wb.create_sheet("📋 Resumo Executivo")
         ws.sheet_view.showGridLines = False
 
@@ -328,6 +339,13 @@ class ExcelConsolidado:
         ws.row_dimensions[row].height = 36
 
         row += 2
+
+        pr_ref = (pr_lista[0] if pr_lista else {}) or {}
+        pv_ref = (pv_lista[0] if pv_lista else {}) or {}
+        _card("💡  PR Final  = (SGR + SR) / VP", _money4_fmt(pr_ref.get("pr", 0.0)), _BLUE, row, col=1, span=3)
+        _card("💰  PV Final  = PMPV + PR", _money4_fmt(pv_ref.get("pv", 0.0)), _GREEN, row, col=4, span=3)
+
+        row += 3
 
         # PMPV Mensal
         if pmpv_sessoes or True:
@@ -847,7 +865,209 @@ class ExcelConsolidado:
         ws.column_dimensions["C"].width = 10
         ws.column_dimensions["D"].width = 30
 
-    # ── Sheet 8: Progresso por Etapa ───────────────────────────────────────
+    # ── Sheet 8: PR Final ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _sheet_pr(wb, pr: dict | list[dict] | None, periodo: str | None):
+        _CYAN = "0E7490"
+        ws = wb.create_sheet("💡 PR Final")
+        ws.sheet_view.showGridLines = False
+
+        ws.merge_cells("A1:D1")
+        t = ws["A1"]
+        t.value = f"PR FINAL  =  (SGR + SR) / VP  |  Período: {periodo or 'N/D'}"
+        t.fill = _fill(_CYAN)
+        t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("center")
+        ws.row_dimensions[1].height = 30
+
+        row = 3
+
+        if periodo is None:
+            registros = pr if isinstance(pr, list) else ([pr] if pr else [])
+            _apply_header_row(ws, row,
+                ["Período", "SGR/SCG (R$)", "SR (R$)", "VP (m³)", "PR (R$/m³)", "Atualizado"],
+                [18, 18, 18, 18, 18, 20], _CYAN)
+            row += 1
+            if not registros:
+                ws.cell(row=row, column=1, value="Nenhum resultado PR salvo no banco.")
+                return
+            for i, item in enumerate(registros):
+                _apply_data_row(ws, row,
+                    [item.get("periodo", ""), item.get("scg", 0.0), item.get("sr", 0.0),
+                     item.get("vp", 0.0), item.get("pr", 0.0),
+                     str(item.get("data_atualizacao", ""))[:16]],
+                    ["@", _BRL, _BRL, _VOL, _VOL4, "@"],
+                    alternate=(i % 2 == 1))
+                row += 1
+            return
+
+        data = pr if isinstance(pr, dict) else {}
+
+        scg = _to_float(data.get("scg"))
+        sr  = _to_float(data.get("sr"))
+        vp  = _to_float(data.get("vp"))
+        pr_val = _to_float(data.get("pr")) if data else (0.0 if vp == 0 else (scg + sr) / vp)
+
+        linhas = [
+            ("💼  SGR / SCG  (Saldo Gráfico Regulatório)", scg, _PURPLE,  "+"),
+            ("📈  SR          (Saldo Remanescente)",         sr,  _GREEN,   "+"),
+            ("🔢  VP          (Volume Produzido, m³)",       vp,  _BLUE,    "÷"),
+        ]
+
+        _apply_header_row(ws, row,
+            ["Componente", "Valor", "Op.", "Obs."],
+            [38, 22, 8, 30], _CYAN)
+        row += 1
+
+        fmts_by_label = [_BRL, _BRL, _VOL]
+        for i, ((label, val, bg_mod, op), fmt) in enumerate(zip(linhas, fmts_by_label)):
+            for col in range(1, 5):
+                c = ws.cell(row=row, column=col)
+                c.fill = _fill(_ROW_ALT if i % 2 else _ROW_NORM)
+                c.border = _border()
+            ws.cell(row=row, column=1, value=label).font = _font()
+            ws.cell(row=row, column=1).alignment = _align("left")
+            v = ws.cell(row=row, column=2, value=val)
+            v.number_format = fmt
+            v.alignment = _align("right")
+            ws.cell(row=row, column=3, value=op).alignment = _align("center")
+            row += 1
+
+        row += 1
+
+        ws.merge_cells(f"A{row}:D{row}")
+        lbl = ws.cell(row=row, column=1, value="💡  PR  =  (SGR + SR)  /  VP")
+        bg_pr = _GREEN if pr_val > 0 else (_RED if pr_val < 0 else _GOLD)
+        lbl.fill = _fill(bg_pr)
+        lbl.font = _font(bold=True, color=_HEADER_FG, size=13)
+        lbl.alignment = _align("left")
+        lbl.border = _border()
+        ws.row_dimensions[row].height = 26
+        row += 1
+
+        ws.merge_cells(f"A{row}:D{row}")
+        v = ws.cell(row=row, column=1, value=pr_val)
+        v.number_format = _VOL4
+        v.fill = _fill(bg_pr)
+        v.font = _font(bold=True, color=_HEADER_FG, size=22)
+        v.alignment = _align("center")
+        v.border = _border()
+        ws.row_dimensions[row].height = 44
+        row += 2
+
+        _section_title(ws, row, "  FÓRMULA OFICIAL", 4, "2C3E50")
+        row += 1
+        ws.merge_cells(f"A{row}:D{row}")
+        c = ws.cell(row=row, column=1, value="PR  =  (SGR + SR)  /  VP   |   PR = 0 quando VP = 0")
+        c.fill = _fill(_ROW_ALT)
+        c.font = _font(italic=True, size=11)
+        c.alignment = _align("center")
+        c.border = _border()
+
+        ws.column_dimensions["A"].width = 40
+        ws.column_dimensions["B"].width = 22
+        ws.column_dimensions["C"].width = 10
+        ws.column_dimensions["D"].width = 30
+
+    # ── Sheet 9: Progresso por Etapa ───────────────────────────────────────
+
+    @staticmethod
+    def _sheet_pv(wb, pv: dict | list[dict] | None, periodo: str | None):
+        _GREEN_DARK = "1D8348"
+        ws = wb.create_sheet("💰 PV Final")
+        ws.sheet_view.showGridLines = False
+
+        ws.merge_cells("A1:D1")
+        t = ws["A1"]
+        t.value = f"PV FINAL  =  PMPV + PR  |  Período: {periodo or 'N/D'}"
+        t.fill = _fill(_GREEN_DARK)
+        t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("center")
+        ws.row_dimensions[1].height = 30
+
+        row = 3
+
+        if periodo is None:
+            registros = pv if isinstance(pv, list) else ([pv] if pv else [])
+            _apply_header_row(ws, row,
+                ["Período", "PMPV (R$/m³)", "PR (R$/m³)", "PV (R$/m³)", "Atualizado"],
+                [18, 20, 20, 20, 20], _GREEN_DARK)
+            row += 1
+            if not registros:
+                ws.cell(row=row, column=1, value="Nenhum resultado PV salvo no banco.")
+                return
+            for i, item in enumerate(registros):
+                _apply_data_row(ws, row,
+                    [item.get("periodo", ""), item.get("pmpv", 0.0), item.get("pr", 0.0),
+                     item.get("pv", 0.0), str(item.get("data_atualizacao", ""))[:16]],
+                    ["@", _VOL4, _VOL4, _VOL4, "@"],
+                    alternate=(i % 2 == 1))
+                row += 1
+            return
+
+        data = pv if isinstance(pv, dict) else {}
+        pmpv = _to_float(data.get("pmpv"))
+        pr = _to_float(data.get("pr"))
+        pv_val = _to_float(data.get("pv")) if data else (pmpv + pr)
+
+        linhas = [
+            ("📊  PMPV  (Preço Médio Ponderado)", pmpv, _TEAL, "+"),
+            ("💡  PR    (Preço Regulatório Final)", pr, _BLUE, "+"),
+        ]
+
+        _apply_header_row(ws, row, ["Componente", "Valor", "Op.", "Obs."], [38, 22, 8, 30], _GREEN_DARK)
+        row += 1
+
+        for i, (label, val, _bg_mod, op) in enumerate(linhas):
+            for col in range(1, 5):
+                c = ws.cell(row=row, column=col)
+                c.fill = _fill(_ROW_ALT if i % 2 else _ROW_NORM)
+                c.border = _border()
+            ws.cell(row=row, column=1, value=label).font = _font()
+            ws.cell(row=row, column=1).alignment = _align("left")
+            v = ws.cell(row=row, column=2, value=val)
+            v.number_format = _VOL4
+            v.alignment = _align("right")
+            ws.cell(row=row, column=3, value=op).alignment = _align("center")
+            row += 1
+
+        row += 1
+        ws.merge_cells(f"A{row}:D{row}")
+        lbl = ws.cell(row=row, column=1, value="💰  PV  =  PMPV + PR")
+        bg_pv = _GREEN if pv_val > 0 else (_RED if pv_val < 0 else _GOLD)
+        lbl.fill = _fill(bg_pv)
+        lbl.font = _font(bold=True, color=_HEADER_FG, size=13)
+        lbl.alignment = _align("left")
+        lbl.border = _border()
+        ws.row_dimensions[row].height = 26
+        row += 1
+
+        ws.merge_cells(f"A{row}:D{row}")
+        v = ws.cell(row=row, column=1, value=pv_val)
+        v.number_format = _VOL4
+        v.fill = _fill(bg_pv)
+        v.font = _font(bold=True, color=_HEADER_FG, size=22)
+        v.alignment = _align("center")
+        v.border = _border()
+        ws.row_dimensions[row].height = 44
+        row += 2
+
+        _section_title(ws, row, "  FÓRMULA OFICIAL", 4, "2C3E50")
+        row += 1
+        ws.merge_cells(f"A{row}:D{row}")
+        c = ws.cell(row=row, column=1, value="PV  =  PMPV  +  PR")
+        c.fill = _fill(_ROW_ALT)
+        c.font = _font(italic=True, size=11)
+        c.alignment = _align("center")
+        c.border = _border()
+
+        ws.column_dimensions["A"].width = 40
+        ws.column_dimensions["B"].width = 22
+        ws.column_dimensions["C"].width = 10
+        ws.column_dimensions["D"].width = 30
+
+    # ── Sheet 10: Progresso por Etapa ──────────────────────────────────────
 
     @staticmethod
     def _sheet_progresso(wb, execucoes: list[dict], periodo: str | None):

@@ -15,6 +15,8 @@ try:
     from Src.Views.tela_cgf import TelaCGF
     from Src.Views.tela_rpv import TelaRPV
     from Src.Views.tela_sr import TelaSR
+    from Src.Views.tela_pr import TelaPR
+    from Src.Views.tela_pv import TelaPV
     from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 except ImportError as e:
@@ -80,6 +82,8 @@ class PlataformaFinanceira(ctk.CTk):
             {"text": "🧾 RPV (CGR − CGF)", "command": self.abrir_rpv, "fg_color": "#f59e0b", "hover_color": "#d97706", "text_color": "black"},
             {"text": "📈 SR (Volume Prospectivo − VF) × PR", "command": self.abrir_sr},
             {"text": "💼 Consolidação SCG", "command": self.abrir_scg, "fg_color": "#8b5cf6", "hover_color": "#7c3aed"},
+            {"text": "💡 PR Final (SGR+SR)/VP", "command": self.abrir_pr, "fg_color": "#0e7490", "hover_color": "#0891b2"},
+            {"text": "💰 PV Final (PMPV+PR)", "command": self.abrir_pv, "fg_color": "#15803d", "hover_color": "#16a34a"},
             {"text": "9️⃣ Excel Final Consolidado", "command": self.exportar_relatorio_consolidado, "fg_color": "#16a085", "hover_color": "#1abc9c"},
         ]
 
@@ -111,9 +115,10 @@ class PlataformaFinanceira(ctk.CTk):
         frame_cards = ctk.CTkFrame(self.main_area, fg_color="transparent")
         frame_cards.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Configurar grid 3x3
-        for i in range(3):  
+        # Configurar grid 4x3
+        for i in range(4):
             frame_cards.grid_rowconfigure(i, weight=1)
+        for i in range(3):
             frame_cards.grid_columnconfigure(i, weight=1)
         
         # --- LISTA DE DADOS PARA OS CARDS DO MENU INICIAL ---
@@ -127,6 +132,8 @@ class PlataformaFinanceira(ctk.CTk):
             {"linha": 2, "coluna": 0, "titulo": "💼 Consolidação SCG", "desc": "Cálculo final\nSCG = RPV+RET+RP", "comando": self.abrir_scg},
             {"linha": 2, "coluna": 1, "titulo": "📈 SR", "desc": "(Volume Prospectivo − VF) × PR\nSaldo regulatório", "comando": self.abrir_sr},
             {"linha": 2, "coluna": 2, "titulo": "9️⃣ Excel Final", "desc": "Exporta todos os módulos\nem um único Excel\nconsolidado", "comando": self.exportar_relatorio_consolidado},
+            {"linha": 3, "coluna": 0, "titulo": "💡 PR Final", "desc": "Preço Regulatório Final\n(SGR + SR) / VP\npor período", "comando": self.abrir_pr},
+            {"linha": 3, "coluna": 1, "titulo": "💰 PV Final", "desc": "Preço final da conta gráfica\nPMPV + PR\npor período", "comando": self.abrir_pv},
         ]
 
         # --- LAÇO FOR: CRIANDO OS CARDS ---
@@ -223,6 +230,20 @@ class PlataformaFinanceira(ctk.CTk):
             TelaSR(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir SR: {e}")
+
+    def abrir_pr(self):
+        try:
+            self._limpar_area_principal()
+            TelaPR(self.main_area).pack(fill="both", expand=True)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao abrir PR: {e}")
+
+    def abrir_pv(self):
+        try:
+            self._limpar_area_principal()
+            TelaPV(self.main_area).pack(fill="both", expand=True)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao abrir PV: {e}")
 
     def exportar_relatorio_consolidado(self):
         try:

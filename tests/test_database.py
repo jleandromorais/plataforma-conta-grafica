@@ -328,6 +328,39 @@ class TestDatabasePMPV:
         assert res[7] == -0.021  # conta_grafica
         assert res[8] == 1.979  # preco_final
     
+    def test_atualizar_cgr_encontra_linha_com_periodo_curto(self, db_temp):
+        """
+        Regressão: linha gravada como 'Jan/26' deve ser atualizada quando
+        atualizar_cgr recebe 'Jan/2026' — o UPDATE deve usar IN(variantes).
+        """
+        db_temp.cursor.execute(
+            "INSERT INTO consolidacao (periodo) VALUES (?)", ("Jan/26",)
+        )
+        db_temp.conn.commit()
+
+        db_temp.atualizar_cgr("Jan/2026", 500.0)
+
+        dados = db_temp.buscar_consolidacao("Jan/2026")
+        assert dados is not None
+        assert dados["cgr"] == 500.0
+
+    def test_atualizar_multiplos_campos_periodo_legado(self, db_temp):
+        """
+        Regressão: atualizar_campos_consolidacao deve funcionar mesmo
+        quando o período está salvo no formato curto.
+        """
+        db_temp.cursor.execute(
+            "INSERT INTO consolidacao (periodo, cgr) VALUES (?, ?)", ("Fev/26", 100.0)
+        )
+        db_temp.conn.commit()
+
+        db_temp.atualizar_campos_consolidacao("Fev/2026", ret=30.0, rp=20.0)
+
+        dados = db_temp.buscar_consolidacao("Fev/2026")
+        assert dados["cgr"] == 100.0
+        assert dados["ret"] == 30.0
+        assert dados["rp"] == 20.0
+
     def test_dados_com_campos_faltantes(self, db_temp):
         """Testa o salvamento com campos faltantes (valores padrão)"""
         sessao_id = db_temp.criar_sessao("Teste")

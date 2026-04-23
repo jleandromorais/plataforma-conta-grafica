@@ -147,6 +147,27 @@ class DatabasePMPV:
         """)
 
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pr_resultados (
+                periodo          TEXT PRIMARY KEY,
+                scg              REAL DEFAULT 0,
+                sr               REAL DEFAULT 0,
+                vp               REAL DEFAULT 0,
+                pr               REAL DEFAULT 0,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pv_resultados (
+                periodo          TEXT PRIMARY KEY,
+                pmpv             REAL DEFAULT 0,
+                pr               REAL DEFAULT 0,
+                pv               REAL DEFAULT 0,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS excel_final_sessoes (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome             TEXT NOT NULL,
@@ -337,49 +358,45 @@ class DatabasePMPV:
         self.conn.commit()
         return self.cursor.lastrowid
     
+    def _update_consolidacao(self, periodo: str, **campos):
+        """
+        UPDATE seguro: usa IN (variantes) para encontrar a linha
+        independente do formato salvo ("Jan/26" ou "Jan/2026").
+        """
+        atribuicoes = ", ".join(f"{campo} = ?" for campo in campos)
+        valores = list(campos.values())
+        variantes = self._variantes_periodo(periodo)
+        placeholders = ", ".join("?" for _ in variantes)
+        self.cursor.execute(
+            f"UPDATE consolidacao SET {atribuicoes}, data_atualizacao = CURRENT_TIMESTAMP "
+            f"WHERE periodo IN ({placeholders})",
+            (*valores, *variantes),
+        )
+        self.conn.commit()
+
     def atualizar_cgr(self, periodo: str, valor: float):
+        """Atualiza o CGR (Auditoria XML)."""
         periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
-        """Atualiza o CGR (Auditoria XML)"""
-        self.cursor.execute("""
-            UPDATE consolidacao
-            SET cgr = ?, data_atualizacao = CURRENT_TIMESTAMP
-            WHERE periodo = ?
-        """, (valor, periodo))
-        self.conn.commit()
-    
+        self._update_consolidacao(periodo, cgr=valor)
+
     def atualizar_ret(self, periodo: str, valor: float):
+        """Atualiza o RET (Módulo RET)."""
         periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
-        """Atualiza o RET (Módulo RET)"""
-        self.cursor.execute("""
-            UPDATE consolidacao
-            SET ret = ?, data_atualizacao = CURRENT_TIMESTAMP
-            WHERE periodo = ?
-        """, (valor, periodo))
-        self.conn.commit()
-    
+        self._update_consolidacao(periodo, ret=valor)
+
     def atualizar_rp(self, periodo: str, valor: float):
+        """Atualiza o RP (Conciliação)."""
         periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
-        """Atualiza o RP (Conciliação)"""
-        self.cursor.execute("""
-            UPDATE consolidacao
-            SET rp = ?, data_atualizacao = CURRENT_TIMESTAMP
-            WHERE periodo = ?
-        """, (valor, periodo))
-        self.conn.commit()
-            
+        self._update_consolidacao(periodo, rp=valor)
+
     def atualizar_cgf(self, periodo: str, valor: float):
         """Atualiza somente o CGF (Volume Faturado)."""
         periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
-        self.cursor.execute("""
-            UPDATE consolidacao
-            SET cgf = ?, data_atualizacao = CURRENT_TIMESTAMP
-            WHERE periodo = ?
-        """, (valor, periodo))
-        self.conn.commit()
+        self._update_consolidacao(periodo, cgf=valor)
 
     def atualizar_campos_consolidacao(self, periodo: str, **campos: float):
         """Atualiza vários campos de consolidação em uma única operação."""
@@ -391,16 +408,8 @@ class DatabasePMPV:
         }
         if not campos_validos:
             return
-
         self._garantir_periodo(periodo)
-        atribuicoes = ", ".join(f"{campo} = ?" for campo in campos_validos)
-        valores = list(campos_validos.values())
-        self.cursor.execute(f"""
-            UPDATE consolidacao
-            SET {atribuicoes}, data_atualizacao = CURRENT_TIMESTAMP
-            WHERE periodo = ?
-        """, (*valores, periodo))
-        self.conn.commit()
+        self._update_consolidacao(periodo, **campos_validos)
 
     def salvar_rpv(self, periodo: str, rpv: float):
         self.atualizar_campos_consolidacao(periodo, rpv=rpv)
@@ -422,14 +431,10 @@ class DatabasePMPV:
         return rpv
 
     def atualizar_rpv_cgf(self, periodo: str, rpv: float, cgf: float):
-        """Atualiza RPV e CGF (valores manuais)"""
+        """Atualiza RPV e CGF (valores manuais)."""
         periodo = self._normalizar_periodo(periodo)
-        self.cursor.execute("""
-            UPDATE consolidacao
-            SET rpv = ?, cgf = ?, data_atualizacao = CURRENT_TIMESTAMP
-            WHERE periodo = ?
-        """, (rpv, cgf, periodo))
-        self.conn.commit()
+        self._garantir_periodo(periodo)
+        self._update_consolidacao(periodo, rpv=rpv, cgf=cgf)
         
     def calcular_scg(self, periodo: str) -> float:
         """Compatibilidade legada: delega o cálculo oficial ao serviço."""
@@ -479,6 +484,8 @@ class DatabasePMPV:
             "consolidacao",
             "pmpv_mensal",
             "sr_resultados",
+            "pr_resultados",
+            "pv_resultados",
             "cgf_resumo",
             "auditoria_itens",
             "ret_itens",
@@ -679,6 +686,44 @@ class DatabasePMPV:
     def listar_sr(self) -> List[Dict]:
         self.cursor.execute("SELECT * FROM sr_resultados ORDER BY data_atualizacao DESC")
         return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("vp", "vf", "pr", "sr"))
+
+    # ==========================================
+    # PR (PREÇO REGULATÓRIO FINAL)
+    # ==========================================
+
+    def salvar_pr(self, periodo: str, scg: float, sr: float, vp: float, pr: float):
+        periodo = self._normalizar_periodo(periodo)
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO pr_resultados (periodo, scg, sr, vp, pr, data_atualizacao)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (periodo, scg, sr, vp, pr))
+        self.conn.commit()
+
+    def buscar_pr(self, periodo: str) -> Dict:
+        return self._primeiro_por_periodo("pr_resultados", periodo)
+
+    def listar_pr(self) -> List[Dict]:
+        self.cursor.execute("SELECT * FROM pr_resultados ORDER BY data_atualizacao DESC")
+        return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("scg", "sr", "vp", "pr"))
+
+    # ==========================================
+    # PV (PREÇO FINAL = PMPV + PR)
+    # ==========================================
+
+    def salvar_pv(self, periodo: str, pmpv: float, pr: float, pv: float):
+        periodo = self._normalizar_periodo(periodo)
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO pv_resultados (periodo, pmpv, pr, pv, data_atualizacao)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (periodo, pmpv, pr, pv))
+        self.conn.commit()
+
+    def buscar_pv(self, periodo: str) -> Dict:
+        return self._primeiro_por_periodo("pv_resultados", periodo)
+
+    def listar_pv(self) -> List[Dict]:
+        self.cursor.execute("SELECT * FROM pv_resultados ORDER BY data_atualizacao DESC")
+        return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("pmpv", "pr", "pv"))
 
     # ==========================================
     # CGF RESUMO
