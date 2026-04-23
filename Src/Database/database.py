@@ -528,6 +528,18 @@ class DatabasePMPV:
         )
         return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("pmpv",))
 
+    def salvar_vp_mensal(self, periodo: str, vp: float):
+        """Salva/atualiza apenas o Volume Prospectivo em sr_resultados para um período."""
+        periodo = self._normalizar_periodo(periodo)
+        self.cursor.execute(
+            """INSERT INTO sr_resultados (periodo, vp)
+               VALUES (?, ?)
+               ON CONFLICT(periodo) DO UPDATE SET vp = excluded.vp,
+                   data_atualizacao = CURRENT_TIMESTAMP""",
+            (periodo, vp),
+        )
+        self.conn.commit()
+
     # ==========================================
     # AUDITORIA XML
     # ==========================================

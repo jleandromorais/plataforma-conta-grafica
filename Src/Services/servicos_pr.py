@@ -56,6 +56,22 @@ class ServicosPR:
         from Src.Services.servicos_consolidacao import ServicosConsolidacao
         return ServicosConsolidacao().obter_periodos()
 
+    def obter_todos_periodos(self) -> list[str]:
+        """Retorna todos os períodos disponíveis (consolidação + sr_resultados), sem duplicatas."""
+        vistos: set[str] = set()
+        periodos: list[str] = []
+        for p in self.obter_periodos():
+            per = p.get("periodo", "")
+            if per and per not in vistos:
+                vistos.add(per)
+                periodos.append(per)
+        for row in self._db.listar_sr():
+            per = row.get("periodo", "")
+            if per and per not in vistos:
+                vistos.add(per)
+                periodos.append(per)
+        return periodos
+
     def criar_periodo(self, nome: str):
         from Src.Services.servicos_consolidacao import ServicosConsolidacao
         ServicosConsolidacao().criar_periodo(nome.strip())
@@ -78,6 +94,24 @@ class ServicosPR:
         pr = (pr_row or {}).get("pr") or self.calcular_pr(scg, sr, vp)
 
         return {"scg": scg, "sr": sr, "vp": vp, "pr": pr}
+
+    def buscar_dados_trimestral(self, periodos: list[str]) -> dict[str, float]:
+        """Soma SGR/SCG, SR e VP dos períodos do trimestre e retorna o PR resultante."""
+        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        servicos_cons = ServicosConsolidacao()
+        scg_total = 0.0
+        sr_total = 0.0
+        vp_total = 0.0
+        for periodo in periodos:
+            if not periodo:
+                continue
+            dados_cons = servicos_cons.buscar_consolidacao(periodo)
+            scg_total += float((dados_cons or {}).get("scg") or 0.0)
+            sr_row = self._db.buscar_sr(periodo)
+            sr_total += float((sr_row or {}).get("sr") or 0.0)
+            vp_total += float((sr_row or {}).get("vp") or 0.0)
+        pr = self.calcular_pr(scg_total, sr_total, vp_total)
+        return {"scg": scg_total, "sr": sr_total, "vp": vp_total, "pr": pr}
 
     def salvar_valores(self, periodo: str, scg: float, sr: float, vp: float) -> float:
         """Calcula e persiste o PR final para o período."""

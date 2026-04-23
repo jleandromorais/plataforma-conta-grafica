@@ -101,9 +101,9 @@ class TelaPMPV(ctk.CTkFrame):
         ctk.CTkButton(right, text="📥 Importar Memória de Cálculo", command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="💾 Salvar Sessão no Banco", command=self.salvar, fg_color="#8e44ad").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="📅 Salvar PMPV Mensal", command=self._salvar_pmpv_mensal, fg_color="#16a085").pack(pady=4, fill="x")
+        ctk.CTkButton(right, text="💧 Salvar VP Mensal", command=self._salvar_vp_mensal, fg_color="#1a5276", hover_color="#2e86c1").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="📊 Exportar Excel do PMPV", command=self.exportar, fg_color="#2980b9").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="➕ Adicionar ao Excel Final (Módulo 9)", command=self._adicionar_excel_final, fg_color="#6c3483", hover_color="#884ea0").pack(pady=4, fill="x")
-        ctk.CTkButton(right, text="📄 Exportar Memória MC", command=self.exportar_memoria_mc, fg_color="#1a5276", hover_color="#2e86c1").pack(pady=4, fill="x")
 
     def _criar_aba(self, parent, tab_nome: str = ""):
         head = ctk.CTkFrame(parent, height=30, fg_color="#2c3e50")
@@ -480,9 +480,68 @@ class TelaPMPV(ctk.CTkFrame):
         ExcelHandlerPMPV.exportar_trimestre(d_fmt, self.res_final)
         messagebox.showinfo("Sucesso", "Excel Gerado!")
 
-    def exportar_memoria_mc(self):
-        if not hasattr(self, 'res_final'): return messagebox.showwarning("Erro", "Calcule o PMPV antes de exportar.")
-        messagebox.showinfo("Aviso", "Funcionalidade simplificada para manter o código limpo. Configure exportar aqui.")
+    def _salvar_vp_mensal(self):
+        if not hasattr(self, 'res_final'):
+            return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
+
+        vp_por_mes = self.res_final.get('vp_por_mes', {})
+        if not vp_por_mes:
+            return messagebox.showwarning("Aviso", "Sem dados de VP por mês. Calcule novamente.")
+
+        meses_nome = list(vp_por_mes.keys())
+        tabs = [f"Mês {i+1}" for i in range(len(meses_nome))]
+
+        win = ctk.CTkToplevel(self)
+        win.title("Salvar VP Mensal")
+        win.geometry("400x240")
+        win.grab_set()
+
+        ctk.CTkLabel(win, text="Salvar Volume Prospectivo por Mês", font=("Roboto", 14, "bold")).pack(pady=(16, 6))
+
+        frame = ctk.CTkFrame(win, fg_color="transparent")
+        frame.pack(fill="x", padx=24, pady=4)
+        frame.columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(frame, text="Mês do trimestre:", anchor="w").grid(row=0, column=0, sticky="w", pady=6)
+        combo_tab = ctk.CTkComboBox(frame, values=tabs, width=150)
+        combo_tab.set(tabs[0])
+        combo_tab.grid(row=0, column=1, padx=10, pady=6, sticky="ew")
+
+        vp_inicial = vp_por_mes.get(meses_nome[0], 0.0) if meses_nome else 0.0
+        lbl_vp = ctk.CTkLabel(frame, text=f"VP: {self._fmt_volume(vp_inicial)} m³", text_color="#3498db", font=("Roboto", 12, "bold"))
+        lbl_vp.grid(row=1, column=0, columnspan=2, pady=4)
+
+        def ao_mudar_mes(choice):
+            idx = tabs.index(choice) if choice in tabs else 0
+            mes_nome = meses_nome[idx] if idx < len(meses_nome) else ""
+            lbl_vp.configure(text=f"VP: {self._fmt_volume(vp_por_mes.get(mes_nome, 0.0))} m³")
+
+        combo_tab.configure(command=ao_mudar_mes)
+
+        ctk.CTkLabel(frame, text="Período (ex: Dez/2025):", anchor="w").grid(row=2, column=0, sticky="w", pady=6)
+        entry_periodo = ctk.CTkEntry(frame, width=150, placeholder_text="Dez/2025")
+        entry_periodo.grid(row=2, column=1, padx=10, pady=6, sticky="ew")
+
+        def salvar():
+            periodo = entry_periodo.get().strip()
+            if not periodo:
+                messagebox.showwarning("Aviso", "Digite o período.", parent=win)
+                return
+            choice = combo_tab.get()
+            idx = tabs.index(choice) if choice in tabs else 0
+            mes_nome = meses_nome[idx] if idx < len(meses_nome) else ""
+            vp_val = vp_por_mes.get(mes_nome, 0.0)
+
+            db = DatabasePMPV()
+            try:
+                db.salvar_vp_mensal(periodo, vp_val)
+            finally:
+                db.fechar()
+
+            messagebox.showinfo("Salvo ✅", f"Período: {periodo}\nVP: {self._fmt_volume(vp_val)} m³", parent=win)
+            win.destroy()
+
+        ctk.CTkButton(win, text="💾 Salvar VP", command=salvar, fg_color="#16a085", hover_color="#0d9488").pack(pady=16)
 
     def _adicionar_excel_final(self):
         if not hasattr(self, 'res_final'):
