@@ -179,14 +179,26 @@ def registrar_execucao_excel_final(
 ) -> tuple[str, str, str, int] | None:
     """
     Resolve destino/sessao e registra a execução da etapa no fluxo cumulativo.
+    Usa a sessão ativa automaticamente; só abre modal quando não há sessão ativa.
 
     Returns:
         tuple(caminho_arquivo, nome_sessao, periodo_normalizado, execucao) ou None.
     """
-    escolha = escolher_destino_excel_final(periodo=periodo, parent=parent)
-    if not escolha:
-        return None
-    caminho, nome_sessao = escolha
+    db_check = DatabasePMPV()
+    try:
+        sessao_ativa = db_check.buscar_sessao_excel_final_ativa() or {}
+        caminho_ativo = str(sessao_ativa.get("caminho_arquivo") or "").strip()
+        nome_ativo = str(sessao_ativa.get("nome") or "").strip()
+    finally:
+        db_check.fechar()
+
+    if caminho_ativo and nome_ativo:
+        caminho, nome_sessao = caminho_ativo, nome_ativo
+    else:
+        escolha = escolher_destino_excel_final(periodo=periodo, parent=parent)
+        if not escolha:
+            return None
+        caminho, nome_sessao = escolha
 
     periodo_norm = _normalizar_periodo(periodo)
     etapa_norm = (etapa or "").strip() or "ETAPA"

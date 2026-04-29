@@ -742,16 +742,9 @@ class TelaAuditoria(ctk.CTkFrame):
     def _gerar_e_salvar_excel(self):
         if not self.resultados:
             return
+        import os
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_name = f"Auditoria_{timestamp}.xlsx"
-        path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel", "*.xlsx")],
-            initialfile=default_name,
-            title="Salvar Excel da Auditoria",
-        )
-        if not path:
-            return
+        path = os.path.join(os.getcwd(), f"Auditoria_{timestamp}.xlsx")
         try:
             ExcelAuditoria.gerar_relatorio_auditoria(
                 self.resultados,
@@ -759,25 +752,18 @@ class TelaAuditoria(ctk.CTkFrame):
                 cgr_total=self.cgr_liquido,
                 comparacao=self.comparacao_notas,
             )
-            if self.comparacao_notas:
-                qtd_div = len(self.comparacao_notas.notas_apenas_nossa) + len(self.comparacao_notas.notas_apenas_conta_grafica)
-                messagebox.showinfo(
-                    "✅ Exportado",
-                    f"Excel da auditoria salvo em:\n{path}\n\n"
-                    f"Divergências identificadas: {qtd_div}",
-                )
-            else:
-                messagebox.showinfo(
-                    "✅ Exportado",
-                    "Excel da auditoria salvo sem comparação de divergências.\n"
-                    "Para incluir divergências, selecione um Excel e informe Mês/Ano válido.",
-                )
+            self.lbl_status.configure(
+                text=f"✅ Excel salvo: Auditoria_{timestamp}.xlsx",
+                text_color="#27ae60",
+            )
         except Exception as e:
             messagebox.showerror("Erro ao Exportar", f"Falha ao gerar o Excel:\n{e}")
 
     def _salvar_cgr_scg(self):
         cgr = getattr(self, 'cgr_liquido', 0.0)
-        periodo = simpledialog.askstring("Salvar", "Período (ex: Dez/2025):", initialvalue="Dez/2025")
+        periodo = self._periodo_normalizado()
+        if not periodo:
+            periodo = simpledialog.askstring("Salvar", "Período (ex: Dez/2025):", initialvalue="Dez/2025")
         if not periodo:
             return
 
@@ -822,15 +808,17 @@ class TelaAuditoria(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Execute a auditoria antes de adicionar ao Excel final.")
             return
 
-        periodo = solicitar_periodo_excel_final(
-            parent=self,
-            titulo="Excel Final (Módulo 9) - Auditoria XML",
-            mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
-        )
-        if not periodo:
+        periodo_salvar = self._periodo_normalizado()
+        if not periodo_salvar:
+            periodo_salvar = solicitar_periodo_excel_final(
+                parent=self,
+                titulo="Excel Final (Módulo 9) - Auditoria XML",
+                mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
+            )
+        if not periodo_salvar:
             return
 
-        periodo_salvar = periodo.strip()
+        periodo_salvar = periodo_salvar.strip()
         self.consolidacao.salvar_cgr(periodo_salvar, cgr)
 
         if self.resultados:

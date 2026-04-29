@@ -14,7 +14,7 @@ from Src.Services.servicos_concilia import RegrasConcilia
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
-from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
@@ -65,7 +65,14 @@ class TelaConciliador(ctk.CTkFrame):
             offvalue=False,
             font=("Roboto", 12, "bold"),
         )
-        self.chk_excel_bonito.pack(anchor="w", padx=40, pady=(0, 10))
+        self.chk_excel_bonito.pack(anchor="w", padx=40, pady=(0, 6))
+
+        periodo_frame = ctk.CTkFrame(self, fg_color="transparent")
+        periodo_frame.pack(fill="x", padx=40, pady=(0, 10))
+        ctk.CTkLabel(periodo_frame, text="Período:", font=("Roboto", 13, "bold"), width=70).pack(side="left")
+        self.entry_periodo = ctk.CTkEntry(periodo_frame, placeholder_text="ex: Dez/2025", width=160)
+        self.entry_periodo.insert(0, datetime.now().strftime("%b/%Y"))
+        self.entry_periodo.pack(side="left", padx=(8, 0))
 
         self.btn_salvar_scg = ctk.CTkButton(self, text="💾 SALVAR SALDO (RP) NO SCG", command=self._salvar_rp_scg,
                                            font=("Roboto", 13, "bold"), height=38, fg_color="#27ae60", state="disabled")
@@ -225,9 +232,9 @@ class TelaConciliador(ctk.CTkFrame):
         self._tmp_zip_extract_dirs = []
 
     def _salvar_rp_scg(self):
-        periodo = simpledialog.askstring(
-            "Salvar RP", "Digite o período (ex: Dez/2025):", initialvalue="Dez/2025"
-        )
+        periodo = self.entry_periodo.get().strip()
+        if not periodo:
+            periodo = simpledialog.askstring("Salvar RP", "Digite o período (ex: Dez/2025):", initialvalue="Dez/2025")
         if not periodo:
             return
 
@@ -272,15 +279,7 @@ class TelaConciliador(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Processe a Conciliação antes de adicionar ao Excel final.")
             return
 
-        periodo = solicitar_periodo_excel_final(
-            parent=self,
-            titulo="Excel Final (Módulo 9) - Conciliação RP",
-            mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
-        )
-        if not periodo:
-            return
-
-        periodo_salvar = periodo.strip()
+        periodo_salvar = self.entry_periodo.get().strip() or "Geral"
 
         self.consolidacao.salvar_rp(periodo_salvar, saldo)
         if itens:

@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox, simpledialog, filedialog
+from tkinter import messagebox, filedialog
 from datetime import datetime
 
 # --- IMPORTAÇÕES DA NOVA ARQUITETURA ---
@@ -10,7 +10,7 @@ from Src.Services.servicos_pmpv import ExcelPMPV
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
-from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.Database.database import DatabasePMPV
 
 # ==========================================
@@ -29,7 +29,7 @@ class TelaPMPV(ctk.CTkFrame):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.use_cases = PMPVUseCases()
         self.empresas_padrao = ["PETROBRAS", "GALP", "PETRORECONCAVO", "BRAVA", "ENEVA", "ORIZON"]
         self.mapa_dias = {
@@ -38,6 +38,13 @@ class TelaPMPV(ctk.CTkFrame):
             "Setembro": 30, "Outubro": 31, "Novembro": 30, "Dezembro": 31
         }
         self.lista_meses = list(self.mapa_dias.keys())
+        self._abrevs_meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        self.trimestres = {
+            "Nov - Jan": (10, 11, 0),
+            "Fev - Abr": (1, 2, 3),
+            "Mai - Jul": (4, 5, 6),
+            "Ago - Out": (7, 8, 9),
+        }
         self.dias_config = {"Mês 1": 30, "Mês 2": 30, "Mês 3": 30}
         self.dados_meses  = {}
         self.scroll_frames = {}
@@ -52,12 +59,23 @@ class TelaPMPV(ctk.CTkFrame):
 
         conf = ctk.CTkFrame(self, fg_color="transparent")
         conf.pack(fill="x", padx=20, pady=10)
-        
-        ctk.CTkLabel(conf, text="📅 Trimestre começa em:", font=("Roboto", 14, "bold")).pack(side="left")
-        self.combo_mes = ctk.CTkComboBox(conf, values=self.lista_meses, command=self._atualizar_trimestre)
-        self.combo_mes.set("Novembro")
-        self.combo_mes.pack(side="left", padx=10)
-        
+
+        ctk.CTkLabel(conf, text="📅 Período:", font=("Roboto", 14, "bold")).pack(side="left")
+        mes_atual = datetime.now().month
+        tri_padrao = next(
+            (k for k, v in self.trimestres.items() if mes_atual - 1 in v),
+            "Nov - Jan"
+        )
+        self.combo_trimestre = ctk.CTkComboBox(conf, values=list(self.trimestres.keys()), width=130, command=self._atualizar_trimestre)
+        self.combo_trimestre.set(tri_padrao)
+        self.combo_trimestre.pack(side="left", padx=(8, 4))
+
+        ctk.CTkLabel(conf, text="Ano:", font=("Roboto", 13)).pack(side="left")
+        self.entry_ano = ctk.CTkEntry(conf, width=64, justify="center")
+        self.entry_ano.insert(0, str(datetime.now().year))
+        self.entry_ano.pack(side="left", padx=(4, 10))
+        self.entry_ano._entry.bind("<FocusOut>", self._atualizar_trimestre)
+
         self.chk_biss = ctk.CTkCheckBox(conf, text="Ano Bissexto", command=self._atualizar_trimestre)
         self.chk_biss.pack(side="left", padx=10)
 
@@ -189,13 +207,11 @@ class TelaPMPV(ctk.CTkFrame):
             if dados in lista: lista.remove(dados)
 
     def _atualizar_trimestre(self, _=None):
-        mes = self.combo_mes.get()
-        if not mes: return
-        idx = self.lista_meses.index(mes)
+        tri = self.combo_trimestre.get()
+        if not tri or tri not in self.trimestres: return
         biss = self.chk_biss.get()
-        
-        for i in range(3):
-            m_atual = self.lista_meses[(idx + i) % 12]
+        for i, mes_idx in enumerate(self.trimestres[tri]):
+            m_atual = self.lista_meses[mes_idx]
             dias = self.mapa_dias[m_atual]
             if m_atual == "Fevereiro" and biss: dias = 29
             self.dias_config[f"Mês {i+1}"] = dias
@@ -224,7 +240,8 @@ class TelaPMPV(ctk.CTkFrame):
     def calcular(self):
         dados = self._extrair_dados_da_tela()
         cg_valor = self._val(self.entry_cg)
-        idx_start = self.lista_meses.index(self.combo_mes.get())
+        tri = self.combo_trimestre.get()
+        idx_start = self.trimestres.get(tri, (0, 1, 2))[0]
 
         try:
             self.res_final = self.use_cases.calcular_resultados(
@@ -255,50 +272,81 @@ class TelaPMPV(ctk.CTkFrame):
         path = filedialog.askopenfilename(title="Selecione a Memória de Cálculo", filetypes=[("Excel", "*.xlsx *.xls")])
         if not path: return
 
-        sel = simpledialog.askstring("Selecionar Mês", "Digite o mês (ex: Jan/25 ou Outubro):")
-        if not sel: return
+        periodos = self._get_periodos_trimestre()
+        if not periodos:
+            return messagebox.showwarning("Aviso", "Verifique o trimestre e o ano selecionados.")
 
-        try:
-            # Chama o ExcelPMPV do ficheiro de Serviços!
-            empresas_importadas = ExcelPMPV.ler_dados_memoria_calculo(path, sel.strip())
-        except ValueError as e:
-            messagebox.showerror("Erro na Importação", str(e))
-            return
+        erros = []
+        importados = 0
 
-        if not empresas_importadas:
-            messagebox.showwarning("Sem dados", "Nenhuma empresa com volume encontrada para este mês.")
-            return
+        for i, periodo in enumerate(periodos):
+            tab_nome = f"Mês {i+1}"
+            try:
+                empresas_importadas = ExcelPMPV.ler_dados_memoria_calculo(path, periodo)
+            except ValueError as e:
+                erros.append(f"{tab_nome} ({periodo}): {e}")
+                continue
 
-        mes_nome = self.tabview.get()
-        self.periodos_importados[mes_nome] = sel.strip()
-        linhas = self.dados_meses[mes_nome]
-        scroll = self.scroll_frames.get(mes_nome)
+            if not empresas_importadas:
+                erros.append(f"{tab_nome} ({periodo}): nenhuma empresa com volume encontrada.")
+                continue
 
-        for d in linhas[:]:
-            try: d["_frame"].destroy()
-            except Exception: pass
-        linhas.clear()
+            self.periodos_importados[tab_nome] = periodo
+            linhas = self.dados_meses[tab_nome]
+            scroll = self.scroll_frames.get(tab_nome)
 
-        for emp_nome, dados in empresas_importadas.items():
-            d = self._add_linha(scroll, emp_nome, linhas)
-            linhas.append(d)
-            for campo in ("mol", "trans", "log"):
-                v = dados[campo]
-                d[campo].delete(0, "end")
-                if v: d[campo].insert(0, f"{v:.4f}")
-            d["vol"].delete(0, "end")
-            d["vol"].insert(0, f"{dados['volume']:.7f}")
-            self._calc_row(d)
+            for d in linhas[:]:
+                try: d["_frame"].destroy()
+                except Exception: pass
+            linhas.clear()
 
-        messagebox.showinfo("Importado ✅", f"Mês: {sel} → {len(empresas_importadas)} empresa(s) carregada(s).")
+            for emp_nome, dados in empresas_importadas.items():
+                d = self._add_linha(scroll, emp_nome, linhas)
+                linhas.append(d)
+                for campo in ("mol", "trans", "log"):
+                    v = dados[campo]
+                    d[campo].delete(0, "end")
+                    if v: d[campo].insert(0, f"{v:.4f}")
+                d["vol"].delete(0, "end")
+                d["vol"].insert(0, f"{dados['volume']:.7f}")
+                self._calc_row(d)
+
+            importados += 1
+
+        tri = self.combo_trimestre.get()
+        if erros and importados == 0:
+            messagebox.showerror("Erro na Importação", "\n".join(erros))
+        elif erros:
+            messagebox.showwarning(
+                "Importação Parcial ⚠️",
+                f"{importados}/3 meses importados do trimestre {tri}.\n\nProblemas:\n" + "\n".join(erros)
+            )
+        else:
+            messagebox.showinfo("Importado ✅", f"Trimestre {tri}: 3 meses carregados automaticamente.")
 
     def _tab_do_mes(self, mes_nome: str) -> str:
-        idx_start = self.lista_meses.index(self.combo_mes.get())
-        for i in range(1, 4):
-            nome_real = self.lista_meses[(idx_start + i - 1) % 12]
-            if nome_real == mes_nome:
-                return f"Mês {i}"
+        tri = self.combo_trimestre.get()
+        indices = self.trimestres.get(tri, (0, 1, 2))
+        for i, mes_idx in enumerate(indices):
+            if self.lista_meses[mes_idx] == mes_nome:
+                return f"Mês {i+1}"
         return ""
+
+    def _get_periodos_trimestre(self) -> list:
+        """Retorna ex: ['Nov/25', 'Dez/25', 'Jan/26'] respeitando virada de ano."""
+        tri = self.combo_trimestre.get()
+        indices = self.trimestres.get(tri, [])
+        try:
+            ano = int(self.entry_ano.get())
+        except ValueError:
+            return []
+        periodos = []
+        ano_atual = ano
+        for i, mes_idx in enumerate(indices):
+            if i > 0 and mes_idx < indices[i - 1]:
+                ano_atual += 1
+            periodos.append(f"{self._abrevs_meses[mes_idx]}/{ano_atual % 100:02d}")
+        return periodos
 
     def _inferir_periodo_por_ancora(self, mes_nome: str) -> str:
         tab_alvo = self._tab_do_mes(mes_nome)
@@ -344,12 +392,21 @@ class TelaPMPV(ctk.CTkFrame):
 
 
     def _periodo_do_mes(self, mes_nome: str) -> str:
-        """Dado um nome de mês (ex: 'Novembro'), retorna o período (ex: 'Nov/25') usando as importações."""
+        """Dado um nome de mês (ex: 'Novembro'), retorna o período (ex: 'Nov/25')."""
         tab_mes = self._tab_do_mes(mes_nome)
         periodo_direto = self.periodos_importados.get(tab_mes, "") if tab_mes else ""
         if periodo_direto:
             return periodo_direto
-        return self._inferir_periodo_por_ancora(mes_nome)
+        inferido = self._inferir_periodo_por_ancora(mes_nome)
+        if inferido:
+            return inferido
+        # Fallback automático: usa o trimestre e ano selecionados na UI
+        periodos = self._get_periodos_trimestre()
+        tri = self.combo_trimestre.get()
+        for i, mes_idx in enumerate(self.trimestres.get(tri, [])):
+            if self.lista_meses[mes_idx] == mes_nome and i < len(periodos):
+                return periodos[i]
+        return ""
 
     def _buscar_vf_do_cgf(self) -> tuple[dict[str, float], float]:
         """Busca VF real de cada mês no cgf_resumo (calculado pelo módulo CGF)."""
@@ -446,12 +503,13 @@ class TelaPMPV(ctk.CTkFrame):
         self._calc_row(dest)
 
     def _get_data_dict(self):
-        idx_start = self.lista_meses.index(self.combo_mes.get())
+        tri = self.combo_trimestre.get()
+        indices = self.trimestres.get(tri, (0, 1, 2))
         export = {}
-        for i in range(1, 4):
-            real_name = self.lista_meses[(idx_start + i - 1) % 12]
+        for i, mes_idx in enumerate(indices):
+            real_name = self.lista_meses[mes_idx]
             linhas = []
-            for l in self.dados_meses[f"Mês {i}"]:
+            for l in self.dados_meses[f"Mês {i+1}"]:
                 if l['nome'].get():
                     linhas.append({
                         'empresa': l['nome'].get(), 'molecula': self._val(l['mol']),
@@ -462,86 +520,40 @@ class TelaPMPV(ctk.CTkFrame):
         return export
 
     def salvar(self):
-        nome = simpledialog.askstring("Salvar", "Nome da Sessão:")
-        if not nome or not hasattr(self, 'res_final'): return
-
+        if not hasattr(self, 'res_final'):
+            return
+        tri = self.combo_trimestre.get().replace(" ", "_").replace("-", "_")
+        ano = self.entry_ano.get()
+        nome = f"PMPV_{tri}_{ano}"
         dados = self._get_data_dict()
         self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
-        messagebox.showinfo(
-            "Sessão Salva",
-            f"VP salvo: {self._fmt_volume(self.res_final.get('vp_mensal', 0.0))} m³\n"
-            f"VF será carregado do módulo CGF ao usar o SR."
-        )
 
     def exportar(self):
         if not hasattr(self, 'res_final'): return messagebox.showwarning("Erro", "Calcule antes!")
         dados = self._get_data_dict()
         d_fmt = {f"Mês {i+1}": v for i, v in enumerate(dados.values())}
         ExcelHandlerPMPV.exportar_trimestre(d_fmt, self.res_final)
-        messagebox.showinfo("Sucesso", "Excel Gerado!")
 
     def _salvar_vp_mensal(self):
         if not hasattr(self, 'res_final'):
             return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
-
         vp_por_mes = self.res_final.get('vp_por_mes', {})
         if not vp_por_mes:
             return messagebox.showwarning("Aviso", "Sem dados de VP por mês. Calcule novamente.")
-
+        periodos = self._get_periodos_trimestre()
+        if not periodos:
+            return messagebox.showwarning("Aviso", "Verifique o trimestre e o ano selecionados.")
         meses_nome = list(vp_por_mes.keys())
-        tabs = [f"Mês {i+1}" for i in range(len(meses_nome))]
-
-        win = ctk.CTkToplevel(self)
-        win.title("Salvar VP Mensal")
-        win.geometry("400x240")
-        win.grab_set()
-
-        ctk.CTkLabel(win, text="Salvar Volume Prospectivo por Mês", font=("Roboto", 14, "bold")).pack(pady=(16, 6))
-
-        frame = ctk.CTkFrame(win, fg_color="transparent")
-        frame.pack(fill="x", padx=24, pady=4)
-        frame.columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(frame, text="Mês do trimestre:", anchor="w").grid(row=0, column=0, sticky="w", pady=6)
-        combo_tab = ctk.CTkComboBox(frame, values=tabs, width=150)
-        combo_tab.set(tabs[0])
-        combo_tab.grid(row=0, column=1, padx=10, pady=6, sticky="ew")
-
-        vp_inicial = vp_por_mes.get(meses_nome[0], 0.0) if meses_nome else 0.0
-        lbl_vp = ctk.CTkLabel(frame, text=f"VP: {self._fmt_volume(vp_inicial)} m³", text_color="#3498db", font=("Roboto", 12, "bold"))
-        lbl_vp.grid(row=1, column=0, columnspan=2, pady=4)
-
-        def ao_mudar_mes(choice):
-            idx = tabs.index(choice) if choice in tabs else 0
-            mes_nome = meses_nome[idx] if idx < len(meses_nome) else ""
-            lbl_vp.configure(text=f"VP: {self._fmt_volume(vp_por_mes.get(mes_nome, 0.0))} m³")
-
-        combo_tab.configure(command=ao_mudar_mes)
-
-        ctk.CTkLabel(frame, text="Período (ex: Dez/2025):", anchor="w").grid(row=2, column=0, sticky="w", pady=6)
-        entry_periodo = ctk.CTkEntry(frame, width=150, placeholder_text="Dez/2025")
-        entry_periodo.grid(row=2, column=1, padx=10, pady=6, sticky="ew")
-
-        def salvar():
-            periodo = entry_periodo.get().strip()
-            if not periodo:
-                messagebox.showwarning("Aviso", "Digite o período.", parent=win)
-                return
-            choice = combo_tab.get()
-            idx = tabs.index(choice) if choice in tabs else 0
-            mes_nome = meses_nome[idx] if idx < len(meses_nome) else ""
-            vp_val = vp_por_mes.get(mes_nome, 0.0)
-
-            db = DatabasePMPV()
-            try:
-                db.salvar_vp_mensal(periodo, vp_val)
-            finally:
-                db.fechar()
-
-            messagebox.showinfo("Salvo ✅", f"Período: {periodo}\nVP: {self._fmt_volume(vp_val)} m³", parent=win)
-            win.destroy()
-
-        ctk.CTkButton(win, text="💾 Salvar VP", command=salvar, fg_color="#16a085", hover_color="#0d9488").pack(pady=16)
+        db = DatabasePMPV()
+        linhas_info = []
+        try:
+            for i, mes_nome in enumerate(meses_nome):
+                if i < len(periodos):
+                    vp_val = vp_por_mes[mes_nome]
+                    db.salvar_vp_mensal(periodos[i], vp_val)
+                    linhas_info.append(f"{periodos[i]}: {self._fmt_volume(vp_val)} m³")
+        finally:
+            db.fechar()
 
     def _adicionar_excel_final(self):
         if not hasattr(self, 'res_final'):
@@ -551,30 +563,31 @@ class TelaPMPV(ctk.CTkFrame):
         dados = self._get_data_dict()
         self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
 
-        periodo = solicitar_periodo_excel_final(
-            parent=self,
-            titulo="Excel Final (Módulo 9) - PMPV",
-            mensagem="Informe o período do relatório final (ex: Dez/2025):",
-        )
-        if not periodo:
-            return
+        periodos = self._get_periodos_trimestre()
+        periodo_salvar = periodos[-1] if periodos else ""
+        if not periodo_salvar:
+            return messagebox.showwarning("Aviso", "Verifique o trimestre e o ano selecionados.")
 
-        periodo_salvar = periodo.strip()
         meta_execucao = registrar_execucao_excel_final(etapa="PMPV", periodo=periodo_salvar, parent=self)
         if not meta_execucao:
             return
         destino, nome_sessao, periodo_norm, execucao = meta_execucao
         arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa PMPV registrada (execução #{execucao}).")
+        messagebox.showinfo("Excel final gerado ✅", f"Arquivo: {arquivo}\nPeríodo: {periodo_norm}\nEtapa PMPV (execução #{execucao}).")
 
     def _salvar_pmpv_mensal(self):
-        if not hasattr(self, 'res_final'): return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
+        if not hasattr(self, 'res_final'):
+            return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
+        periodos = self._get_periodos_trimestre()
+        if not periodos:
+            return messagebox.showwarning("Aviso", "Verifique o trimestre e o ano selecionados.")
         pmpv = self.res_final['pmpv']
-        periodo = simpledialog.askstring("Salvar PMPV Mensal", f"PMPV: R$ {pmpv:.4f}/m³\nDigite o período (ex: Jan/2026):", parent=self)
-        if not periodo or not periodo.strip(): return
-
-        self.use_cases.salvar_pmpv_mensal(periodo.strip(), pmpv)
-        messagebox.showinfo("Salvo", f"Período: {periodo.strip()}\nPMPV: R$ {pmpv:.4f}/m³")
+        db = DatabasePMPV()
+        try:
+            for periodo in periodos:
+                db.salvar_pmpv_mensal(periodo, pmpv)
+        finally:
+            db.fechar()
 
 if __name__ == "__main__":
     root = ctk.CTk()

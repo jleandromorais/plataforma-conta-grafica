@@ -80,7 +80,12 @@ class TelaRET(ctk.CTkFrame):
             fg_color="#2196F3",
             hover_color="#1976D2"
         ).pack(pady=10, padx=20, fill="x")
-        
+
+        ctk.CTkLabel(left, text="Período:", font=("Roboto", 13, "bold")).pack(pady=(10, 2), padx=20, anchor="w")
+        self.entry_periodo = ctk.CTkEntry(left, placeholder_text="ex: Q1/2026", width=200)
+        self.entry_periodo.insert(0, "Q1/2026")
+        self.entry_periodo.pack(pady=(0, 10), padx=20, fill="x")
+
         # BOTÃO PROCESSAR
         ctk.CTkButton(
             left,
@@ -472,28 +477,6 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             conexao.close()
             self.log(f"[OK] Dados salvos em: {db_path}")
 
-            resposta = messagebox.askyesno(
-                "Backup do Banco de Dados",
-                f"Dados salvos com sucesso!\nLocal do banco: {db_path}\n\n"
-                "Deseja salvar uma cópia de backup em outra pasta?"
-            )
-            if resposta:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_path = filedialog.asksaveasfilename(
-                    title="Salvar cópia do banco de dados",
-                    initialfile=f"RET_dados_backup_{timestamp}.db",
-                    defaultextension=".db",
-                    filetypes=[("Banco de dados SQLite", "*.db"), ("Todos os arquivos", "*.*")],
-                    initialdir=self.pasta_selecionada or os.path.expanduser("~"),
-                )
-                if backup_path:
-                    import shutil
-                    shutil.copy2(db_path, backup_path)
-                    self.log(f"[OK] Backup salvo em: {backup_path}")
-                    messagebox.showinfo("Backup Salvo", f"Cópia salva em:\n{backup_path}")
-            else:
-                messagebox.showinfo("Sucesso", f"Dados salvos no banco!\n{db_path}")
-
         except Exception as e:
             self.log(f"[ERRO] Falha ao salvar: {e}")
             messagebox.showerror("Erro", f"Erro ao salvar: {e}")
@@ -505,21 +488,13 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
 
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            excel_path = filedialog.asksaveasfilename(
-                title="Salvar relatório Excel",
-                initialfile=f"RET_Relatorio_{timestamp}.xlsx",
-                defaultextension=".xlsx",
-                filetypes=[("Planilha Excel", "*.xlsx"), ("Todos os arquivos", "*.*")],
-                initialdir=self.pasta_selecionada or os.path.expanduser("~"),
-            )
-            if not excel_path: return
-            
+            base_dir = self.pasta_selecionada or os.getcwd()
+            excel_path = os.path.join(base_dir, f"RET_Relatorio_{timestamp}.xlsx")
+
             calc_ret = RegrasRET.calcular_ret(self.dados_processados)
             ExcelRET.gerar_relatorio_completo(self.dados_processados, calc_ret, excel_path)
-            
+
             self.log(f"[OK] Excel criado: {excel_path}")
-            messagebox.showinfo("Sucesso", f"Excel exportado com sucesso!\n{excel_path}")
-            
         except Exception as e:
             self.log(f"[ERRO] Falha ao exportar: {e}")
             messagebox.showerror("Erro", f"Erro ao exportar: {e}")
@@ -533,9 +508,9 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         calc = RegrasRET.calcular_ret(self.dados_processados)
         total_geral = calc['ret']
 
-        periodo = simpledialog.askstring(
-            "Período RET", "Digite o período (ex: Q1/2026):", initialvalue="Q1/2026"
-        )
+        periodo = self.entry_periodo.get().strip()
+        if not periodo:
+            periodo = simpledialog.askstring("Período RET", "Digite o período (ex: Q1/2026):", initialvalue="Q1/2026")
         if not periodo:
             return
 
@@ -562,15 +537,16 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             messagebox.showwarning("Aviso", "Processe os PDFs do RET antes de adicionar ao Excel final.")
             return
 
-        periodo = solicitar_periodo_excel_final(
-            parent=self,
-            titulo="Excel Final (Módulo 9) - RET",
-            mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
-        )
-        if not periodo:
+        periodo_salvar = self.entry_periodo.get().strip()
+        if not periodo_salvar:
+            periodo_salvar = solicitar_periodo_excel_final(
+                parent=self,
+                titulo="Excel Final (Módulo 9) - RET",
+                mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
+            )
+        if not periodo_salvar:
             return
 
-        periodo_salvar = periodo.strip()
         calc = RegrasRET.calcular_ret(self.dados_processados)
         total_geral = calc['ret']
 
