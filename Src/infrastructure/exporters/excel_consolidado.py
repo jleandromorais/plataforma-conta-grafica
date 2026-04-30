@@ -163,31 +163,45 @@ class ExcelConsolidado:
         return total
 
     @staticmethod
-    def exportar(periodo: str | None = None, nome_arquivo: str | None = None) -> str:
+    def exportar(
+        periodo: str | None = None,
+        nome_arquivo: str | None = None,
+        periodos_trimestre: list[str] | None = None,
+    ) -> str:
         """
         Gera o Excel consolidado.
 
         Args:
-            periodo: Período a filtrar (ex: 'Dez/2025'). Se None, usa o mais
-                     recente disponível para cada módulo.
+            periodo: Período de referência principal (ex: 'Abr/2025') — usado
+                     para PMPV, CGF, PR, PV, SR e SCG.
+            periodos_trimestre: Lista dos 3 meses do trimestre (ex:
+                     ['Fev/25', 'Mar/25', 'Abr/25']). Quando fornecida,
+                     Auditoria, RET e Conciliação são agregados dos 3 meses.
+                     Se None, usa apenas `periodo`.
             nome_arquivo: Caminho de saída. Se None, gera automaticamente.
-
-        Returns:
-            Caminho do arquivo gerado.
         """
         db = DatabasePMPV()
         try:
-            return ExcelConsolidado._gerar(db, periodo, nome_arquivo)
+            return ExcelConsolidado._gerar(db, periodo, nome_arquivo, periodos_trimestre)
         finally:
             db.fechar()
 
     # ── Gerador principal ────────────────────────────────────────────────────
 
     @staticmethod
-    def _gerar(db: DatabasePMPV, periodo: str | None, nome_arquivo: str | None) -> str:
+    def _gerar(
+        db: DatabasePMPV,
+        periodo: str | None,
+        nome_arquivo: str | None,
+        periodos_trimestre: list[str] | None = None,
+    ) -> str:
+        # Lista de meses do trimestre para Auditoria / RET / Conciliação
+        meses = periodos_trimestre or ([periodo] if periodo else [])
+        label_trimestre = "  ·  ".join(meses) if meses else (periodo or "completo")
+
         if nome_arquivo is None:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            p_slug = (periodo or "completo").replace("/", "-")
+            p_slug = label_trimestre.replace("/", "-").replace("  ·  ", "_")
             nome_arquivo = f"Relatorio_ContaGrafica_{p_slug}_{ts}.xlsx"
 
         final = str(Path(nome_arquivo))
@@ -197,31 +211,48 @@ class ExcelConsolidado:
         if "Sheet" in wb.sheetnames:
             wb.remove(wb["Sheet"])
 
-        # Coleta dados do BD
-        cons_periodos = db.listar_consolidacao_completa()
-        cons = db.buscar_consolidacao(periodo) if periodo else ExcelConsolidado._agregar_consolidacao(cons_periodos)
-        pmpv_sessoes = db.listar_sessoes_com_volumes()
-        audit_itens  = db.listar_auditoria_itens(periodo)
-        ret_itens    = db.listar_ret_itens(periodo)
-        conc_itens   = db.listar_concilia_itens(periodo)
-        cgf          = db.buscar_cgf_resumo(periodo) if periodo else None
-        cgf_lista    = [cgf] if periodo and cgf else db.listar_cgf_resumos()
-        sr           = db.buscar_sr(periodo) if periodo else None
-        sr_lista     = [sr] if periodo and sr else db.listar_sr()
-        pr           = db.buscar_pr(periodo) if periodo else None
-        pr_lista     = [pr] if periodo and pr else db.listar_pr()
-        pv           = db.buscar_pv(periodo) if periodo else None
-        pv_lista     = [pv] if periodo and pv else db.listar_pv()
-        pmpv_mensal  = db.listar_pmpv_mensal()
-        execucoes    = db.listar_execucoes_excel_final(periodo=periodo) if periodo else db.listar_execucoes_excel_final()
+        # ── PMPV / PR / PV / SR / SCG — filtrado pelo período principal
+        cons_periodos = db.listar_consolidacao_completa(periodo) if periodo else db.listar_consolidacao_completa()
+        cons          = db.buscar_consolidacao(periodo) if periodo else ExcelConsolidado._agregar_consolidacao(cons_periodos)
+        pmpv_sessoes  = db.listar_sessoes_com_volumes(periodo)
+        sr            = db.buscar_sr(periodo) if periodo else None
+        sr_lista      = [sr] if periodo and sr else db.listar_sr()
+        pr            = db.buscar_pr(periodo) if periodo else None
+        pr_lista      = [pr] if periodo and pr else db.listar_pr()
+        pv            = db.buscar_pv(periodo) if periodo else None
+        pv_lista      = [pv] if periodo and pv else db.listar_pv()
+        pmpv_mensal   = db.listar_pmpv_mensal()
+        execucoes     = db.listar_execucoes_excel_final(periodo=periodo) if periodo else db.listar_execucoes_excel_final()
+
+        # ── Auditoria / RET / Conciliação / CGF — agregados de TODOS os meses do trimestre
+        audit_itens = []
+        ret_itens   = []
+        conc_itens  = []
+        cgf_lista   = []
+        for mes in meses:
+            audit_itens.extend(db.listar_auditoria_itens(mes) or [])
+            ret_itens.extend(db.listar_ret_itens(mes) or [])
+            conc_itens.extend(db.listar_concilia_itens(mes) or [])
+            resumo = db.buscar_cgf_resumo(mes)
+            if resumo:
+                cgf_lista.append(resumo)
+
+        # Fallback quando nenhum mês do trimestre tem dados
+        if not cgf_lista:
+            cgf_lista = db.listar_cgf_resumos() if not meses else []
+
+        # CGF de referência = último mês com dados (para visão single-period)
+        cgf = cgf_lista[-1] if cgf_lista else None
 
         # Sheets
-        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, periodo)
+        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, label_trimestre)
         ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes)
-        ExcelConsolidado._sheet_auditoria(wb, audit_itens, periodo)
-        ExcelConsolidado._sheet_ret(wb, ret_itens, periodo)
-        ExcelConsolidado._sheet_concilia(wb, conc_itens, periodo)
-        ExcelConsolidado._sheet_cgf(wb, cgf if periodo else cgf_lista, periodo)
+        ExcelConsolidado._sheet_auditoria(wb, audit_itens, label_trimestre)
+        ExcelConsolidado._sheet_ret(wb, ret_itens, label_trimestre)
+        ExcelConsolidado._sheet_concilia(wb, conc_itens, label_trimestre)
+        # CGF: lista dos meses do trimestre (ou único período, ou tudo)
+        cgf_para_sheet = cgf_lista if len(cgf_lista) != 1 else cgf
+        ExcelConsolidado._sheet_cgf(wb, cgf_para_sheet, label_trimestre)
         ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
         ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
         ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
@@ -230,7 +261,7 @@ class ExcelConsolidado:
             wb, cons, cons_periodos, pr if periodo else (pr_lista[0] if pr_lista else None),
             pv if periodo else (pv_lista[0] if pv_lista else None),
             sr if periodo else (sr_lista[0] if sr_lista else None),
-            periodo,
+            label_trimestre,
         )
 
         try:

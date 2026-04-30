@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import datetime
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
@@ -11,6 +12,32 @@ from Src.common.periodos import normalizar_periodo
 
 def _normalizar_periodo(periodo: str | None) -> str:
     return normalizar_periodo(periodo) or "Geral"
+
+
+def obter_periodos_trimestre(periodo_atual: str | None = None) -> list[str]:
+    """
+    Retorna os meses do trimestre activo guardado pelo PMPV.
+    Se não houver trimestre activo, devolve lista com só o período actual.
+    Garante que o período actual está incluído.
+    """
+    db = DatabasePMPV()
+    try:
+        meses = db.buscar_trimestre_ativo()
+    finally:
+        db.fechar()
+
+    if meses:
+        # Inclui o período actual se não estiver já na lista
+        if periodo_atual:
+            norm = normalizar_periodo(periodo_atual) or periodo_atual
+            if norm not in meses and periodo_atual not in meses:
+                meses.append(norm)
+        return meses
+
+    # Sem trimestre activo: usa só o período actual
+    if periodo_atual:
+        return [normalizar_periodo(periodo_atual) or periodo_atual]
+    return []
 
 
 def solicitar_periodo_excel_final(
@@ -195,10 +222,24 @@ def registrar_execucao_excel_final(
     if caminho_ativo and nome_ativo:
         caminho, nome_sessao = caminho_ativo, nome_ativo
     else:
-        escolha = escolher_destino_excel_final(periodo=periodo, parent=parent)
-        if not escolha:
-            return None
-        caminho, nome_sessao = escolha
+        # Sem sessão activa: cria automaticamente uma nova em vez de abrir o
+        # modal complexo. O utilizador pode trocar depois via PMPV.
+        periodo_norm_tmp = _normalizar_periodo(periodo) or "Geral"
+        etapa_slug = (etapa or "Modulo9").replace(" ", "_")
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+        nome_sessao = f"Modulo9_{periodo_norm_tmp}_{ts}"
+        p_slug = periodo_norm_tmp.replace("/", "-")
+        nome_arquivo_auto = f"Modulo9_{etapa_slug}_{p_slug}_{ts}.xlsx"
+
+        # Salva na pasta onde está o banco de dados
+        db_dir = Path(__file__).resolve().parents[2]
+        caminho = str(db_dir / nome_arquivo_auto)
+
+        db_auto = DatabasePMPV()
+        try:
+            db_auto.salvar_sessao_excel_final(nome_sessao, caminho)
+        finally:
+            db_auto.fechar()
 
     periodo_norm = _normalizar_periodo(periodo)
     etapa_norm = (etapa or "").strip() or "ETAPA"

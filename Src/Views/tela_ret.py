@@ -9,7 +9,7 @@ from pathlib import Path
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.excel_ret import ExcelRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final, obter_periodos_trimestre
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -476,10 +476,16 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             conexao.commit()
             conexao.close()
             self.log(f"[OK] Dados salvos em: {db_path}")
+            messagebox.showinfo(
+                "Salvo ✅",
+                f"Dados salvos com sucesso!\n\n"
+                f"{len(self.dados_processados)} documento(s) gravado(s).\n"
+                f"Ficheiro: {os.path.basename(db_path)}"
+            )
 
         except Exception as e:
             self.log(f"[ERRO] Falha ao salvar: {e}")
-            messagebox.showerror("Erro", f"Erro ao salvar: {e}")
+            messagebox.showerror("Erro ao salvar", f"{e}")
     
     def exportar_excel(self):
         if not self.dados_processados:
@@ -512,6 +518,14 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         if not periodo:
             periodo = simpledialog.askstring("Período RET", "Digite o período (ex: Q1/2026):", initialvalue="Q1/2026")
         if not periodo:
+            return
+
+        total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        if not messagebox.askyesno("Confirmar salvamento",
+                                   f"Salvar RET no banco de dados?\n\n"
+                                   f"Período: {periodo}\n"
+                                   f"Total RET: {total_fmt}\n"
+                                   f"Documentos: {len(self.dados_processados)}"):
             return
 
         self.consolidacao.salvar_ret(periodo, total_geral)
@@ -547,20 +561,60 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         if not periodo_salvar:
             return
 
-        calc = RegrasRET.calcular_ret(self.dados_processados)
-        total_geral = calc['ret']
-
-        self.consolidacao.salvar_ret(periodo_salvar, total_geral)
-        db = DatabasePMPV()
         try:
-            db.salvar_ret_itens(periodo_salvar, self.dados_processados)
-        finally:
-            db.fechar()
+            calc = RegrasRET.calcular_ret(self.dados_processados)
+            total_geral = calc['ret']
 
-        meta_execucao = registrar_execucao_excel_final(etapa="RET", periodo=periodo_salvar, parent=self)
-        if not meta_execucao:
-            return
-        destino, nome_sessao, periodo_norm, execucao = meta_execucao
-        # Export only the selected period to avoid mixing sessions
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa RET registrada (execução #{execucao}).")
+            self.consolidacao.salvar_ret(periodo_salvar, total_geral)
+            db = DatabasePMPV()
+            try:
+                db.salvar_ret_itens(periodo_salvar, self.dados_processados)
+            finally:
+                db.fechar()
+
+            meta_execucao = registrar_execucao_excel_final(etapa="RET", periodo=periodo_salvar, parent=self)
+            if not meta_execucao:
+                return
+            destino, nome_sessao, periodo_norm, execucao = meta_execucao
+            meses_tri = obter_periodos_trimestre(periodo_norm)
+            arquivo = ExcelConsolidado.exportar(
+                periodo=periodo_norm,
+                nome_arquivo=destino,
+                periodos_trimestre=meses_tri,
+            )
+            self._mostrar_sucesso_modulo9(arquivo, periodo_norm, execucao, meses_tri)
+
+        except Exception as e:
+            messagebox.showerror("Erro — Módulo 9", f"Falha ao adicionar ao Excel Final:\n\n{e}")
+
+    def _mostrar_sucesso_modulo9(self, arquivo: str, periodo: str, execucao: int, meses: list | None = None):
+        import customtkinter as ctk
+        win = ctk.CTkToplevel(self)
+        win.title("Módulo 9 — Concluído")
+        win.geometry("480x270")
+        win.resizable(False, False)
+        win.transient(self.winfo_toplevel())
+        win.lift()
+        win.after(50, win.grab_set)
+
+        ctk.CTkFrame(win, height=5, fg_color="#27ae60", corner_radius=0).pack(fill="x")
+        ctk.CTkLabel(win, text="✅  RET adicionado ao Excel Final",
+                     font=("Roboto", 16, "bold"), text_color="#27ae60").pack(pady=(16, 4))
+        ctk.CTkLabel(win, text="Os encargos de transporte foram gravados no Módulo 9.",
+                     font=("Roboto", 11), text_color="#aaaaaa").pack(pady=(0, 12))
+
+        frame = ctk.CTkFrame(win, fg_color="#12122a", corner_radius=10)
+        frame.pack(fill="x", padx=20, pady=(0, 14))
+
+        def _row(label, valor):
+            f = ctk.CTkFrame(frame, fg_color="transparent")
+            f.pack(fill="x", padx=14, pady=4)
+            ctk.CTkLabel(f, text=label, font=("Roboto", 11), text_color="#7f8c8d", width=120, anchor="w").pack(side="left")
+            ctk.CTkLabel(f, text=valor, font=("Roboto", 11, "bold"), text_color="#ecf0f1", anchor="w").pack(side="left")
+
+        _row("Período:", periodo)
+        _row("Execução nº:", str(execucao))
+        _row("Arquivo:", arquivo.split("\\")[-1] if "\\" in arquivo else arquivo.split("/")[-1])
+
+        ctk.CTkButton(win, text="Fechar", command=win.destroy, width=120,
+                      fg_color="#27ae60", hover_color="#2ecc71").pack(pady=(0, 16))

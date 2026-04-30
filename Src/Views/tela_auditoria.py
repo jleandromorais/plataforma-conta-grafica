@@ -12,7 +12,7 @@ from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final, obter_periodos_trimestre
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -767,6 +767,14 @@ class TelaAuditoria(ctk.CTkFrame):
         if not periodo:
             return
 
+        n_itens = len(self.resultados) if self.resultados else 0
+        if not messagebox.askyesno("Confirmar salvamento",
+                                   f"Salvar Auditoria XML no banco de dados?\n\n"
+                                   f"Período: {periodo}\n"
+                                   f"CGR Líquido: R$ {cgr:,.2f}\n"
+                                   f"Itens: {n_itens}"):
+            return
+
         dados = self.consolidacao.salvar_cgr(periodo, cgr)
         rpv = dados["rpv"]
 
@@ -818,33 +826,46 @@ class TelaAuditoria(ctk.CTkFrame):
         if not periodo_salvar:
             return
 
-        periodo_salvar = periodo_salvar.strip()
-        self.consolidacao.salvar_cgr(periodo_salvar, cgr)
+        try:
+            periodo_salvar = periodo_salvar.strip()
+            self.consolidacao.salvar_cgr(periodo_salvar, cgr)
 
-        if self.resultados:
-            itens_dict = [
-                {
-                    "empresa": r.empresa,
-                    "tipo": r.tipo,
-                    "numero": r.numero,
-                    "valor_total": r.valor_total,
-                    "icms": r.icms,
-                    "pis": r.pis,
-                    "cofins": r.cofins,
-                    "volume_total": r.volume_total,
-                    "cgr_liquido": RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa),
-                }
-                for r in self.resultados
-            ]
-            db = DatabasePMPV()
-            try:
-                db.salvar_auditoria_itens(periodo_salvar, itens_dict)
-            finally:
-                db.fechar()
+            if self.resultados:
+                itens_dict = [
+                    {
+                        "empresa": r.empresa,
+                        "tipo": r.tipo,
+                        "numero": r.numero,
+                        "valor_total": r.valor_total,
+                        "icms": r.icms,
+                        "pis": r.pis,
+                        "cofins": r.cofins,
+                        "volume_total": r.volume_total,
+                        "cgr_liquido": RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa),
+                    }
+                    for r in self.resultados
+                ]
+                db = DatabasePMPV()
+                try:
+                    db.salvar_auditoria_itens(periodo_salvar, itens_dict)
+                finally:
+                    db.fechar()
 
-        meta_execucao = registrar_execucao_excel_final(etapa="Auditoria XML", periodo=periodo_salvar, parent=self)
-        if not meta_execucao:
-            return
-        destino, nome_sessao, periodo_norm, execucao = meta_execucao
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa Auditoria XML registrada (execução #{execucao}).")
+            meta_execucao = registrar_execucao_excel_final(etapa="Auditoria XML", periodo=periodo_salvar, parent=self)
+            if not meta_execucao:
+                return
+            destino, nome_sessao, periodo_norm, execucao = meta_execucao
+            meses_tri = obter_periodos_trimestre(periodo_norm)
+            arquivo = ExcelConsolidado.exportar(
+                periodo=periodo_norm,
+                nome_arquivo=destino,
+                periodos_trimestre=meses_tri,
+            )
+            meses_txt = " | ".join(meses_tri) if meses_tri else periodo_norm
+            messagebox.showinfo("Excel final gerado ✅",
+                f"Arquivo: {arquivo}\n"
+                f"Trimestre: {meses_txt}\n"
+                f"Execução #{execucao}")
+
+        except Exception as e:
+            messagebox.showerror("Erro — Módulo 9", f"Falha ao adicionar ao Excel Final:\n\n{e}")

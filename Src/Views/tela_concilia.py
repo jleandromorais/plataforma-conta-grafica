@@ -14,7 +14,7 @@ from Src.Services.servicos_concilia import RegrasConcilia
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
-from Src.common.excel_final_destino import registrar_execucao_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
@@ -238,6 +238,15 @@ class TelaConciliador(ctk.CTkFrame):
         if not periodo:
             return
 
+        n_itens = len(getattr(self, "_ultimos_itens_concilia", []))
+        saldo = getattr(self, "_ultimo_saldo_rp", 0.0)
+        if not messagebox.askyesno("Confirmar salvamento",
+                                   f"Salvar Conciliação RP no banco de dados?\n\n"
+                                   f"Período: {periodo}\n"
+                                   f"Saldo RP: R$ {saldo:,.2f}\n"
+                                   f"Itens: {n_itens}"):
+            return
+
         self.consolidacao.salvar_rp(periodo, self._ultimo_saldo_rp)
 
         # Salva itens detalhados no banco principal
@@ -281,27 +290,40 @@ class TelaConciliador(ctk.CTkFrame):
 
         periodo_salvar = self.entry_periodo.get().strip() or "Geral"
 
-        self.consolidacao.salvar_rp(periodo_salvar, saldo)
-        if itens:
-            itens_dict = [
-                {
-                    "arquivo": it.file_name,
-                    "categoria": it.category,
-                    "valor": it.amount,
-                    "status": it.status,
-                    "metodo": it.method,
-                }
-                for it in itens
-            ]
-            db = DatabasePMPV()
-            try:
-                db.salvar_concilia_itens(periodo_salvar, itens_dict)
-            finally:
-                db.fechar()
+        try:
+            self.consolidacao.salvar_rp(periodo_salvar, saldo)
+            if itens:
+                itens_dict = [
+                    {
+                        "arquivo": it.file_name,
+                        "categoria": it.category,
+                        "valor": it.amount,
+                        "status": it.status,
+                        "metodo": it.method,
+                    }
+                    for it in itens
+                ]
+                db = DatabasePMPV()
+                try:
+                    db.salvar_concilia_itens(periodo_salvar, itens_dict)
+                finally:
+                    db.fechar()
 
-        meta_execucao = registrar_execucao_excel_final(etapa="Conciliação RP", periodo=periodo_salvar, parent=self)
-        if not meta_execucao:
-            return
-        destino, nome_sessao, periodo_norm, execucao = meta_execucao
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa Conciliação RP registrada (execução #{execucao}).")
+            meta_execucao = registrar_execucao_excel_final(etapa="Conciliação RP", periodo=periodo_salvar, parent=self)
+            if not meta_execucao:
+                return
+            destino, nome_sessao, periodo_norm, execucao = meta_execucao
+            meses_tri = obter_periodos_trimestre(periodo_norm)
+            arquivo = ExcelConsolidado.exportar(
+                periodo=periodo_norm,
+                nome_arquivo=destino,
+                periodos_trimestre=meses_tri,
+            )
+            meses_txt = " | ".join(meses_tri) if meses_tri else periodo_norm
+            messagebox.showinfo("Excel final gerado ✅",
+                f"Arquivo: {arquivo}\n"
+                f"Trimestre: {meses_txt}\n"
+                f"Execução #{execucao}")
+
+        except Exception as e:
+            messagebox.showerror("Erro — Módulo 9", f"Falha ao adicionar ao Excel Final:\n\n{e}")

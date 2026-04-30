@@ -217,7 +217,35 @@ class DatabasePMPV:
                                 observacoes TEXT
                             )
                         """)
+        # Tabela de configuração geral (chave-valor)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS config (
+                chave TEXT PRIMARY KEY,
+                valor TEXT NOT NULL,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         self.conn.commit()
+
+    def salvar_trimestre_ativo(self, meses: list[str]) -> None:
+        """Salva os 3 meses do trimestre activo (ex: ['Fev/26','Mar/26','Abr/26'])."""
+        valor = ",".join(m.strip() for m in meses if m.strip())
+        self.cursor.execute("""
+            INSERT INTO config (chave, valor, data_atualizacao)
+            VALUES ('trimestre_ativo', ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(chave) DO UPDATE SET
+                valor = excluded.valor,
+                data_atualizacao = CURRENT_TIMESTAMP
+        """, (valor,))
+        self.conn.commit()
+
+    def buscar_trimestre_ativo(self) -> list[str]:
+        """Retorna os meses do trimestre activo ou lista vazia se não definido."""
+        self.cursor.execute("SELECT valor FROM config WHERE chave = 'trimestre_ativo'")
+        row = self.cursor.fetchone()
+        if row and row[0]:
+            return [m.strip() for m in row[0].split(",") if m.strip()]
+        return []
 
     def _garantir_coluna(self, tabela: str, coluna: str, definicao_sql: str):
         self.cursor.execute(f"PRAGMA table_info({tabela})")
@@ -460,12 +488,40 @@ class DatabasePMPV:
         return self._merge_registros_periodo(registros, periodo, ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
     
     def listar_periodos(self) -> List:
-        """Lista todos os períodos de consolidação"""
-        self.cursor.execute("SELECT periodo, scg, data_atualizacao FROM consolidacao ORDER BY data_criacao DESC")
-        return self._deduplicar_periodos([dict(row) for row in self.cursor.fetchall()], ("scg",))
+        """Lista todos os períodos conhecidos em qualquer tabela do banco."""
+        self.cursor.execute("""
+            SELECT periodo FROM consolidacao
+            UNION
+            SELECT DISTINCT periodo FROM auditoria_itens
+            UNION
+            SELECT DISTINCT periodo FROM ret_itens
+            UNION
+            SELECT DISTINCT periodo FROM concilia_itens
+            UNION
+            SELECT periodo FROM cgf_resumo
+            UNION
+            SELECT periodo FROM pmpv_mensal
+            UNION
+            SELECT periodo FROM sr_resultados
+            UNION
+            SELECT periodo FROM pr_resultados
+            UNION
+            SELECT periodo FROM pv_resultados
+            ORDER BY periodo DESC
+        """)
+        raw = [{"periodo": row[0]} for row in self.cursor.fetchall() if row[0]]
+        return self._deduplicar_periodos(raw, ())
 
-    def listar_consolidacao_completa(self) -> List[Dict]:
-        self.cursor.execute("SELECT * FROM consolidacao ORDER BY data_criacao DESC")
+    def listar_consolidacao_completa(self, periodo: str | None = None) -> List[Dict]:
+        if periodo:
+            variantes = self._variantes_periodo(periodo)
+            placeholders = ", ".join("?" for _ in variantes)
+            self.cursor.execute(
+                f"SELECT * FROM consolidacao WHERE periodo IN ({placeholders}) ORDER BY data_criacao DESC",
+                variantes,
+            )
+        else:
+            self.cursor.execute("SELECT * FROM consolidacao ORDER BY data_criacao DESC")
         return self._deduplicar_periodos([dict(row) for row in self.cursor.fetchall()], ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
 
     def apagar_periodo(self, periodo: str):
@@ -924,15 +980,19 @@ class DatabasePMPV:
     # SESSÕES COM VOLUMES (PMPV)
     # ==========================================
 
-    def listar_sessoes_com_volumes(self) -> List[Dict]:
+    def listar_sessoes_com_volumes(self, periodo: str | None = None) -> List[Dict]:
         """
-        Lista todas as sessões salvas com seus respectivos VP e VF.
+        Lista sessões salvas com seus respectivos VP e VF.
+
+        Se `periodo` for fornecido, retorna apenas a sessão mais recente cujo
+        nome contenha o período (ex: 'PMPV_Mai_Jul_2025') OU a sessão mais
+        recente salva no dia do período — evitando sessões de teste antigas.
+        Quando `periodo` é None, retorna todas as sessões.
 
         - VP = soma de 'volume' informado em dados_mes.
-        - VF = volume faturado real do trimestre, sem multiplicação pelos dias,
-          para manter a UI e o SR coerentes com a memória de cálculo.
+        - VF = volume faturado real do trimestre.
         """
-        self.cursor.execute("""
+        base_query = """
             SELECT
                 s.id,
                 s.nome,
@@ -957,8 +1017,12 @@ class DatabasePMPV:
                     GROUP BY sessao_id
                 ) ult ON ult.max_id = r1.id
             ) r ON r.sessao_id = s.id
-            ORDER BY s.data_criacao DESC
-        """)
+        """
+        if periodo:
+            # Retorna apenas a sessão mais recente (a que acabou de ser salva)
+            self.cursor.execute(base_query + " ORDER BY s.data_criacao DESC LIMIT 1")
+        else:
+            self.cursor.execute(base_query + " ORDER BY s.data_criacao DESC")
         return [dict(row) for row in self.cursor.fetchall()]
 
     def fechar(self):

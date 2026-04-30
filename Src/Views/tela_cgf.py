@@ -5,7 +5,7 @@ from pathlib import Path
 
 from Src.Services.servicos_cgf import ServicosCGF
 from Src.Database.database import DatabasePMPV
-from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final, obter_periodos_trimestre
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 APP_TITLE = "CGF - Somatório de Volume Faturado"
@@ -185,9 +185,18 @@ class TelaCGF(ctk.CTkFrame):
         ctk.CTkButton(row_pmpv, text="⚡ Carregar do banco", fg_color=ACCENT_BLUE, hover_color=ACCENT_BLUE_HOVER, font=("Segoe UI", 11, "bold"), width=130, command=lambda: self._carregar_pmpv_banco(silencioso=False)).pack(side="left")
 
         row_rs = ctk.CTkFrame(pmpv_box, fg_color="transparent")
-        row_rs.pack(fill="x", padx=15, pady=(5, 10))
+        row_rs.pack(fill="x", padx=15, pady=(5, 5))
         self.lbl_cgf_rs = ctk.CTkLabel(row_rs, text="CGF em R$:  ---", font=("Segoe UI", 16, "bold"), text_color=ACCENT_GREEN)
         self.lbl_cgf_rs.pack(side="left")
+
+        # Volume Prospectivo (mensal e trimestral)
+        vp_box = ctk.CTkFrame(pmpv_box, fg_color="transparent")
+        vp_box.pack(fill="x", padx=15, pady=(0, 10))
+        ctk.CTkLabel(vp_box, text="Volume Prospectivo (VP):", font=("Segoe UI", 11), text_color=FG_MUTED, width=170, anchor="w").pack(side="left")
+        self.lbl_vp_mensal = ctk.CTkLabel(vp_box, text="Mensal: ---", font=("Segoe UI", 11, "bold"), text_color=ACCENT_BLUE)
+        self.lbl_vp_mensal.pack(side="left", padx=(0, 20))
+        self.lbl_vp_trimestral = ctk.CTkLabel(vp_box, text="Trimestral: ---", font=("Segoe UI", 11, "bold"), text_color="#f59e0b")
+        self.lbl_vp_trimestral.pack(side="left")
 
         # Console Log
         ctk.CTkLabel(content, text="Console de Execução:", font=("Segoe UI", 12), text_color=FG_MUTED).pack(anchor="w", pady=(5, 5))
@@ -292,12 +301,40 @@ class TelaCGF(ctk.CTkFrame):
             pmpv = self.servicos.buscar_pmpv(periodo)
             if pmpv is None:
                 if not silencioso: messagebox.showwarning("Não encontrado", f"Nenhum PMPV salvo para '{periodo}'.")
-                return
-
-            self.pmpv_manual.set(f"{pmpv:.4f}")
-            self._atualizar_cgf_rs()
+            else:
+                self.pmpv_manual.set(f"{pmpv:.4f}")
+                self._atualizar_cgf_rs()
         except Exception as e:
             if not silencioso: messagebox.showerror("Erro", f"Erro ao acessar BD: {e}")
+
+        # Sempre tenta carregar VP, mesmo sem PMPV
+        self._carregar_vp_banco(periodo, silencioso=True)
+
+    def _carregar_vp_banco(self, periodo: str, silencioso: bool = True):
+        """Carrega Volume Prospectivo mensal e trimestral do banco."""
+        try:
+            db = DatabasePMPV()
+            try:
+                sr_row = db.buscar_sr(periodo)
+            finally:
+                db.fechar()
+
+            # VP mensal — campo vp na tabela sr_resultados
+            vp_mensal = float(sr_row["vp"]) if sr_row and sr_row.get("vp") else None
+
+            if vp_mensal is not None:
+                self.lbl_vp_mensal.configure(
+                    text=f"Mensal: {vp_mensal:,.0f} m³".replace(",", ".")
+                )
+                # Trimestral = mensal × 3 (estimativa quando não há dado exacto)
+                self.lbl_vp_trimestral.configure(
+                    text=f"Trimestral (×3): {vp_mensal * 3:,.0f} m³".replace(",", ".")
+                )
+            else:
+                self.lbl_vp_mensal.configure(text="Mensal: sem dados")
+                self.lbl_vp_trimestral.configure(text="Trimestral: sem dados")
+        except Exception:
+            pass
 
     def _salvar_cgf_scg(self):
         if self.volume_final_cgf == 0.0:
@@ -316,6 +353,15 @@ class TelaCGF(ctk.CTkFrame):
             from tkinter import simpledialog
             periodo = simpledialog.askstring("Salvar CGF", "Digite o período (ex: Dez/2025):", initialvalue="Dez/2025")
             if not periodo: return
+
+        tipo_label = "Volume × PMPV" if self.cgf_rs > 0 else "Volume bruto"
+        if not messagebox.askyesno("Confirmar salvamento",
+                                   f"Salvar CGF no banco de dados?\n\n"
+                                   f"Período: {periodo}\n"
+                                   f"Tipo: {tipo_label}\n"
+                                   f"Valor: {valor_salvar:,.2f}\n"
+                                   f"Volume Final: {self.volume_final_cgf:,.2f} m³"):
+            return
 
         try:
             rpv = self.servicos.salvar_cgf(periodo, valor_salvar)
@@ -361,26 +407,39 @@ class TelaCGF(ctk.CTkFrame):
             if not periodo:
                 return
 
-        periodo_salvar = periodo.strip()
-        self.servicos.salvar_cgf(periodo_salvar, valor_salvar)
-
-        resumo = getattr(self, "_ultimo_resultado_cgf", {})
-        db = DatabasePMPV()
         try:
-            db.salvar_cgf_resumo(
-                periodo_salvar,
-                resumo.get("volume_faturado", 0.0),
-                resumo.get("volume_canceladas", 0.0),
-                resumo.get("volume_devolucoes", 0.0),
-                resumo.get("volume_consumo_proprio", 0.0),
-                resumo.get("volume_final", self.volume_final_cgf),
-            )
-        finally:
-            db.fechar()
+            periodo_salvar = periodo.strip()
+            self.servicos.salvar_cgf(periodo_salvar, valor_salvar)
 
-        meta_execucao = registrar_execucao_excel_final(etapa="CGF", periodo=periodo_salvar, parent=self)
-        if not meta_execucao:
-            return
-        destino, nome_sessao, periodo_norm, execucao = meta_execucao
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo criado com sucesso:\n{arquivo}\n\nSessão: {nome_sessao}\nPeríodo: {periodo_norm}\nEtapa CGF registrada (execução #{execucao}).")
+            resumo = getattr(self, "_ultimo_resultado_cgf", {})
+            db = DatabasePMPV()
+            try:
+                db.salvar_cgf_resumo(
+                    periodo_salvar,
+                    resumo.get("volume_faturado", 0.0),
+                    resumo.get("volume_canceladas", 0.0),
+                    resumo.get("volume_devolucoes", 0.0),
+                    resumo.get("volume_consumo_proprio", 0.0),
+                    resumo.get("volume_final", self.volume_final_cgf),
+                )
+            finally:
+                db.fechar()
+
+            meta_execucao = registrar_execucao_excel_final(etapa="CGF", periodo=periodo_salvar, parent=self)
+            if not meta_execucao:
+                return
+            destino, nome_sessao, periodo_norm, execucao = meta_execucao
+            meses_tri = obter_periodos_trimestre(periodo_norm)
+            arquivo = ExcelConsolidado.exportar(
+                periodo=periodo_norm,
+                nome_arquivo=destino,
+                periodos_trimestre=meses_tri,
+            )
+            meses_txt = " | ".join(meses_tri) if meses_tri else periodo_norm
+            messagebox.showinfo("Excel final gerado ✅",
+                f"Arquivo: {arquivo}\n"
+                f"Trimestre: {meses_txt}\n"
+                f"Execução #{execucao}")
+
+        except Exception as e:
+            messagebox.showerror("Erro — Módulo 9", f"Falha ao adicionar ao Excel Final:\n\n{e}")

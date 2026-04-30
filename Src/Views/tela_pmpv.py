@@ -216,6 +216,19 @@ class TelaPMPV(ctk.CTkFrame):
             if m_atual == "Fevereiro" and biss: dias = 29
             self.dias_config[f"Mês {i+1}"] = dias
 
+        # Grava o trimestre activo no banco para os outros módulos usarem
+        try:
+            periodos = self._get_periodos_trimestre()
+            if periodos:
+                from Src.Database.database import DatabasePMPV as _DB
+                db = _DB()
+                try:
+                    db.salvar_trimestre_ativo(periodos)
+                finally:
+                    db.fechar()
+        except Exception:
+            pass
+
     def _extrair_dados_da_tela(self):
         dados_extraidos = {}
         for k, linhas_ui in self.dados_meses.items():
@@ -559,21 +572,110 @@ class TelaPMPV(ctk.CTkFrame):
         if not hasattr(self, 'res_final'):
             return messagebox.showwarning("Aviso", "Calcule o PMPV antes de adicionar ao Excel final.")
 
-        nome = datetime.now().strftime("PMPV_%d%m%Y_%H%M")
-        dados = self._get_data_dict()
-        self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
-
         periodos = self._get_periodos_trimestre()
         periodo_salvar = periodos[-1] if periodos else ""
         if not periodo_salvar:
             return messagebox.showwarning("Aviso", "Verifique o trimestre e o ano selecionados.")
 
+        # Confirmação antes de executar
+        confirmado = self._confirmar_modulo9(periodos, periodo_salvar)
+        if not confirmado:
+            return
+
+        nome = datetime.now().strftime("PMPV_%d%m%Y_%H%M")
+        dados = self._get_data_dict()
+        self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
+
         meta_execucao = registrar_execucao_excel_final(etapa="PMPV", periodo=periodo_salvar, parent=self)
         if not meta_execucao:
             return
         destino, nome_sessao, periodo_norm, execucao = meta_execucao
-        arquivo = ExcelConsolidado.exportar(periodo=periodo_norm, nome_arquivo=destino)
-        messagebox.showinfo("Excel final gerado ✅", f"Arquivo: {arquivo}\nPeríodo: {periodo_norm}\nEtapa PMPV (execução #{execucao}).")
+        arquivo = ExcelConsolidado.exportar(
+            periodo=periodo_norm,
+            nome_arquivo=destino,
+            periodos_trimestre=periodos,   # passa os 3 meses do trimestre
+        )
+        self._mostrar_sucesso_modulo9(arquivo, periodo_norm, execucao, periodos)
+
+    def _confirmar_modulo9(self, periodos: list, periodo_salvar: str) -> bool:
+        """Confirmação simples e fiável usando messagebox nativo."""
+        tri   = self.combo_trimestre.get()
+        ano   = self.entry_ano.get()
+        pmpv  = self.res_final.get("pmpv", 0)
+        preco = self.res_final.get("preco_final", 0)
+        cg    = self.res_final.get("conta_grafica", 0)
+        vp    = self.res_final.get("vp_mensal", self.res_final.get("volume_programado_mensal", 0))
+        meses = " | ".join(periodos)
+
+        msg = (
+            f"Adicionar ao Excel Final — Módulo 9\n"
+            f"{'─' * 42}\n"
+            f"Trimestre:        {tri} / {ano}\n"
+            f"Meses:            {meses}\n"
+            f"Período chave:    {periodo_salvar}\n"
+            f"{'─' * 42}\n"
+            f"PMPV:             R$ {pmpv:.4f} /m³\n"
+            f"Conta Gráfica:    R$ {cg:.4f} /m³\n"
+            f"Preço Final (PV): R$ {preco:.4f} /m³\n"
+            f"Volume Prosp.:    {vp:,.0f} m³\n"
+            f"{'─' * 42}\n"
+            f"Confirmar exportação?"
+        )
+        return messagebox.askyesno("Confirmar — Módulo 9", msg)
+
+    def _mostrar_sucesso_modulo9(self, arquivo: str, periodo: str, execucao: int, periodos: list | None = None):
+        """Diálogo de sucesso estilizado para adição ao Módulo 9."""
+        win = ctk.CTkToplevel(self)
+        win.title("Módulo 9 — Concluído")
+        win.geometry("480x310")
+        win.resizable(False, False)
+        win.transient(self.winfo_toplevel())
+        win.lift()
+        win.after(50, win.grab_set)   # delay evita falha do grab_set no CTkToplevel
+
+        # Faixa verde no topo
+        topo = ctk.CTkFrame(win, height=6, fg_color="#27ae60", corner_radius=0)
+        topo.pack(fill="x")
+
+        # Ícone + título
+        ctk.CTkLabel(
+            win,
+            text="✅  Adicionado ao Excel Final",
+            font=("Roboto", 18, "bold"),
+            text_color="#27ae60",
+        ).pack(pady=(18, 4))
+
+        ctk.CTkLabel(
+            win,
+            text="Os dados do PMPV foram gravados com sucesso no Módulo 9.",
+            font=("Roboto", 12),
+            text_color="#aaaaaa",
+        ).pack(pady=(0, 16))
+
+        # Detalhes
+        frame_det = ctk.CTkFrame(win, fg_color="#1a1a2e", corner_radius=10)
+        frame_det.pack(fill="x", padx=20, pady=(0, 16))
+
+        def _row(label: str, valor: str):
+            f = ctk.CTkFrame(frame_det, fg_color="transparent")
+            f.pack(fill="x", padx=14, pady=4)
+            ctk.CTkLabel(f, text=label, font=("Roboto", 11), text_color="#7f8c8d", width=120, anchor="w").pack(side="left")
+            ctk.CTkLabel(f, text=valor, font=("Roboto", 11, "bold"), text_color="#ecf0f1", anchor="w").pack(side="left")
+
+        meses_txt = "  ·  ".join(periodos) if periodos else periodo
+        _row("Trimestre:", meses_txt)
+        _row("Período chave:", periodo)
+        _row("Execução nº:", str(execucao))
+        _row("Arquivo:", arquivo.split("\\")[-1] if "\\" in arquivo else arquivo.split("/")[-1])
+
+        ctk.CTkButton(
+            win,
+            text="Fechar",
+            command=win.destroy,
+            width=120,
+            fg_color="#27ae60",
+            hover_color="#2ecc71",
+        ).pack(pady=(0, 18))
 
     def _salvar_pmpv_mensal(self):
         if not hasattr(self, 'res_final'):
