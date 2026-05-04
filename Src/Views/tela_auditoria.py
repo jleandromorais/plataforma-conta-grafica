@@ -12,7 +12,7 @@ from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final, obter_periodos_trimestre
+from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -818,12 +818,15 @@ class TelaAuditoria(ctk.CTkFrame):
 
         periodo_salvar = self._periodo_normalizado()
         if not periodo_salvar:
-            periodo_salvar = solicitar_periodo_excel_final(
-                parent=self,
-                titulo="Excel Final (Módulo 9) - Auditoria XML",
-                mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
-            )
+            meses_auto = obter_periodos_trimestre()
+            periodo_salvar = meses_auto[-1] if meses_auto else ""
         if not periodo_salvar:
+            messagebox.showwarning(
+                "Período não encontrado",
+                "Não foi possível determinar o período automaticamente.\n"
+                "Selecione o período de comparação na tela antes de adicionar ao Excel Final.",
+                parent=self,
+            )
             return
 
         try:

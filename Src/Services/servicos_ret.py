@@ -9,6 +9,53 @@ TAXA_EUR_BRL = 6.0
 # Alíquota PIS/COFINS usada no cálculo regulatório do EC
 PIS_COFINS_RATE = 0.0925
 
+# Mapeamento de palavras encontradas nas pastas → número do mês
+_MESES_PATH: dict[str, int] = {
+    'JANEIRO': 1,  'JAN': 1,
+    'FEVEREIRO': 2,'FEV': 2,
+    'MARÇO': 3,    'MARCO': 3, 'MAR': 3,
+    'ABRIL': 4,    'ABR': 4,
+    'MAIO': 5,     'MAI': 5,
+    'JUNHO': 6,    'JUN': 6,
+    'JULHO': 7,    'JUL': 7,
+    'AGOSTO': 8,   'AGO': 8,
+    'SETEMBRO': 9, 'SET': 9,
+    'OUTUBRO': 10, 'OUT': 10,
+    'NOVEMBRO': 11,'NOV': 11,
+    'DEZEMBRO': 12,'DEZ': 12,
+}
+
+_MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
+    """
+    Varre as partes do caminho em busca do nome de um mês (PT-BR).
+    Retorna (mes_num 1-12, ano 4-digitos) ou (0, 0) se não encontrado.
+    O ano é o primeiro número de 4 dígitos no caminho; fallback = ano atual.
+    """
+    from datetime import date
+    partes = Path(caminho).parts
+    # Juntos todos os tokens das pastas (ignora o arquivo final)
+    tokens_pastas = []
+    for parte in partes[:-1]:
+        # Separa por espaço, hífen, underscore, ponto
+        tokens_pastas.extend(re.split(r'[\s\-_\.]+', parte.upper()))
+
+    mes_num = 0
+    for token in tokens_pastas:
+        if token in _MESES_PATH:
+            mes_num = _MESES_PATH[token]
+            break
+
+    # Procura ano de 4 dígitos no caminho completo (ex: "2026")
+    anos = re.findall(r'\b(20\d{2}|19\d{2})\b', caminho)
+    ano = int(anos[0]) if anos else date.today().year
+
+    return mes_num, ano
+
+
 class RegrasRET:
     @staticmethod
     def identificar_tipo(caminho):
@@ -94,6 +141,9 @@ class RegrasRET:
 
     @staticmethod
     def extrair_dados_pdf(caminho_pdf, log_callback=None):
+        mes_num, ano_cam = _extrair_mes_caminho(caminho_pdf)
+        mes_ref = f"{_MESES_ABREV[mes_num - 1]}/{ano_cam}" if mes_num else ""
+
         dados = {
             'arquivo': os.path.basename(caminho_pdf),
             'caminho': caminho_pdf,
@@ -102,13 +152,14 @@ class RegrasRET:
             'nota_tipo': RegrasRET.extrair_tipo_nota(caminho_pdf),
             'numero_nd': '',
             'data_vencimento': '',
+            'mes_ref': mes_ref,        # mês extraído do nome das pastas
             'valor_total': 0.0,
             'quantidade': 0.0,
             'valor_unitario': 0.0,
-            'moeda_detectada': 'BRL', 
-            'valores_encontrados': [], 
-            'periodo_doc': '',         
-            'contrib_ec': 'OUTROS',    
+            'moeda_detectada': 'BRL',
+            'valores_encontrados': [],
+            'periodo_doc': '',
+            'contrib_ec': 'OUTROS',
         }
         
         try:

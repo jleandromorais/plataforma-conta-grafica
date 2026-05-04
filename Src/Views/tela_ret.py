@@ -1,15 +1,13 @@
 import os
 import sys
-import sqlite3
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from datetime import datetime
 from pathlib import Path
 
 from Src.Services.servicos_ret import RegrasRET
-from Src.Services.excel_ret import ExcelRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final, obter_periodos_trimestre
+from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -81,10 +79,7 @@ class TelaRET(ctk.CTkFrame):
             hover_color="#1976D2"
         ).pack(pady=10, padx=20, fill="x")
 
-        ctk.CTkLabel(left, text="Período:", font=("Roboto", 13, "bold")).pack(pady=(10, 2), padx=20, anchor="w")
-        self.entry_periodo = ctk.CTkEntry(left, placeholder_text="ex: Q1/2026", width=200)
-        self.entry_periodo.insert(0, "Q1/2026")
-        self.entry_periodo.pack(pady=(0, 10), padx=20, fill="x")
+        self._setup_seletor_periodo(left)
 
         # BOTÃO PROCESSAR
         ctk.CTkButton(
@@ -170,50 +165,159 @@ class TelaRET(ctk.CTkFrame):
         )
         self.lbl_total.pack(anchor="w")
         
-        # BOTÕES DE AÇÃO
+        # =================================================================
+        # FLUXO DE SALVAMENTO ÚNICO:
+        # 1. Processar PDFs
+        # 2. Verificar resultados (abas: Resumo, Logs, Detalhados)
+        # 3. Salvar RET no Banco (salvará em BD Principal com período)
+        # 4. (Opcional) Adicionar ao Excel Final para gerar relatório
+        # =================================================================
         btn_frame = ctk.CTkFrame(footer, fg_color="transparent")
         btn_frame.pack(side="right", padx=30, pady=20)
-        
+
         ctk.CTkButton(
             btn_frame,
-            text="Salvar no Banco",
-            command=self.salvar_db,
-            width=140,
-            height=35,
-            fg_color="#9C27B0",
-            hover_color="#7B1FA2"
-        ).pack(side="left", padx=5)
-        
-        ctk.CTkButton(
-            btn_frame,
-            text="Exportar Excel",
-            command=self.exportar_excel,
-            width=140,
-            height=35,
-            fg_color="#FF9800",
-            hover_color="#F57C00"
-        ).pack(side="left", padx=5)
-        
-        ctk.CTkButton(
-            btn_frame,
-            text="💾 Salvar RET",
-            command=self._salvar_ret_scg,
-            width=140,
-            height=35,
+            text="💾 Salvar RET no Banco",
+            command=self._salvar_ret_no_banco,
+            width=180,
+            height=40,
+            font=("Roboto", 13, "bold"),
             fg_color="#27ae60",
             hover_color="#229954"
-        ).pack(side="left", padx=5)
+        ).pack(side="left", padx=8)
 
         ctk.CTkButton(
             btn_frame,
             text="➕ Adicionar ao Excel Final (Módulo 9)",
             command=self._adicionar_excel_final,
-            width=240,
-            height=35,
-            fg_color="#6c3483",
-            hover_color="#884ea0"
-        ).pack(side="left", padx=5)
+            width=260,
+            height=40,
+            font=("Roboto", 13, "bold"),
+            fg_color="#2980b9",
+            hover_color="#1a6fa8"
+        ).pack(side="left", padx=8)
     
+    # ------------------------------------------------------------------
+    # SELETOR DE PERÍODO (mês + ano visual, sem digitação)
+    # ------------------------------------------------------------------
+    _MESES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun",
+                    "Jul","Ago","Set","Out","Nov","Dez"]
+
+    def _setup_seletor_periodo(self, parent):
+        """Cria o seletor visual de mês/ano no painel esquerdo."""
+        agora = datetime.now()
+        self._mes_sel  = agora.month   # 1-12
+        self._ano_sel  = agora.year
+        self._btns_mes = {}
+
+        ctk.CTkLabel(
+            parent, text="Período de Referência",
+            font=("Roboto", 13, "bold")
+        ).pack(pady=(14, 4), padx=20, anchor="w")
+
+        card = ctk.CTkFrame(parent, fg_color="#12122a", corner_radius=10)
+        card.pack(fill="x", padx=14, pady=(0, 8))
+
+        # ── Seletor de ano ────────────────────────────────────────────
+        ano_row = ctk.CTkFrame(card, fg_color="transparent")
+        ano_row.pack(pady=(10, 6), padx=14)
+
+        ctk.CTkButton(
+            ano_row, text="◀", width=32, height=28,
+            fg_color="#1a3a5c", hover_color="#2e6da4",
+            font=("Roboto", 13, "bold"),
+            command=self._ano_anterior
+        ).pack(side="left", padx=(0, 6))
+
+        self.lbl_ano = ctk.CTkLabel(
+            ano_row, text=str(self._ano_sel),
+            font=("Roboto", 18, "bold"), width=70,
+            text_color="#00d9ff"
+        )
+        self.lbl_ano.pack(side="left")
+
+        ctk.CTkButton(
+            ano_row, text="▶", width=32, height=28,
+            fg_color="#1a3a5c", hover_color="#2e6da4",
+            font=("Roboto", 13, "bold"),
+            command=self._ano_proximo
+        ).pack(side="left", padx=(6, 0))
+
+        # ── Grade de meses (3 colunas × 4 linhas) ────────────────────
+        grade = ctk.CTkFrame(card, fg_color="transparent")
+        grade.pack(padx=10, pady=(0, 10))
+
+        for i, abrev in enumerate(self._MESES_ABREV):
+            num = i + 1
+            btn = ctk.CTkButton(
+                grade, text=abrev, width=72, height=32,
+                font=("Roboto", 12, "bold"),
+                command=lambda m=num: self._selecionar_mes(m)
+            )
+            btn.grid(row=i // 3, column=i % 3, padx=4, pady=3)
+            self._btns_mes[num] = btn
+
+        # ── Label de confirmação ──────────────────────────────────────
+        self.lbl_periodo_sel = ctk.CTkLabel(
+            card, text="", font=("Roboto", 12, "bold"),
+            text_color="#f1c40f"
+        )
+        self.lbl_periodo_sel.pack(pady=(0, 8))
+
+        self._atualizar_visual_meses()
+
+    def _selecionar_mes(self, mes: int):
+        self._mes_sel = mes
+        self._atualizar_visual_meses()
+
+    def _ano_anterior(self):
+        self._ano_sel -= 1
+        self.lbl_ano.configure(text=str(self._ano_sel))
+        self._atualizar_visual_meses()
+
+    def _ano_proximo(self):
+        self._ano_sel += 1
+        self.lbl_ano.configure(text=str(self._ano_sel))
+        self._atualizar_visual_meses()
+
+    def _auto_detectar_periodo(self):
+        """Após processar PDFs, ajusta o seletor para o mês mais frequente nas pastas."""
+        from collections import Counter
+        refs = [d.get("mes_ref", "") for d in self.dados_processados if d.get("mes_ref")]
+        if not refs:
+            return
+        mais_comum = Counter(refs).most_common(1)[0][0]  # ex: "Jan/2026"
+        try:
+            abrev, ano_str = mais_comum.split("/")
+            mes_num = self._MESES_ABREV.index(abrev) + 1
+            self._mes_sel = mes_num
+            self._ano_sel = int(ano_str)
+            self.lbl_ano.configure(text=str(self._ano_sel))
+            self._atualizar_visual_meses()
+            self.log(f"[INFO] Período detectado automaticamente: {mais_comum}")
+        except Exception:
+            pass
+
+    def _atualizar_visual_meses(self):
+        for num, btn in self._btns_mes.items():
+            if num == self._mes_sel:
+                btn.configure(fg_color="#2196F3", hover_color="#1976D2", text_color="white")
+            else:
+                btn.configure(fg_color="#1e2a3a", hover_color="#2e3f55", text_color="#a0c4e0")
+        periodo = f"{self._MESES_ABREV[self._mes_sel - 1]}/{self._ano_sel}"
+        self.lbl_periodo_sel.configure(text=f"✔ {periodo}")
+
+    @property
+    def entry_periodo(self):
+        """Compatibilidade: retorna um objeto com .get() igual ao período selecionado."""
+        class _FakePeriodo:
+            def __init__(self_, val): self_._v = val
+            def get(self_): return self_._v
+            def strip(self_): return self_._v
+        return _FakePeriodo(
+            f"{self._MESES_ABREV[self._mes_sel - 1]}/{self._ano_sel}"
+        )
+
     def log(self, mensagem):
         """Adiciona mensagem ao log"""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -278,7 +382,8 @@ class TelaRET(ctk.CTkFrame):
 
         if ignorados_nf:
             self.log(f"\n[INFO] {ignorados_nf} PDF(s) em 'Notas Fiscais' ignorados (fora do escopo do RET).")
-        
+
+        self._auto_detectar_periodo()
         self._mostrar_resultados(arquivos_processados)
     
     def _mostrar_resultados(self, total_arquivos):
@@ -441,84 +546,14 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             self.txt_sem_valores.insert("end", f"      {caminho}\n\n")
         self.txt_sem_valores.see("1.0")
     
-    def salvar_db(self):
-        if not self.dados_processados:
-            messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
-            return
-
-        try:
-            db_path = os.path.join(_APP_DIR, 'RET_dados.db')
-            conexao = sqlite3.connect(db_path)
-            cursor = conexao.cursor()
-
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS dados_ret (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tipo_encargo TEXT, empresa TEXT, nota_tipo TEXT, numero_nd TEXT,
-                    data_vencimento TEXT, valor_total REAL, quantidade REAL,
-                    valor_unitario REAL, arquivo TEXT, caminho TEXT, data_processamento TEXT
-                )
-            ''')
-
-            for d in self.dados_processados:
-                cursor.execute('''
-                    INSERT INTO dados_ret (
-                        tipo_encargo, empresa, nota_tipo, numero_nd,
-                        data_vencimento, valor_total, quantidade, valor_unitario,
-                        arquivo, caminho, data_processamento
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    d['tipo_encargo'], d['empresa'], d['nota_tipo'], d['numero_nd'],
-                    d['data_vencimento'], d['valor_total'], d['quantidade'], d['valor_unitario'],
-                    d['arquivo'], d['caminho'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                ))
-
-            conexao.commit()
-            conexao.close()
-            self.log(f"[OK] Dados salvos em: {db_path}")
-            messagebox.showinfo(
-                "Salvo ✅",
-                f"Dados salvos com sucesso!\n\n"
-                f"{len(self.dados_processados)} documento(s) gravado(s).\n"
-                f"Ficheiro: {os.path.basename(db_path)}"
-            )
-
-        except Exception as e:
-            self.log(f"[ERRO] Falha ao salvar: {e}")
-            messagebox.showerror("Erro ao salvar", f"{e}")
-    
-    def exportar_excel(self):
-        if not self.dados_processados:
-            messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
-            return
-
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            base_dir = self.pasta_selecionada or os.getcwd()
-            excel_path = os.path.join(base_dir, f"RET_Relatorio_{timestamp}.xlsx")
-
-            calc_ret = RegrasRET.calcular_ret(self.dados_processados)
-            ExcelRET.gerar_relatorio_completo(self.dados_processados, calc_ret, excel_path)
-
-            self.log(f"[OK] Excel criado: {excel_path}")
-        except Exception as e:
-            self.log(f"[ERRO] Falha ao exportar: {e}")
-            messagebox.showerror("Erro", f"Erro ao exportar: {e}")
-    
-    def _salvar_ret_scg(self):
+    def _salvar_ret_no_banco(self):
         if not hasattr(self, 'dados_processados') or not self.dados_processados:
             messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
             return
 
-        from tkinter import simpledialog
         calc = RegrasRET.calcular_ret(self.dados_processados)
         total_geral = calc['ret']
-
-        periodo = self.entry_periodo.get().strip()
-        if not periodo:
-            periodo = simpledialog.askstring("Período RET", "Digite o período (ex: Q1/2026):", initialvalue="Q1/2026")
-        if not periodo:
-            return
+        periodo = self.entry_periodo.get()
 
         total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         if not messagebox.askyesno("Confirmar salvamento",
@@ -553,24 +588,26 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
 
         periodo_salvar = self.entry_periodo.get().strip()
         if not periodo_salvar:
-            periodo_salvar = solicitar_periodo_excel_final(
-                parent=self,
-                titulo="Excel Final (Módulo 9) - RET",
-                mensagem="Informe o período para salvar e gerar o Excel final (ex: Dez/2025):",
-            )
+            meses_auto = obter_periodos_trimestre()
+            periodo_salvar = meses_auto[-1] if meses_auto else ""
         if not periodo_salvar:
+            messagebox.showwarning(
+                "Período não encontrado",
+                "Preencha o campo Período ou calcule o PMPV primeiro para determinar o trimestre ativo.",
+                parent=self,
+            )
             return
 
         try:
+            # Garante que os dados estão no BD antes de gerar o Excel
+            # (idempotente: DELETE+INSERT — não duplica se já foi salvo)
             calc = RegrasRET.calcular_ret(self.dados_processados)
-            total_geral = calc['ret']
-
-            self.consolidacao.salvar_ret(periodo_salvar, total_geral)
-            db = DatabasePMPV()
+            self.consolidacao.salvar_ret(periodo_salvar, calc['ret'])
+            db_save = DatabasePMPV()
             try:
-                db.salvar_ret_itens(periodo_salvar, self.dados_processados)
+                db_save.salvar_ret_itens(periodo_salvar, self.dados_processados)
             finally:
-                db.fechar()
+                db_save.fechar()
 
             meta_execucao = registrar_execucao_excel_final(etapa="RET", periodo=periodo_salvar, parent=self)
             if not meta_execucao:

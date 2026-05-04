@@ -247,6 +247,47 @@ class DatabasePMPV:
             return [m.strip() for m in row[0].split(",") if m.strip()]
         return []
 
+    def buscar_periodos_ret_para_trimestre(self, periodo_alvo: str) -> list[str]:
+        """
+        Busca em ret_itens os até 3 períodos mensais mais recentes que sejam
+        cronologicamente <= periodo_alvo.
+
+        Ordena cronologicamente (ano × 12 + mes) para evitar ordem alfabética
+        errada (Fev < Jan na ordem de letras).
+        """
+        _MESES = {"Jan":1,"Fev":2,"Mar":3,"Abr":4,"Mai":5,"Jun":6,
+                  "Jul":7,"Ago":8,"Set":9,"Out":10,"Nov":11,"Dez":12}
+
+        def _para_int(p: str) -> int:
+            """'Jan/2026' → 2026*12+1 para comparação cronológica."""
+            try:
+                abrev, ano = p.strip().split("/")
+                return int(ano) * 12 + _MESES.get(abrev.strip().capitalize(), 0)
+            except Exception:
+                return 0
+
+        _ABREVS = {"Jan","Fev","Mar","Abr","Mai","Jun",
+                   "Jul","Ago","Set","Out","Nov","Dez"}
+
+        def _valido(p: str) -> bool:
+            parts = (p or "").strip().split("/")
+            if len(parts) != 2:
+                return False
+            ab, an = parts[0].strip().capitalize()[:3], parts[1].strip()
+            return ab in _ABREVS and len(an) == 4 and an.isdigit()
+
+        self.cursor.execute("SELECT DISTINCT periodo FROM ret_itens")
+        todos = [row[0] for row in self.cursor.fetchall() if row[0] and _valido(row[0])]
+        if not todos:
+            return []
+
+        alvo_int = _para_int(periodo_alvo)
+        anteriores = sorted(
+            [p for p in todos if _para_int(p) <= alvo_int],
+            key=_para_int
+        )
+        return anteriores[-3:]
+
     def _garantir_coluna(self, tabela: str, coluna: str, definicao_sql: str):
         self.cursor.execute(f"PRAGMA table_info({tabela})")
         colunas = {row[1] for row in self.cursor.fetchall()}

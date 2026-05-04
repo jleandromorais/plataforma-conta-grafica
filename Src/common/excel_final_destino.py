@@ -16,28 +16,50 @@ def _normalizar_periodo(periodo: str | None) -> str:
 
 def obter_periodos_trimestre(periodo_atual: str | None = None) -> list[str]:
     """
-    Retorna os meses do trimestre activo guardado pelo PMPV.
-    Se não houver trimestre activo, devolve lista com só o período actual.
-    Garante que o período actual está incluído.
+    Retorna os 3 meses do trimestre para o Excel consolidado.
+
+    Garante que apenas períodos no formato 'Mmm/YYYY' são devolvidos.
+    Se o trimestre_ativo contiver entradas inválidas (ex: 'RET/25', 'Q1/2026'),
+    reconstrói automaticamente a partir dos ret_itens reais.
     """
+    _ABREVS = {"Jan","Fev","Mar","Abr","Mai","Jun",
+               "Jul","Ago","Set","Out","Nov","Dez"}
+
+    def _valido(p: str) -> bool:
+        parts = (p or "").strip().split("/")
+        if len(parts) != 2:
+            return False
+        ab, an = parts[0].strip().capitalize()[:3], parts[1].strip()
+        return ab in _ABREVS and len(an) == 4 and an.isdigit()
+
     db = DatabasePMPV()
     try:
-        meses = db.buscar_trimestre_ativo()
+        meses_raw = db.buscar_trimestre_ativo()
+        # Filtrar apenas períodos válidos — descarta 'RET/25', 'Q1/2026', etc.
+        meses = [m for m in meses_raw if _valido(m)]
+
+        if not periodo_atual:
+            return meses if meses else []
+
+        norm = normalizar_periodo(periodo_atual) or periodo_atual
+        meses_norm = [normalizar_periodo(m) or m for m in meses]
+        periodo_no_trimestre = (norm in meses_norm or periodo_atual in meses_norm)
+
+        if not meses or not periodo_no_trimestre:
+            # Trimestre inválido ou não corresponde — reconstruir via ret_itens
+            periodos_ret = db.buscar_periodos_ret_para_trimestre(norm)
+            if periodos_ret:
+                meses = periodos_ret
+                db.salvar_trimestre_ativo(meses)  # corrige o BD
+            else:
+                meses = [norm]
+        else:
+            if norm not in meses_norm and periodo_atual not in meses_norm:
+                meses.append(norm)
+
+        return meses if meses else [norm]
     finally:
         db.fechar()
-
-    if meses:
-        # Inclui o período actual se não estiver já na lista
-        if periodo_atual:
-            norm = normalizar_periodo(periodo_atual) or periodo_atual
-            if norm not in meses and periodo_atual not in meses:
-                meses.append(norm)
-        return meses
-
-    # Sem trimestre activo: usa só o período actual
-    if periodo_atual:
-        return [normalizar_periodo(periodo_atual) or periodo_atual]
-    return []
 
 
 def solicitar_periodo_excel_final(

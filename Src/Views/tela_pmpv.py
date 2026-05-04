@@ -8,7 +8,6 @@ from datetime import datetime
 from Src.Services.servicos_pmpv import ExcelPMPV
 # Casos de uso da aplicação (desacoplados da infraestrutura)
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
-from Src.infrastructure.exporters.excel_handler_pmpv import ExcelHandlerPMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.Database.database import DatabasePMPV
@@ -61,10 +60,10 @@ class TelaPMPV(ctk.CTkFrame):
         conf.pack(fill="x", padx=20, pady=10)
 
         ctk.CTkLabel(conf, text="📅 Período:", font=("Roboto", 14, "bold")).pack(side="left")
-        mes_atual = datetime.now().month
+        _mes_idx = datetime.now().month - 1  # 0=Jan … 11=Dez
         tri_padrao = next(
-            (k for k, v in self.trimestres.items() if mes_atual - 1 in v),
-            "Nov - Jan"
+            (k for k, v in self.trimestres.items() if _mes_idx in v),
+            "Fev - Abr"
         )
         self.combo_trimestre = ctk.CTkComboBox(conf, values=list(self.trimestres.keys()), width=130, command=self._atualizar_trimestre)
         self.combo_trimestre.set(tri_padrao)
@@ -118,9 +117,6 @@ class TelaPMPV(ctk.CTkFrame):
         ctk.CTkLabel(right, text="Ações PMPV", font=("Roboto", 13, "bold")).pack(pady=(0, 4))
         ctk.CTkButton(right, text="📥 Importar Memória de Cálculo", command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="💾 Salvar Sessão no Banco", command=self.salvar, fg_color="#8e44ad").pack(pady=4, fill="x")
-        ctk.CTkButton(right, text="📅 Salvar PMPV Mensal", command=self._salvar_pmpv_mensal, fg_color="#16a085").pack(pady=4, fill="x")
-        ctk.CTkButton(right, text="💧 Salvar VP Mensal", command=self._salvar_vp_mensal, fg_color="#1a5276", hover_color="#2e86c1").pack(pady=4, fill="x")
-        ctk.CTkButton(right, text="📊 Exportar Excel do PMPV", command=self.exportar, fg_color="#2980b9").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="➕ Adicionar ao Excel Final (Módulo 9)", command=self._adicionar_excel_final, fg_color="#6c3483", hover_color="#884ea0").pack(pady=4, fill="x")
 
     def _criar_aba(self, parent, tab_nome: str = ""):
@@ -358,7 +354,7 @@ class TelaPMPV(ctk.CTkFrame):
         for i, mes_idx in enumerate(indices):
             if i > 0 and mes_idx < indices[i - 1]:
                 ano_atual += 1
-            periodos.append(f"{self._abrevs_meses[mes_idx]}/{ano_atual % 100:02d}")
+            periodos.append(f"{self._abrevs_meses[mes_idx]}/{ano_atual}")
         return periodos
 
     def _inferir_periodo_por_ancora(self, mes_nome: str) -> str:
@@ -534,39 +530,23 @@ class TelaPMPV(ctk.CTkFrame):
 
     def salvar(self):
         if not hasattr(self, 'res_final'):
-            return
+            return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
         tri = self.combo_trimestre.get().replace(" ", "_").replace("-", "_")
         ano = self.entry_ano.get()
         nome = f"PMPV_{tri}_{ano}"
         dados = self._get_data_dict()
-        self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
-
-    def exportar(self):
-        if not hasattr(self, 'res_final'): return messagebox.showwarning("Erro", "Calcule antes!")
-        dados = self._get_data_dict()
-        d_fmt = {f"Mês {i+1}": v for i, v in enumerate(dados.values())}
-        ExcelHandlerPMPV.exportar_trimestre(d_fmt, self.res_final)
-
-    def _salvar_vp_mensal(self):
-        if not hasattr(self, 'res_final'):
-            return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
-        vp_por_mes = self.res_final.get('vp_por_mes', {})
-        if not vp_por_mes:
-            return messagebox.showwarning("Aviso", "Sem dados de VP por mês. Calcule novamente.")
-        periodos = self._get_periodos_trimestre()
-        if not periodos:
-            return messagebox.showwarning("Aviso", "Verifique o trimestre e o ano selecionados.")
-        meses_nome = list(vp_por_mes.keys())
-        db = DatabasePMPV()
-        linhas_info = []
         try:
-            for i, mes_nome in enumerate(meses_nome):
-                if i < len(periodos):
-                    vp_val = vp_por_mes[mes_nome]
-                    db.salvar_vp_mensal(periodos[i], vp_val)
-                    linhas_info.append(f"{periodos[i]}: {self._fmt_volume(vp_val)} m³")
-        finally:
-            db.fechar()
+            self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
+            pmpv  = self.res_final.get("pmpv", 0)
+            preco = self.res_final.get("preco_final", 0)
+            messagebox.showinfo(
+                "Sessão Salva ✅",
+                f"Sessão '{nome}' gravada com sucesso no banco de dados.\n\n"
+                f"PMPV:         R$ {pmpv:.4f} /m³\n"
+                f"Preço Final:  R$ {preco:.4f} /m³"
+            )
+        except Exception as e:
+            messagebox.showerror("Erro ao Salvar", f"Não foi possível salvar a sessão:\n\n{e}")
 
     def _adicionar_excel_final(self):
         if not hasattr(self, 'res_final'):
@@ -676,20 +656,6 @@ class TelaPMPV(ctk.CTkFrame):
             fg_color="#27ae60",
             hover_color="#2ecc71",
         ).pack(pady=(0, 18))
-
-    def _salvar_pmpv_mensal(self):
-        if not hasattr(self, 'res_final'):
-            return messagebox.showwarning("Aviso", "Calcule o PMPV antes de salvar.")
-        periodos = self._get_periodos_trimestre()
-        if not periodos:
-            return messagebox.showwarning("Aviso", "Verifique o trimestre e o ano selecionados.")
-        pmpv = self.res_final['pmpv']
-        db = DatabasePMPV()
-        try:
-            for periodo in periodos:
-                db.salvar_pmpv_mensal(periodo, pmpv)
-        finally:
-            db.fechar()
 
 if __name__ == "__main__":
     root = ctk.CTk()

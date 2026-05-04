@@ -195,8 +195,25 @@ class ExcelConsolidado:
         nome_arquivo: str | None,
         periodos_trimestre: list[str] | None = None,
     ) -> str:
+        # Abreviaturas de mês válidas PT-BR
+        _ABREVS_VALIDAS = {"Jan","Fev","Mar","Abr","Mai","Jun",
+                           "Jul","Ago","Set","Out","Nov","Dez"}
+
+        def _mes_valido(p: str) -> bool:
+            """Aceita apenas 'Mmm/YYYY' (ex: 'Jan/2026'). Rejeita 'RET/25', 'Q1/2026', etc."""
+            partes = (p or "").strip().split("/")
+            if len(partes) != 2:
+                return False
+            abrev, ano = partes[0].strip().capitalize()[:3], partes[1].strip()
+            return abrev in _ABREVS_VALIDAS and len(ano) == 4 and ano.isdigit()
+
         # Lista de meses do trimestre para Auditoria / RET / Conciliação
-        meses = periodos_trimestre or ([periodo] if periodo else [])
+        meses_raw = periodos_trimestre or ([periodo] if periodo else [])
+        meses = [m for m in meses_raw if _mes_valido(m)]
+        # Se filtragem removeu tudo, usa os originais (melhor exibir algo do que nada)
+        if not meses and meses_raw:
+            meses = meses_raw
+
         label_trimestre = "  ·  ".join(meses) if meses else (periodo or "completo")
 
         if nome_arquivo is None:
@@ -248,7 +265,7 @@ class ExcelConsolidado:
         ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, label_trimestre)
         ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes)
         ExcelConsolidado._sheet_auditoria(wb, audit_itens, label_trimestre)
-        ExcelConsolidado._sheet_ret(wb, ret_itens, label_trimestre)
+        ExcelConsolidado._sheet_ret(wb, ret_itens, label_trimestre, meses)
         ExcelConsolidado._sheet_concilia(wb, conc_itens, label_trimestre)
         # CGF: lista dos meses do trimestre (ou único período, ou tudo)
         cgf_para_sheet = cgf_lista if len(cgf_lista) != 1 else cgf
@@ -565,67 +582,173 @@ class ExcelConsolidado:
     # ── Sheet 4: RET ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_ret(wb, itens: list[dict], periodo: str | None):
+    def _sheet_ret(wb, itens: list[dict], label_trimestre: str | None,
+                   meses: list[str] | None = None):
+        _MESES_FULL = {
+            "Jan": "Janeiro",  "Fev": "Fevereiro", "Mar": "Março",
+            "Abr": "Abril",    "Mai": "Maio",       "Jun": "Junho",
+            "Jul": "Julho",    "Ago": "Agosto",     "Set": "Setembro",
+            "Out": "Outubro",  "Nov": "Novembro",   "Dez": "Dezembro",
+        }
+        _NCOLS = 9
+        _COLS  = ["Arquivo", "Tipo Encargo", "Empresa", "Tipo Nota",
+                  "Nº ND", "Vencimento", "Valor Total (R$)", "Moeda", "Contrib. EC"]
+        _WIDTHS = [34, 16, 18, 12, 12, 14, 20, 8, 14]
+        _FMTS   = ["@", "@", "@", "@", "@", "@", _BRL, "@", "@"]
+
+        # Cores de destaque do módulo RET
+        _ORANGE_DARK  = "A04000"   # título principal
+        _ORANGE_MED   = "D35400"   # cabeçalho de mês / header de tabela
+        _ORANGE_LIGHT = "FAD7A0"   # subtotal / total
+        _ORANGE_XL    = "FEF5E7"   # resumo por tipo
+
         ws = wb.create_sheet("⚡ RET")
         ws.sheet_view.showGridLines = False
 
-        ws.merge_cells("A1:I1")
-        t = ws["A1"]
-        t.value = f"SISTEMA RET — ENCARGOS E DOCUMENTOS  |  Período: {periodo or 'N/D'}"
-        t.fill = _fill(_ORANGE)
+        # ── Linha 1: Título do trimestre ──────────────────────────────────────
+        trimestre_label = label_trimestre or "N/D"
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NCOLS)
+        t = ws.cell(row=1, column=1,
+                    value=f"  SISTEMA RET — ENCARGOS E DOCUMENTOS  |  Trimestre: {trimestre_label}")
+        t.fill = _fill(_ORANGE_DARK)
         t.font = _font(bold=True, size=14, color=_HEADER_FG)
-        t.alignment = _align("center")
-        ws.row_dimensions[1].height = 30
+        t.alignment = _align("left")
+        ws.row_dimensions[1].height = 34
 
-        row = 3
-        mostrar_periodo = periodo is None
-        cols   = (["Período"] if mostrar_periodo else []) + ["Arquivo", "Tipo Encargo", "Empresa", "Tipo Nota",
-                  "Nº ND", "Vencimento", "Valor Total (R$)", "Moeda", "Contrib. EC"]
-        widths = ([14] if mostrar_periodo else []) + [32, 16, 18, 12, 12, 14, 18, 8, 14]
-        _apply_header_row(ws, row, cols, widths, _ORANGE)
-        row += 1
+        # Linha 2: espaço
+        ws.row_dimensions[2].height = 6
+        for c in range(1, _NCOLS + 1):
+            ws.cell(row=2, column=c).fill = _fill("F5CBA7")
 
         if not itens:
-            ws.cell(row=row, column=1,
-                    value=f"Nenhum item RET registrado para o período '{periodo}'.")
+            ws.cell(row=4, column=1, value="Nenhum item RET registrado para este trimestre.")
             return
 
-        tipos: dict[str, float] = {}
-        total = 0.0
+        # ── Agrupar itens por período (na ordem de meses do trimestre) ─────────
+        from collections import defaultdict
+        grupos: dict[str, list] = defaultdict(list)
+        for it in itens:
+            grupos[it.get("periodo", "Sem Período")].append(it)
 
-        for i, it in enumerate(itens):
-            vt = it.get("valor_total", 0.0)
-            total += vt
-            t_enc = it.get("tipo_encargo", "")
-            tipos[t_enc] = tipos.get(t_enc, 0.0) + vt
+        # Ordem: segue a lista de meses do trimestre; itens sem período vão ao fim
+        ordem = list(meses or [])
+        for p in grupos:
+            if p not in ordem:
+                ordem.append(p)
 
-            _apply_data_row(ws, row,
-                ([it.get("periodo", "")] if mostrar_periodo else []) + [it.get("arquivo", ""), t_enc, it.get("empresa", ""),
-                 it.get("nota_tipo", ""), it.get("numero_nd", ""),
-                 it.get("data_vencimento", ""), vt,
-                 it.get("moeda", "BRL"), it.get("contrib_ec", "")],
-                (["@"] if mostrar_periodo else []) + ["@", "@", "@", "@", "@", "@", _BRL, "@", "@"],
-                alternate=(i % 2 == 1))
+        tipos_total: dict[str, float] = {}
+        grand_total = 0.0
+        row = 3
+
+        for periodo_mes in ordem:
+            itens_mes = grupos.get(periodo_mes)
+            if not itens_mes:
+                continue
+
+            # Nome completo do mês para o cabeçalho da seção
+            abrev = periodo_mes.split("/")[0] if "/" in periodo_mes else periodo_mes
+            mes_full = _MESES_FULL.get(abrev, abrev)
+            ano_mes  = periodo_mes.split("/")[1] if "/" in periodo_mes else ""
+            label_mes = f"  ── {mes_full}{'/'+ano_mes if ano_mes else ''} " + "─" * 40
+
+            # Cabeçalho da seção do mês (laranja médio)
+            ws.merge_cells(start_row=row, start_column=1,
+                           end_row=row, end_column=_NCOLS)
+            sec = ws.cell(row=row, column=1, value=label_mes)
+            sec.fill = _fill(_ORANGE_MED)
+            sec.font = _font(bold=True, color=_HEADER_FG, size=11)
+            sec.alignment = _align("left")
+            sec.border = _border()
+            ws.row_dimensions[row].height = 20
             row += 1
 
-        _apply_total_row(ws, row,
-            (["TOTAL"] if mostrar_periodo else []) + ["TOTAL", "", "", "", "", "", total, "", ""],
-            (["@"] if mostrar_periodo else []) + ["@", "@", "@", "@", "@", "@", _BRL, "@", "@"],
-            bg="FAD7A0")
+            # Header das colunas
+            _apply_header_row(ws, row, _COLS, _WIDTHS, _ORANGE_MED)
+            row += 1
+
+            sub_total = 0.0
+            for i, it in enumerate(itens_mes):
+                vt    = _to_float(it.get("valor_total"))
+                t_enc = it.get("tipo_encargo", "")
+                sub_total += vt
+                tipos_total[t_enc] = tipos_total.get(t_enc, 0.0) + vt
+
+                _apply_data_row(ws, row, [
+                    it.get("arquivo", ""),
+                    t_enc,
+                    it.get("empresa", ""),
+                    it.get("nota_tipo", ""),
+                    it.get("numero_nd", ""),
+                    it.get("data_vencimento", ""),
+                    vt,
+                    it.get("moeda", "BRL"),
+                    it.get("contrib_ec", ""),
+                ], _FMTS, alternate=(i % 2 == 1))
+                row += 1
+
+            # Subtotal do mês
+            label_sub = f"SUBTOTAL {mes_full.upper()}{'/'+ano_mes if ano_mes else ''}"
+            for col_i in range(1, _NCOLS + 1):
+                c = ws.cell(row=row, column=col_i)
+                c.fill = _fill(_ORANGE_LIGHT)
+                c.font = _font(bold=True, size=11, color=_ORANGE_DARK)
+                c.border = _border()
+                if col_i == 1:
+                    c.value = label_sub
+                    c.alignment = _align("left")
+                elif col_i == 7:
+                    c.value = sub_total
+                    c.number_format = _BRL
+                    c.alignment = _align("right")
+            ws.row_dimensions[row].height = 20
+            grand_total += sub_total
+            row += 1
+
+            # Espaço entre meses
+            ws.row_dimensions[row].height = 8
+            row += 1
+
+        # ── Total Geral do Trimestre ──────────────────────────────────────────
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+        tot_lbl = ws.cell(row=row, column=1, value="  ══ TOTAL GERAL DO TRIMESTRE ══")
+        tot_lbl.fill = _fill(_ORANGE_DARK)
+        tot_lbl.font = _font(bold=True, size=13, color=_HEADER_FG)
+        tot_lbl.alignment = _align("left")
+        tot_lbl.border = _border()
+        tot_val = ws.cell(row=row, column=7, value=grand_total)
+        tot_val.fill = _fill(_ORANGE_DARK)
+        tot_val.font = _font(bold=True, size=13, color=_HEADER_FG)
+        tot_val.number_format = _BRL
+        tot_val.alignment = _align("right")
+        tot_val.border = _border()
+        for c in [2, 3, 4, 5, 6, 8, 9]:
+            ws.cell(row=row, column=c).fill = _fill(_ORANGE_DARK)
+            ws.cell(row=row, column=c).border = _border()
+        ws.row_dimensions[row].height = 26
         row += 2
 
-        # Resumo por tipo
-        _section_title(ws, row, "  RESUMO POR TIPO DE ENCARGO", 9, _ORANGE)
+        # ── Resumo por Tipo de Encargo ────────────────────────────────────────
+        _section_title(ws, row, "  ── RESUMO POR TIPO DE ENCARGO (TRIMESTRE)", _NCOLS, _ORANGE_MED)
+        ws.row_dimensions[row].height = 20
         row += 1
-        _apply_header_row(ws, row, ["Tipo Encargo", "Total (R$)"], [22, 18], _ORANGE)
+        _apply_header_row(ws, row, ["Tipo de Encargo", "Total (R$)"], [24, 20], _ORANGE_MED)
         row += 1
-        for tp, val in sorted(tipos.items()):
-            _apply_total_row(ws, row, [tp, val], ["@", _BRL], bg="FEF5E7")
+        for tp, val in sorted(tipos_total.items()):
+            for c in range(1, _NCOLS + 1):
+                ws.cell(row=row, column=c).fill = _fill(_ORANGE_XL)
+            ws.cell(row=row, column=1, value=tp).font = _font(bold=True, size=11)
+            ws.cell(row=row, column=1).alignment = _align("left")
+            ws.cell(row=row, column=1).border = _border()
+            v_cell = ws.cell(row=row, column=2, value=val)
+            v_cell.number_format = _BRL
+            v_cell.font = _font(bold=True, size=11)
+            v_cell.alignment = _align("right")
+            v_cell.border = _border()
             row += 1
 
-        ws.column_dimensions["A"].width = 34
-        for col in "BCDEFGHI":
-            ws.column_dimensions[col].width = 16
+        # ── Larguras das colunas ──────────────────────────────────────────────
+        for i, w in enumerate(_WIDTHS, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
 
     # ── Sheet 5: Conciliação RP ──────────────────────────────────────────────
 
@@ -712,8 +835,8 @@ class ExcelConsolidado:
         ws.row_dimensions[1].height = 30
 
         row = 3
-        if periodo is None:
-            registros = cgf or []
+        if periodo is None or isinstance(cgf, list):
+            registros = cgf if isinstance(cgf, list) else ([] if cgf is None else [cgf])
             _apply_header_row(ws, row,
                 ["Período", "Volume Faturado", "Consumo Próprio", "Canceladas", "Devoluções", "Volume Final"],
                 [16, 18, 18, 16, 16, 16], _GOLD)
