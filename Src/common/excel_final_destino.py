@@ -244,16 +244,11 @@ def registrar_execucao_excel_final(
     if caminho_ativo and nome_ativo:
         caminho, nome_sessao = caminho_ativo, nome_ativo
     else:
-        # Sem sessão activa: cria automaticamente uma nova em vez de abrir o
-        # modal complexo. O utilizador pode trocar depois via PMPV.
+        # Sem sessão ativa: cria uma nova com nome fixo (sem timestamp)
         periodo_norm_tmp = _normalizar_periodo(periodo) or "Geral"
-        etapa_slug = (etapa or "Modulo9").replace(" ", "_")
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-        nome_sessao = f"Modulo9_{periodo_norm_tmp}_{ts}"
         p_slug = periodo_norm_tmp.replace("/", "-")
-        nome_arquivo_auto = f"Modulo9_{etapa_slug}_{p_slug}_{ts}.xlsx"
-
-        # Salva na pasta onde está o banco de dados
+        nome_sessao = f"Modulo9_{p_slug}"
+        nome_arquivo_auto = f"Modulo9_{p_slug}.xlsx"
         db_dir = Path(__file__).resolve().parents[2]
         caminho = str(db_dir / nome_arquivo_auto)
 
@@ -266,6 +261,7 @@ def registrar_execucao_excel_final(
     periodo_norm = _normalizar_periodo(periodo)
     etapa_norm = (etapa or "").strip() or "ETAPA"
 
+    # Incrementa o contador de execuções no banco
     db = DatabasePMPV()
     try:
         execucao = db.registrar_execucao_excel_final(
@@ -275,6 +271,33 @@ def registrar_execucao_excel_final(
             caminho_arquivo=str(Path(caminho)),
         )
         return str(Path(caminho)), nome_sessao, periodo_norm, execucao
+    finally:
+        db.fechar()
+
+
+def novo_excel_final(parent=None) -> bool:
+    """Limpa a sessão ativa para que o próximo módulo crie um arquivo Excel novo."""
+    db = DatabasePMPV()
+    try:
+        sessao_ativa = db.buscar_sessao_excel_final_ativa()
+        nome = (sessao_ativa or {}).get("nome", "")
+        arquivo = (sessao_ativa or {}).get("caminho_arquivo", "")
+
+        msg = "Iniciar um novo Excel Final?\n\n"
+        if arquivo:
+            msg += f"Sessão atual: {nome}\nArquivo: {Path(arquivo).name}\n\n"
+        msg += "Na próxima execução de qualquer módulo será criado um arquivo novo."
+
+        if not messagebox.askyesno("Novo Excel Final", msg, parent=parent):
+            return False
+
+        db.desativar_sessao_excel_final_ativa()
+        messagebox.showinfo(
+            "Novo Excel pronto",
+            "Sessão zerada.\nO próximo módulo criará um arquivo Excel novo.",
+            parent=parent,
+        )
+        return True
     finally:
         db.fechar()
 

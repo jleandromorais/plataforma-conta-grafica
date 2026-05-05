@@ -9,7 +9,7 @@ from Src.Services.servicos_pmpv import ExcelPMPV
 # Casos de uso da aplicação (desacoplados da infraestrutura)
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
-from Src.common.excel_final_destino import registrar_execucao_excel_final
+from Src.common.excel_final_destino import registrar_execucao_excel_final, novo_excel_final
 from Src.Database.database import DatabasePMPV
 
 # ==========================================
@@ -118,6 +118,7 @@ class TelaPMPV(ctk.CTkFrame):
         ctk.CTkButton(right, text="📥 Importar Memória de Cálculo", command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="💾 Salvar Sessão no Banco", command=self.salvar, fg_color="#8e44ad").pack(pady=4, fill="x")
         ctk.CTkButton(right, text="➕ Adicionar ao Excel Final (Módulo 9)", command=self._adicionar_excel_final, fg_color="#6c3483", hover_color="#884ea0").pack(pady=4, fill="x")
+        ctk.CTkButton(right, text="🗋 Novo Excel (zerar sessão)", command=lambda: novo_excel_final(parent=self), fg_color="#7f8c8d", hover_color="#95a5a6").pack(pady=4, fill="x")
 
     def _criar_aba(self, parent, tab_nome: str = ""):
         head = ctk.CTkFrame(parent, height=30, fg_color="#2c3e50")
