@@ -241,35 +241,70 @@ class ExcelConsolidado:
         pmpv_mensal   = db.listar_pmpv_mensal()
         execucoes     = db.listar_execucoes_excel_final(periodo=periodo) if periodo else db.listar_execucoes_excel_final()
 
-        # ── Auditoria / RET / Conciliação / CGF — agregados de TODOS os meses do trimestre
+        # ── Helper: períodos válidos disponíveis em cada tabela ─────────────────
+        def _ord(p):
+            ab = p.split("/")[0].capitalize()[:3]
+            an = p.split("/")[1] if "/" in p else "0"
+            mn = {"Jan":1,"Fev":2,"Mar":3,"Abr":4,"Mai":5,"Jun":6,
+                  "Jul":7,"Ago":8,"Set":9,"Out":10,"Nov":11,"Dez":12}.get(ab, 0)
+            return int(an) * 12 + mn
+
+        def _periodos_tabela(tabela: str, col_periodo: str = "periodo") -> list[str]:
+            """Retorna períodos Mmm/YYYY distintos presentes na tabela, filtrados pelo trimestre ativo."""
+            try:
+                db.cursor.execute(f"SELECT DISTINCT {col_periodo} FROM {tabela}")
+                rows = [r[0] for r in db.cursor.fetchall() if r[0] and _mes_valido(r[0])]
+            except Exception:
+                return []
+            # Se temos um trimestre definido, filtra apenas os meses dele
+            if meses:
+                meses_norm = {m.strip() for m in meses}
+                rows = [r for r in rows if r.strip() in meses_norm]
+            return sorted(rows, key=_ord)
+
+        # Cada módulo descobre os seus próprios meses disponíveis no BD,
+        # mas limitado ao trimestre ativo passado em periodos_trimestre.
+        meses_ret   = _periodos_tabela("ret_itens")
+        meses_audit = _periodos_tabela("auditoria_itens")
+        meses_cgf   = _periodos_tabela("cgf_resumo")
+        meses_conc  = _periodos_tabela("concilia_itens")
+
+        # Labels de cada módulo para o título da aba
+        def _label(ms): return "  ·  ".join(ms) if ms else label_trimestre
+
+        # Buscar dados de cada módulo nos seus próprios períodos
         audit_itens = []
-        ret_itens   = []
-        conc_itens  = []
-        cgf_lista   = []
-        for mes in meses:
+        for mes in meses_audit:
             audit_itens.extend(db.listar_auditoria_itens(mes) or [])
+
+        ret_itens = []
+        for mes in meses_ret:
             ret_itens.extend(db.listar_ret_itens(mes) or [])
+
+        conc_itens = []
+        for mes in meses_conc:
             conc_itens.extend(db.listar_concilia_itens(mes) or [])
+
+        cgf_lista = []
+        for mes in meses_cgf:
             resumo = db.buscar_cgf_resumo(mes)
             if resumo:
                 cgf_lista.append(resumo)
 
-        # Fallback quando nenhum mês do trimestre tem dados
+        # Fallback CGF: se não encontrou nada pelos períodos, tenta tudo
         if not cgf_lista:
-            cgf_lista = db.listar_cgf_resumos() if not meses else []
+            cgf_lista = db.listar_cgf_resumos()
 
-        # CGF de referência = último mês com dados (para visão single-period)
+        # CGF de referência = último mês com dados
         cgf = cgf_lista[-1] if cgf_lista else None
 
-        # Sheets
+        # Sheets — cada um com o seu label e meses reais
         ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, label_trimestre)
         ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes)
-        ExcelConsolidado._sheet_auditoria(wb, audit_itens, label_trimestre)
-        ExcelConsolidado._sheet_ret(wb, ret_itens, label_trimestre, meses)
-        ExcelConsolidado._sheet_concilia(wb, conc_itens, label_trimestre)
-        # CGF: lista dos meses do trimestre (ou único período, ou tudo)
-        cgf_para_sheet = cgf_lista if len(cgf_lista) != 1 else cgf
-        ExcelConsolidado._sheet_cgf(wb, cgf_para_sheet, label_trimestre)
+        ExcelConsolidado._sheet_auditoria(wb, audit_itens, _label(meses_audit), meses_audit)
+        ExcelConsolidado._sheet_ret(wb, ret_itens, _label(meses_ret), meses_ret)
+        ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
+        ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf)
         ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
         ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
         ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
@@ -523,61 +558,123 @@ class ExcelConsolidado:
     # ── Sheet 3: Auditoria XML ────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_auditoria(wb, itens: list[dict], periodo: str | None):
+    def _sheet_auditoria(wb, itens: list[dict], label_trimestre: str | None,
+                         meses: list[str] | None = None):
+        _MESES_FULL = {
+            "Jan":"Janeiro","Fev":"Fevereiro","Mar":"Março","Abr":"Abril",
+            "Mai":"Maio","Jun":"Junho","Jul":"Julho","Ago":"Agosto",
+            "Set":"Setembro","Out":"Outubro","Nov":"Novembro","Dez":"Dezembro",
+        }
+        _NCOLS  = 10
+        _COLS   = ["Empresa","Tipo","Número","Valor Bruto (R$)",
+                   "ICMS (R$)","PIS (R$)","COFINS (R$)","Volume (m³)","CGR Líquido (R$)","Status"]
+        _WIDTHS = [22, 8, 14, 18, 14, 14, 14, 14, 18, 10]
+        _FMTS   = ["@","@","@",_BRL,_BRL,_BRL,_BRL,_VOL,_BRL,"@"]
+
+        _BLUE_DARK  = "1A5276"
+        _BLUE_MED   = "2E86C1"
+        _BLUE_LIGHT = "D6EAF8"
+        _BLUE_XL    = "EBF5FB"
+
         ws = wb.create_sheet("🔍 Auditoria XML")
         ws.sheet_view.showGridLines = False
 
-        ws.merge_cells("A1:J1")
-        t = ws["A1"]
-        t.value = f"AUDITORIA XML — NF-e e CT-e  |  Período: {periodo or 'N/D'}"
-        t.fill = _fill(_BLUE)
-        t.font = _font(bold=True, size=14, color=_HEADER_FG)
-        t.alignment = _align("center")
-        ws.row_dimensions[1].height = 30
+        # Título
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NCOLS)
+        t = ws.cell(row=1, column=1,
+                    value=f"  AUDITORIA XML — NF-e e CT-e  |  Trimestre: {label_trimestre or 'N/D'}")
+        t.fill = _fill(_BLUE_DARK); t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("left"); ws.row_dimensions[1].height = 34
 
-        row = 3
-        mostrar_periodo = periodo is None
-        cols  = (["Período"] if mostrar_periodo else []) + ["Empresa", "Tipo", "Número",
-             "Valor Bruto (R$)", "ICMS (R$)", "PIS (R$)", "COFINS (R$)",
-             "Volume (m³)", "CGR Líquido (R$)", "Status"]
-        widths = ([14] if mostrar_periodo else []) + [22, 8, 14, 18, 14, 14, 14, 14, 18, 10]
-        _apply_header_row(ws, row, cols, widths, _BLUE)
-        row += 1
+        ws.row_dimensions[2].height = 6
+        for c in range(1, _NCOLS + 1):
+            ws.cell(row=2, column=c).fill = _fill("A9CCE3")
 
         if not itens:
-            ws.cell(row=row, column=1,
-                    value=f"Nenhum item de Auditoria XML registrado para o período '{periodo}'.")
+            ws.cell(row=4, column=1, value="Nenhum item de Auditoria XML registrado para este trimestre.")
             return
 
-        tot_bruto = tot_icms = tot_pis = tot_cofins = tot_vol = tot_cgr = 0.0
-        for i, it in enumerate(itens):
-            vb  = it.get("valor_total", 0.0)
-            ic  = it.get("icms", 0.0)
-            ps  = it.get("pis", 0.0)
-            cf  = it.get("cofins", 0.0)
-            vol = it.get("volume_total", 0.0)
-            cgr = it.get("cgr_liquido", 0.0)
-            tot_bruto += vb; tot_icms += ic; tot_pis += ps
-            tot_cofins += cf; tot_vol += vol; tot_cgr += cgr
+        from collections import defaultdict
+        grupos: dict[str, list] = defaultdict(list)
+        for it in itens:
+            grupos[it.get("periodo", "Sem Período")].append(it)
 
-            _apply_data_row(ws, row,
-                ([it.get("periodo", "")] if mostrar_periodo else []) + [it.get("empresa", ""), it.get("tipo", ""), it.get("numero", ""),
-                 vb, ic, ps, cf, vol, cgr, "OK"],
-                (["@"] if mostrar_periodo else []) + ["@", "@", "@", _BRL, _BRL, _BRL, _BRL, _VOL, _BRL, "@"],
-                alternate=(i % 2 == 1))
-            row += 1
+        ordem = list(meses or [])
+        for p in grupos:
+            if p not in ordem:
+                ordem.append(p)
 
-        # Totais
-        _apply_total_row(ws, row,
-            (["TOTAL"] if mostrar_periodo else []) + ["TOTAL", "", "", tot_bruto, tot_icms, tot_pis,
-             tot_cofins, tot_vol, tot_cgr, ""],
-            (["@"] if mostrar_periodo else []) + ["@", "@", "@", _BRL, _BRL, _BRL, _BRL, _VOL, _BRL, "@"],
-            bg="D6EAF8")
+        grand = {"bruto":0.0,"icms":0.0,"pis":0.0,"cofins":0.0,"vol":0.0,"cgr":0.0}
+        row = 3
+
+        for periodo_mes in ordem:
+            its = grupos.get(periodo_mes)
+            if not its:
+                continue
+
+            abrev   = periodo_mes.split("/")[0] if "/" in periodo_mes else periodo_mes
+            ano_mes = periodo_mes.split("/")[1] if "/" in periodo_mes else ""
+            mes_full = _MESES_FULL.get(abrev, abrev)
+            label_sec = f"  ── {mes_full}{'/'+ano_mes if ano_mes else ''} " + "─"*40
+
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=_NCOLS)
+            sec = ws.cell(row=row, column=1, value=label_sec)
+            sec.fill = _fill(_BLUE_MED); sec.font = _font(bold=True, color=_HEADER_FG, size=11)
+            sec.alignment = _align("left"); sec.border = _border()
+            ws.row_dimensions[row].height = 20; row += 1
+
+            _apply_header_row(ws, row, _COLS, _WIDTHS, _BLUE_MED); row += 1
+
+            sub = {"bruto":0.0,"icms":0.0,"pis":0.0,"cofins":0.0,"vol":0.0,"cgr":0.0}
+            for i, it in enumerate(its):
+                vb  = _to_float(it.get("valor_total"))
+                ic  = _to_float(it.get("icms"))
+                ps  = _to_float(it.get("pis"))
+                cf  = _to_float(it.get("cofins"))
+                vol = _to_float(it.get("volume_total"))
+                cgr = _to_float(it.get("cgr_liquido"))
+                sub["bruto"]+=vb; sub["icms"]+=ic; sub["pis"]+=ps
+                sub["cofins"]+=cf; sub["vol"]+=vol; sub["cgr"]+=cgr
+                _apply_data_row(ws, row,
+                    [it.get("empresa",""),it.get("tipo",""),it.get("numero",""),
+                     vb,ic,ps,cf,vol,cgr,"OK"], _FMTS, alternate=(i%2==1))
+                row += 1
+
+            # Subtotal do mês
+            label_sub = f"SUBTOTAL {mes_full.upper()}{'/'+ano_mes if ano_mes else ''}"
+            for ci in range(1, _NCOLS+1):
+                c = ws.cell(row=row, column=ci)
+                c.fill = _fill(_BLUE_LIGHT); c.border = _border()
+                c.font = _font(bold=True, size=11, color=_BLUE_DARK)
+            ws.cell(row=row, column=1, value=label_sub).alignment = _align("left")
+            for ci, key, fmt in [(4,"bruto",_BRL),(5,"icms",_BRL),(6,"pis",_BRL),
+                                  (7,"cofins",_BRL),(8,"vol",_VOL),(9,"cgr",_BRL)]:
+                c = ws.cell(row=row, column=ci, value=sub[key])
+                c.number_format=fmt; c.alignment=_align("right")
+                c.fill=_fill(_BLUE_LIGHT); c.border=_border()
+                c.font=_font(bold=True,size=11,color=_BLUE_DARK)
+            for k in sub: grand[k] += sub[k]
+            ws.row_dimensions[row].height = 20; row += 1
+            ws.row_dimensions[row].height = 8; row += 1
+
+        # Total Geral
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        tl = ws.cell(row=row, column=1, value="  ══ TOTAL GERAL DO TRIMESTRE ══")
+        tl.fill=_fill(_BLUE_DARK); tl.font=_font(bold=True,size=13,color=_HEADER_FG)
+        tl.alignment=_align("left"); tl.border=_border()
+        for ci in [2,3]: ws.cell(row=row,column=ci).fill=_fill(_BLUE_DARK); ws.cell(row=row,column=ci).border=_border()
+        for ci, key, fmt in [(4,"bruto",_BRL),(5,"icms",_BRL),(6,"pis",_BRL),
+                              (7,"cofins",_BRL),(8,"vol",_VOL),(9,"cgr",_BRL)]:
+            c = ws.cell(row=row, column=ci, value=grand[key])
+            c.fill=_fill(_BLUE_DARK); c.font=_font(bold=True,size=13,color=_HEADER_FG)
+            c.number_format=fmt; c.alignment=_align("right"); c.border=_border()
+        for ci in [10]: ws.cell(row=row,column=ci).fill=_fill(_BLUE_DARK); ws.cell(row=row,column=ci).border=_border()
+        ws.row_dimensions[row].height = 26
 
         ws.column_dimensions["A"].width = 22
         ws.column_dimensions["C"].width = 14
-        for col in "DEFGHIJ":
-            ws.column_dimensions[col].width = 16
+        for i, w in enumerate(_WIDTHS, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
 
     # ── Sheet 4: RET ────────────────────────────────────────────────────────
 
@@ -822,66 +919,112 @@ class ExcelConsolidado:
     # ── Sheet 6: CGF ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_cgf(wb, cgf: dict | list[dict] | None, periodo: str | None):
+    def _sheet_cgf(wb, cgf_lista: list[dict] | None, label_trimestre: str | None,
+                   meses: list[str] | None = None):
+        _MESES_FULL = {
+            "Jan":"Janeiro","Fev":"Fevereiro","Mar":"Março","Abr":"Abril",
+            "Mai":"Maio","Jun":"Junho","Jul":"Julho","Ago":"Agosto",
+            "Set":"Setembro","Out":"Outubro","Nov":"Novembro","Dez":"Dezembro",
+        }
+        _GOLD_DARK  = "7D6608"
+        _GOLD_MED   = "B7950B"
+        _GOLD_LIGHT = "FCF3CF"
+        _GOLD_XL    = "FEFDE7"
+        _NCOLS = 4
+
         ws = wb.create_sheet("📋 CGF")
         ws.sheet_view.showGridLines = False
 
-        ws.merge_cells("A1:D1")
-        t = ws["A1"]
-        t.value = f"VOLUME CGF — CONTA GRÁFICA DE FATURAMENTO  |  Período: {periodo or 'N/D'}"
-        t.fill = _fill(_GOLD)
-        t.font = _font(bold=True, size=14, color=_HEADER_FG)
-        t.alignment = _align("center")
-        ws.row_dimensions[1].height = 30
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NCOLS)
+        t = ws.cell(row=1, column=1,
+                    value=f"  VOLUME CGF — CONTA GRÁFICA DE FATURAMENTO  |  Trimestre: {label_trimestre or 'N/D'}")
+        t.fill = _fill(_GOLD_DARK); t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("left"); ws.row_dimensions[1].height = 34
 
-        row = 3
-        if periodo is None or isinstance(cgf, list):
-            registros = cgf if isinstance(cgf, list) else ([] if cgf is None else [cgf])
-            _apply_header_row(ws, row,
-                ["Período", "Volume Faturado", "Consumo Próprio", "Canceladas", "Devoluções", "Volume Final"],
-                [16, 18, 18, 16, 16, 16], _GOLD)
-            row += 1
-            for i, item in enumerate(registros):
-                _apply_data_row(ws, row,
-                    [item.get("periodo", ""), item.get("volume_faturado", 0.0), item.get("volume_consumo_proprio", 0.0),
-                     item.get("volume_canceladas", 0.0), item.get("volume_devolucoes", 0.0), item.get("volume_final", 0.0)],
-                    ["@", _VOL, _VOL, _VOL, _VOL, _VOL],
-                    alternate=(i % 2 == 1))
-                row += 1
+        ws.row_dimensions[2].height = 6
+        for c in range(1, _NCOLS + 1):
+            ws.cell(row=2, column=c).fill = _fill("F9E79F")
+
+        registros = cgf_lista or []
+        if not registros:
+            ws.cell(row=4, column=1, value="Nenhum dado CGF registrado para este trimestre.")
             return
 
-        data = cgf or {}
-        campos = [
-            ("(+) Volume Faturado (s/ cons. próprio)", data.get("volume_faturado", 0.0), _ROW_NORM),
-            ("   ↳ Consumo Próprio excluído",           data.get("volume_consumo_proprio", 0.0), _ROW_ALT),
-            ("(−) Volume Canceladas / Denegadas",       data.get("volume_canceladas", 0.0), "FADBD8"),
-            ("(−) Volume Devoluções",                   data.get("volume_devolucoes", 0.0), "FADBD8"),
-        ]
+        # Indexar por período para seguir a ordem de meses
+        idx = {r.get("periodo", ""): r for r in registros}
+        ordem = list(meses or [])
+        for p in idx:
+            if p not in ordem:
+                ordem.append(p)
 
-        _apply_header_row(ws, row, ["Componente", "Volume (m³)", "Sinal", "Obs."],
-                          [36, 20, 10, 30], _GOLD)
-        row += 1
-        sinais = ["+", "(−)", "(−)", "(−)"]
-        for (label, val, bg), sinal in zip(campos, sinais):
-            for col in range(1, 5):
-                c = ws.cell(row=row, column=col)
-                c.fill = _fill(bg)
-                c.border = _border()
-            ws.cell(row=row, column=1, value=label).font = _font()
-            ws.cell(row=row, column=1).alignment = _align("left")
-            v = ws.cell(row=row, column=2, value=val)
-            v.number_format = _VOL
-            v.alignment = _align("right")
-            ws.cell(row=row, column=3, value=sinal).alignment = _align("center")
-            row += 1
+        grand_vf = 0.0
+        row = 3
 
-        vf = data.get("volume_final", 0.0)
-        _apply_total_row(ws, row,
-            ["(=)  VOLUME FINAL CGF (VF)", vf, "=", ""],
-            ["@", _VOL, "@", "@"], bg="D5F5E3")
-        ws.row_dimensions[row].height = 22
+        def _cgf_cell(r, c, val, bg, bold=False, fmt="@", align_h="left"):
+            cell = ws.cell(row=r, column=c, value=val)
+            cell.fill = _fill(bg); cell.border = _border()
+            cell.font = _font(bold=bold, size=11)
+            cell.alignment = _align(align_h, "center")
+            if fmt != "@": cell.number_format = fmt
+            return cell
 
-        ws.column_dimensions["A"].width = 38
+        for periodo_mes in ordem:
+            data = idx.get(periodo_mes)
+            if not data:
+                continue
+
+            abrev    = periodo_mes.split("/")[0] if "/" in periodo_mes else periodo_mes
+            ano_mes  = periodo_mes.split("/")[1] if "/" in periodo_mes else ""
+            mes_full = _MESES_FULL.get(abrev, abrev)
+
+            # Cabeçalho do mês
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=_NCOLS)
+            sec = ws.cell(row=row, column=1,
+                          value=f"  ── {mes_full}{'/'+ano_mes if ano_mes else ''} " + "─"*40)
+            sec.fill = _fill(_GOLD_MED); sec.font = _font(bold=True, color=_HEADER_FG, size=11)
+            sec.alignment = _align("left"); sec.border = _border()
+            ws.row_dimensions[row].height = 20; row += 1
+
+            # Header de colunas
+            _apply_header_row(ws, row, ["Componente", "Volume (m³)", "Sinal", "Obs."],
+                              [38, 20, 10, 30], _GOLD_MED); row += 1
+
+            campos = [
+                ("(+) Volume Faturado (s/ cons. próprio)", data.get("volume_faturado", 0.0),    _ROW_NORM, "+"),
+                ("   ↳ Consumo Próprio excluído",           data.get("volume_consumo_proprio", 0.0), _ROW_ALT,  ""),
+                ("(−) Volume Canceladas / Denegadas",       data.get("volume_canceladas", 0.0),  "FADBD8",  "(−)"),
+                ("(−) Volume Devoluções",                   data.get("volume_devolucoes", 0.0),  "FADBD8",  "(−)"),
+            ]
+            for label, val, bg, sinal in campos:
+                _cgf_cell(row, 1, label, bg)
+                _cgf_cell(row, 2, val,   bg, fmt=_VOL, align_h="right")
+                _cgf_cell(row, 3, sinal, bg, align_h="center")
+                _cgf_cell(row, 4, "",    bg)
+                row += 1
+
+            # Volume Final do mês
+            vf = _to_float(data.get("volume_final"))
+            grand_vf += vf
+            _cgf_cell(row, 1, f"(=)  VOLUME FINAL CGF — {mes_full.upper()}", "D5F5E3", bold=True)
+            _cgf_cell(row, 2, vf, "D5F5E3", bold=True, fmt=_VOL, align_h="right")
+            _cgf_cell(row, 3, "=", "D5F5E3", align_h="center")
+            _cgf_cell(row, 4, "", "D5F5E3")
+            ws.row_dimensions[row].height = 20; row += 1
+
+            ws.row_dimensions[row].height = 8; row += 1
+
+        # Total Geral VF
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        tl = ws.cell(row=row, column=1, value="  ══ VOLUME FINAL TOTAL DO TRIMESTRE ══")
+        tl.fill=_fill(_GOLD_DARK); tl.font=_font(bold=True,size=13,color=_HEADER_FG)
+        tl.alignment=_align("left"); tl.border=_border()
+        for c in [2,3]: ws.cell(row=row,column=c).fill=_fill(_GOLD_DARK); ws.cell(row=row,column=c).border=_border()
+        tv = ws.cell(row=row, column=4, value=grand_vf)
+        tv.fill=_fill(_GOLD_DARK); tv.font=_font(bold=True,size=13,color=_HEADER_FG)
+        tv.number_format=_VOL; tv.alignment=_align("right"); tv.border=_border()
+        ws.row_dimensions[row].height = 26
+
+        ws.column_dimensions["A"].width = 40
         ws.column_dimensions["B"].width = 20
         ws.column_dimensions["C"].width = 10
         ws.column_dimensions["D"].width = 30

@@ -16,6 +16,33 @@ from Src.common.excel_final_destino import registrar_execucao_excel_final, obter
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
+_MESES_DETECT = {
+    "JANEIRO":1,"JAN":1,"FEVEREIRO":2,"FEV":2,"MARÇO":3,"MARCO":3,"MAR":3,
+    "ABRIL":4,"ABR":4,"MAIO":5,"MAI":5,"JUNHO":6,"JUN":6,
+    "JULHO":7,"JUL":7,"AGOSTO":8,"AGO":8,"SETEMBRO":9,"SET":9,
+    "OUTUBRO":10,"OUT":10,"NOVEMBRO":11,"NOV":11,"DEZEMBRO":12,"DEZ":12,
+}
+_MESES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+
+def _extrair_periodo_do_caminho(caminho: str) -> str:
+    """Detecta 'Jan/2026' a partir do nome das pastas no caminho."""
+    import re
+    from datetime import date
+    partes = Path(caminho).parts
+    tokens = []
+    for p in partes:
+        tokens.extend(re.split(r'[\s\-_\.]+', p.upper()))
+    mes_num = 0
+    for tok in reversed(tokens):          # testa do mais específico para o mais genérico
+        if tok in _MESES_DETECT:
+            mes_num = _MESES_DETECT[tok]
+            break
+    if not mes_num:
+        return ""
+    anos = re.findall(r'\b(20\d{2})\b', caminho)
+    ano = int(anos[-1]) if anos else date.today().year
+    return f"{_MESES_ABREV[mes_num - 1]}/{ano}"
+
 # Mapeando variavel de controle para facilitar
 PDF_ATIVADO = True # Assumimos True se pdfplumber estiver instalado
 OCR_ATIVADO = OCR_ENABLED
@@ -247,6 +274,12 @@ class TelaAuditoria(ctk.CTkFrame):
             self.pasta_selecionada = Path(pasta)
             self.lbl_pasta.configure(text=f"⏳ Lendo pastas em: {pasta}", text_color="#f39c12")
             self.lbl_status.configure(text="Carregando empresas da pasta selecionada...", text_color="#f39c12")
+
+            # Auto-detectar mês/ano pelo nome da pasta
+            periodo_detectado = _extrair_periodo_do_caminho(pasta)
+            if periodo_detectado and not self.periodo_comparacao_var.get().strip():
+                self.periodo_comparacao_var.set(periodo_detectado)
+
             self._thread_carregamento = threading.Thread(
                 target=self._worker_carregar_empresas,
                 args=(self.pasta_selecionada,),

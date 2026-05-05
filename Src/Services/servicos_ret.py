@@ -33,20 +33,20 @@ def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
     """
     Varre as partes do caminho em busca do nome de um mês (PT-BR).
     Retorna (mes_num 1-12, ano 4-digitos) ou (0, 0) se não encontrado.
-    O ano é o primeiro número de 4 dígitos no caminho; fallback = ano atual.
+    Prioriza a parte mais próxima do arquivo (subpasta imediata > pastas superiores).
     """
     from datetime import date
     partes = Path(caminho).parts
-    # Juntos todos os tokens das pastas (ignora o arquivo final)
-    tokens_pastas = []
-    for parte in partes[:-1]:
-        # Separa por espaço, hífen, underscore, ponto
-        tokens_pastas.extend(re.split(r'[\s\-_\.]+', parte.upper()))
-
+    # Inclui todas as partes (inclusive o nome do arquivo) em ordem reversa
+    # para dar prioridade à subpasta/arquivo mais específico.
     mes_num = 0
-    for token in tokens_pastas:
-        if token in _MESES_PATH:
-            mes_num = _MESES_PATH[token]
+    for parte in reversed(partes):
+        tokens = re.split(r'[\s\-_\.]+', parte.upper())
+        for token in tokens:
+            if token in _MESES_PATH:
+                mes_num = _MESES_PATH[token]
+                break
+        if mes_num:
             break
 
     # Procura ano de 4 dígitos no caminho completo (ex: "2026")

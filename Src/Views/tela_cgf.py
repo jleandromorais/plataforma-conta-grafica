@@ -1,12 +1,37 @@
+import re
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from pathlib import Path
+from datetime import date
 
 from Src.Services.servicos_cgf import ServicosCGF
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final, obter_periodos_trimestre
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
+
+_MESES_DETECT_CGF = {
+    "JANEIRO":1,"JAN":1,"FEVEREIRO":2,"FEV":2,"MARÇO":3,"MARCO":3,"MAR":3,
+    "ABRIL":4,"ABR":4,"MAIO":5,"MAI":5,"JUNHO":6,"JUN":6,
+    "JULHO":7,"JUL":7,"AGOSTO":8,"AGO":8,"SETEMBRO":9,"SET":9,
+    "OUTUBRO":10,"OUT":10,"NOVEMBRO":11,"NOV":11,"DEZEMBRO":12,"DEZ":12,
+}
+_ABREVS_CGF = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+
+def _periodo_do_caminho_cgf(caminho: str) -> str:
+    """Extrai 'Jan/2026' do nome do ficheiro ou pasta."""
+    tokens = re.split(r'[\s\-_\./\\]+', Path(caminho).stem.upper())
+    tokens += re.split(r'[\s\-_\./\\]+', Path(caminho).parent.name.upper())
+    mes_num = 0
+    for tok in reversed(tokens):
+        if tok in _MESES_DETECT_CGF:
+            mes_num = _MESES_DETECT_CGF[tok]
+            break
+    if not mes_num:
+        return ""
+    anos = re.findall(r'\b(20\d{2})\b', caminho)
+    ano = int(anos[-1]) if anos else date.today().year
+    return f"{_ABREVS_CGF[mes_num - 1]}/{ano}"
 
 APP_TITLE = "CGF - Somatório de Volume Faturado"
 APP_SIZE  = "1050x700"
@@ -214,6 +239,15 @@ class TelaCGF(ctk.CTkFrame):
             self.selected_files = list(paths)
             self._refresh_files_listbox()
             self._log(f"{len(self.selected_files)} arquivo(s) selecionado(s).")
+
+            # Auto-detectar período pelo nome do ficheiro ou pasta
+            if not self.periodo_cgf.get().strip():
+                for p in paths:
+                    periodo_det = _periodo_do_caminho_cgf(p)
+                    if periodo_det:
+                        self.periodo_cgf.set(periodo_det)
+                        self._log(f"[AUTO] Período detectado: {periodo_det}")
+                        break
 
     def clear_files(self):
         self.selected_files = []

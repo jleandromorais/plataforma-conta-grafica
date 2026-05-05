@@ -209,6 +209,7 @@ class TelaRET(ctk.CTkFrame):
         self._mes_sel  = agora.month   # 1-12
         self._ano_sel  = agora.year
         self._btns_mes = {}
+        self._periodo_manual = False   # True quando o usuário clicou num mês
 
         ctk.CTkLabel(
             parent, text="Período de Referência",
@@ -268,6 +269,7 @@ class TelaRET(ctk.CTkFrame):
 
     def _selecionar_mes(self, mes: int):
         self._mes_sel = mes
+        self._periodo_manual = True
         self._atualizar_visual_meses()
 
     def _ano_anterior(self):
@@ -281,12 +283,14 @@ class TelaRET(ctk.CTkFrame):
         self._atualizar_visual_meses()
 
     def _auto_detectar_periodo(self):
-        """Após processar PDFs, ajusta o seletor para o mês mais frequente nas pastas."""
+        """Após processar PDFs, ajusta o seletor se o usuário não escolheu manualmente."""
+        if self._periodo_manual:
+            return  # respeita a escolha do usuário
         from collections import Counter
         refs = [d.get("mes_ref", "") for d in self.dados_processados if d.get("mes_ref")]
         if not refs:
             return
-        mais_comum = Counter(refs).most_common(1)[0][0]  # ex: "Jan/2026"
+        mais_comum = Counter(refs).most_common(1)[0][0]  # ex: "Fev/2026"
         try:
             abrev, ano_str = mais_comum.split("/")
             mes_num = self._MESES_ABREV.index(abrev) + 1
@@ -331,6 +335,7 @@ class TelaRET(ctk.CTkFrame):
         
         if pasta:
             self.pasta_selecionada = pasta
+            self._periodo_manual = False  # nova pasta → permite auto-detecção
             self.lbl_pasta.configure(
                 text=f"Pasta: {pasta}",
                 text_color="#4CAF50"
