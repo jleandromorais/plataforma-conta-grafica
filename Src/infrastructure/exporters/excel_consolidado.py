@@ -137,6 +137,40 @@ def _section_title(ws, row_num: int, text: str, ncols: int, bg: str):
 _BRL = 'R$ #,##0.00'
 _VOL = '#,##0.00'
 _VOL4 = '#,##0.0000'
+
+# Mapa de abreviatura → nome completo do mês (PT-BR)
+_MESES_FULL: dict[str, str] = {
+    "Jan": "Janeiro",  "Fev": "Fevereiro", "Mar": "Março",
+    "Abr": "Abril",    "Mai": "Maio",       "Jun": "Junho",
+    "Jul": "Julho",    "Ago": "Agosto",     "Set": "Setembro",
+    "Out": "Outubro",  "Nov": "Novembro",   "Dez": "Dezembro",
+}
+
+# Ordem numérica de cada abreviatura
+_MES_ORD: dict[str, int] = {ab: i for i, ab in enumerate(_MESES_FULL, 1)}
+
+# Janelas de meses válidos por módulo (abreviaturas PT-BR)
+_MESES_PMPV = {"Fev", "Mar", "Abr"}   # Fevereiro a Abril
+_MESES_RET  = {"Jan", "Fev", "Mar"}   # Janeiro a Março
+# RPV (CGR + CGF): sem restrição de mês — usa todos disponíveis
+
+def _abrev_de_periodo(periodo: str) -> str:
+    """Extrai a abreviatura do mês de 'Mmm/YYYY' → 'Mmm'."""
+    return periodo.split("/")[0].capitalize()[:3] if "/" in periodo else periodo[:3].capitalize()
+
+def _nome_mes_completo(periodo: str) -> str:
+    """'Abr/2026' → 'Abril/2026'."""
+    ab = _abrev_de_periodo(periodo)
+    ano = periodo.split("/")[1] if "/" in periodo else ""
+    nome = _MESES_FULL.get(ab, ab)
+    return f"{nome}/{ano}" if ano else nome
+
+def _agrupar_em_trimestres(meses: list[str]) -> list[list[str]]:
+    """Divide uma lista de meses ordenados em grupos de 3 (trimestres).
+    Ex: ['Jan/26','Fev/26','Mar/26','Abr/26'] → [['Jan/26','Fev/26','Mar/26'],['Abr/26']]
+    """
+    return [meses[i:i+3] for i in range(0, len(meses), 3)]
+
 _NUM = '#,##0'
 
 
@@ -243,30 +277,38 @@ class ExcelConsolidado:
 
         # ── Helper: períodos válidos disponíveis em cada tabela ─────────────────
         def _ord(p):
-            ab = p.split("/")[0].capitalize()[:3]
+            ab = _abrev_de_periodo(p)
             an = p.split("/")[1] if "/" in p else "0"
-            mn = {"Jan":1,"Fev":2,"Mar":3,"Abr":4,"Mai":5,"Jun":6,
-                  "Jul":7,"Ago":8,"Set":9,"Out":10,"Nov":11,"Dez":12}.get(ab, 0)
-            return int(an) * 12 + mn
+            return int(an) * 12 + _MES_ORD.get(ab, 0)
 
-        def _periodos_tabela(tabela: str, col_periodo: str = "periodo") -> list[str]:
-            """Retorna períodos Mmm/YYYY distintos presentes na tabela, filtrados pelo trimestre ativo."""
+        def _periodos_tabela(
+            tabela: str,
+            col_periodo: str = "periodo",
+            filtro_modulo: set[str] | None = None,
+        ) -> list[str]:
+            """Retorna períodos Mmm/YYYY distintos da tabela.
+
+            filtro_modulo: conjunto de abreviaturas permitidas (ex: _MESES_RET).
+            Se None, não aplica filtro de módulo — usa apenas o trimestre ativo.
+            """
             try:
                 db.cursor.execute(f"SELECT DISTINCT {col_periodo} FROM {tabela}")
                 rows = [r[0] for r in db.cursor.fetchall() if r[0] and _mes_valido(r[0])]
             except Exception:
                 return []
-            # Se temos um trimestre definido, filtra apenas os meses dele
-            if meses:
-                meses_norm = {m.strip() for m in meses}
-                rows = [r for r in rows if r.strip() in meses_norm]
+            if filtro_modulo:
+                # Módulo com janela fixa (RET=Jan-Mar, PMPV=Fev-Abr):
+                # filtra só pelas abreviaturas permitidas.
+                rows = [r for r in rows if _abrev_de_periodo(r) in filtro_modulo]
+            # Auditoria, CGF, Conciliação: sem filtro — todos os meses válidos do banco,
+            # ordenados cronologicamente do mais antigo para o mais recente.
             return sorted(rows, key=_ord)
 
-        # Cada módulo descobre os seus próprios meses disponíveis no BD,
-        # mas limitado ao trimestre ativo passado em periodos_trimestre.
-        meses_ret   = _periodos_tabela("ret_itens")
-        meses_audit = _periodos_tabela("auditoria_itens")
-        meses_cgf   = _periodos_tabela("cgf_resumo")
+        # Cada módulo usa apenas os meses da sua janela de negócio:
+        # RET  = Janeiro–Março  |  PMPV = Fevereiro–Abril  |  RPV/CGF/Auditoria = sem restrição
+        meses_ret   = _periodos_tabela("ret_itens",       filtro_modulo=_MESES_RET)
+        meses_audit = _periodos_tabela("auditoria_itens")           # RPV/CGR — sem restrição
+        meses_cgf   = _periodos_tabela("cgf_resumo")                # RPV/CGF — sem restrição
         meses_conc  = _periodos_tabela("concilia_itens")
 
         # Labels de cada módulo para o título da aba
@@ -298,9 +340,12 @@ class ExcelConsolidado:
         # CGF de referência = último mês com dados
         cgf = cgf_lista[-1] if cgf_lista else None
 
+        # PMPV: filtrar trimestre para incluir só Fev–Abr
+        meses_pmpv = [m for m in meses if _abrev_de_periodo(m) in _MESES_PMPV] or meses
+
         # Sheets — cada um com o seu label e meses reais
         ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, label_trimestre)
-        ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes, meses)
+        ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes, meses_pmpv)
         ExcelConsolidado._sheet_auditoria(wb, audit_itens, _label(meses_audit), meses_audit)
         ExcelConsolidado._sheet_ret(wb, ret_itens, _label(meses_ret), meses_ret)
         ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
@@ -487,19 +532,10 @@ class ExcelConsolidado:
 
     @staticmethod
     def _sheet_pmpv(wb, db: DatabasePMPV, sessoes, meses_trimestre: list[str] | None = None):
-        _MESES_FULL = {
-            "Jan":"Janeiro","Fev":"Fevereiro","Mar":"Março","Abr":"Abril",
-            "Mai":"Maio","Jun":"Junho","Jul":"Julho","Ago":"Agosto",
-            "Set":"Setembro","Out":"Outubro","Nov":"Novembro","Dez":"Dezembro",
-        }
         def _nome_mes(mes_num: int) -> str:
             """Converte posição 1/2/3 no nome real do mês do trimestre."""
             if meses_trimestre and mes_num <= len(meses_trimestre):
-                p = meses_trimestre[mes_num - 1]
-                abrev = p.split("/")[0] if "/" in p else p
-                nome = _MESES_FULL.get(abrev, abrev)
-                ano = p.split("/")[1] if "/" in p else ""
-                return f"{nome}/{ano}" if ano else nome
+                return _nome_mes_completo(meses_trimestre[mes_num - 1])
             return f"Mês {mes_num}"
 
         ws = wb.create_sheet("📊 PMPV")
@@ -628,11 +664,6 @@ class ExcelConsolidado:
     @staticmethod
     def _sheet_auditoria(wb, itens: list[dict], label_trimestre: str | None,
                          meses: list[str] | None = None):
-        _MESES_FULL = {
-            "Jan":"Janeiro","Fev":"Fevereiro","Mar":"Março","Abr":"Abril",
-            "Mai":"Maio","Jun":"Junho","Jul":"Julho","Ago":"Agosto",
-            "Set":"Setembro","Out":"Outubro","Nov":"Novembro","Dez":"Dezembro",
-        }
         _NCOLS  = 10
         _COLS   = ["Empresa","Tipo","Número","Valor Bruto (R$)",
                    "ICMS (R$)","PIS (R$)","COFINS (R$)","Volume (m³)","CGR Líquido (R$)","Status"]
@@ -675,14 +706,29 @@ class ExcelConsolidado:
         grand = {"bruto":0.0,"icms":0.0,"pis":0.0,"cofins":0.0,"vol":0.0,"cgr":0.0}
         row = 3
 
+        trimestres = _agrupar_em_trimestres(ordem)
+        meses_por_trimestre = {m: i for i, tri in enumerate(trimestres) for m in tri}
+
+        tri_atual = -1
         for periodo_mes in ordem:
             its = grupos.get(periodo_mes)
             if not its:
                 continue
 
-            abrev   = periodo_mes.split("/")[0] if "/" in periodo_mes else periodo_mes
-            ano_mes = periodo_mes.split("/")[1] if "/" in periodo_mes else ""
-            mes_full = _MESES_FULL.get(abrev, abrev)
+            # Banner de trimestre a cada novo grupo de 3 meses
+            tri_idx = meses_por_trimestre.get(periodo_mes, -1)
+            if tri_idx != tri_atual:
+                tri_atual = tri_idx
+                tri_meses = trimestres[tri_idx]
+                label_tri = "  🗓  TRIMESTRE:  " + "  ·  ".join(tri_meses)
+                ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=_NCOLS)
+                bt = ws.cell(row=row, column=1, value=label_tri)
+                bt.fill = _fill(_BLUE_DARK); bt.font = _font(bold=True, color="F0F8FF", size=12)
+                bt.alignment = _align("left"); bt.border = _border()
+                ws.row_dimensions[row].height = 24; row += 1
+
+            ano_mes  = periodo_mes.split("/")[1] if "/" in periodo_mes else ""
+            mes_full = _nome_mes_completo(periodo_mes).split("/")[0]
             label_sec = f"  ── {mes_full}{'/'+ano_mes if ano_mes else ''} " + "─"*40
 
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=_NCOLS)
@@ -749,12 +795,6 @@ class ExcelConsolidado:
     @staticmethod
     def _sheet_ret(wb, itens: list[dict], label_trimestre: str | None,
                    meses: list[str] | None = None):
-        _MESES_FULL = {
-            "Jan": "Janeiro",  "Fev": "Fevereiro", "Mar": "Março",
-            "Abr": "Abril",    "Mai": "Maio",       "Jun": "Junho",
-            "Jul": "Julho",    "Ago": "Agosto",     "Set": "Setembro",
-            "Out": "Outubro",  "Nov": "Novembro",   "Dez": "Dezembro",
-        }
         _NCOLS = 9
         _COLS  = ["Arquivo", "Tipo Encargo", "Empresa", "Tipo Nota",
                   "Nº ND", "Vencimento", "Valor Total (R$)", "Moeda", "Contrib. EC"]
@@ -805,15 +845,30 @@ class ExcelConsolidado:
         grand_total = 0.0
         row = 3
 
+        trimestres = _agrupar_em_trimestres(ordem)
+        meses_por_trimestre = {m: i for i, tri in enumerate(trimestres) for m in tri}
+        tri_atual = -1
+
         for periodo_mes in ordem:
             itens_mes = grupos.get(periodo_mes)
             if not itens_mes:
                 continue
 
+            # Banner de trimestre a cada novo grupo de 3 meses
+            tri_idx = meses_por_trimestre.get(periodo_mes, -1)
+            if tri_idx != tri_atual:
+                tri_atual = tri_idx
+                tri_meses = trimestres[tri_idx]
+                label_tri = "  🗓  TRIMESTRE:  " + "  ·  ".join(tri_meses)
+                ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=_NCOLS)
+                bt = ws.cell(row=row, column=1, value=label_tri)
+                bt.fill = _fill(_ORANGE_DARK); bt.font = _font(bold=True, color="FFF8F0", size=12)
+                bt.alignment = _align("left"); bt.border = _border()
+                ws.row_dimensions[row].height = 24; row += 1
+
             # Nome completo do mês para o cabeçalho da seção
-            abrev = periodo_mes.split("/")[0] if "/" in periodo_mes else periodo_mes
-            mes_full = _MESES_FULL.get(abrev, abrev)
             ano_mes  = periodo_mes.split("/")[1] if "/" in periodo_mes else ""
+            mes_full = _nome_mes_completo(periodo_mes).split("/")[0]
             label_mes = f"  ── {mes_full}{'/'+ano_mes if ano_mes else ''} " + "─" * 40
 
             # Cabeçalho da seção do mês (laranja médio)
@@ -997,11 +1052,6 @@ class ExcelConsolidado:
     @staticmethod
     def _sheet_cgf(wb, cgf_lista: list[dict] | None, label_trimestre: str | None,
                    meses: list[str] | None = None, db=None):
-        _MESES_FULL = {
-            "Jan":"Janeiro","Fev":"Fevereiro","Mar":"Março","Abr":"Abril",
-            "Mai":"Maio","Jun":"Junho","Jul":"Julho","Ago":"Agosto",
-            "Set":"Setembro","Out":"Outubro","Nov":"Novembro","Dez":"Dezembro",
-        }
         _GOLD_DARK  = "7D6608"
         _GOLD_MED   = "B7950B"
         _GOLD_LIGHT = "FCF3CF"
@@ -1045,14 +1095,29 @@ class ExcelConsolidado:
             if fmt != "@": cell.number_format = fmt
             return cell
 
+        trimestres = _agrupar_em_trimestres(ordem)
+        meses_por_trimestre = {m: i for i, tri in enumerate(trimestres) for m in tri}
+        tri_atual = -1
+
         for periodo_mes in ordem:
             data = idx.get(periodo_mes)
             if not data:
                 continue
 
-            abrev    = periodo_mes.split("/")[0] if "/" in periodo_mes else periodo_mes
+            # Banner de trimestre a cada novo grupo de 3 meses
+            tri_idx = meses_por_trimestre.get(periodo_mes, -1)
+            if tri_idx != tri_atual:
+                tri_atual = tri_idx
+                tri_meses = trimestres[tri_idx]
+                label_tri = "  🗓  TRIMESTRE:  " + "  ·  ".join(tri_meses)
+                ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=_NCOLS)
+                bt = ws.cell(row=row, column=1, value=label_tri)
+                bt.fill = _fill(_GOLD_DARK); bt.font = _font(bold=True, color="FFFFF0", size=12)
+                bt.alignment = _align("left"); bt.border = _border()
+                ws.row_dimensions[row].height = 24; row += 1
+
             ano_mes  = periodo_mes.split("/")[1] if "/" in periodo_mes else ""
-            mes_full = _MESES_FULL.get(abrev, abrev)
+            mes_full = _nome_mes_completo(periodo_mes).split("/")[0]
 
             # Busca CGF em R$ da tabela consolidacao para este período
             cgf_rs_mes = 0.0

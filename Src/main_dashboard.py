@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox
+from pathlib import Path
 from PIL import Image
 import os
 
@@ -18,6 +19,12 @@ try:
     from Src.Views.tela_pr import TelaPR
     from Src.Views.tela_pv import TelaPV
     from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
+    from Src.common.excel_final_destino import (
+        obter_periodos_trimestre,
+        EXCEL_FIXO_PATH,
+        EXCEL_FIXO_NOME,
+    )
+    from Src.Database.database import DatabasePMPV
 
 except ImportError as e:
     print(f"Erro de importação dos módulos da aplicação: {e}")
@@ -246,24 +253,77 @@ class PlataformaFinanceira(ctk.CTk):
             messagebox.showerror("Erro", f"Erro ao abrir PV: {e}")
 
     def exportar_relatorio_consolidado(self):
+        """Gera/atualiza o Excel fixo consolidado. Sempre sobrescreve o mesmo arquivo."""
+        periodo_resultado: list[str | None] = [None]
+        cancelado: list[bool] = [False]
+
+        modal = ctk.CTkToplevel(self)
+        modal.title("Exportar Excel Final (Módulo 9)")
+        modal.geometry("520x240")
+        modal.resizable(False, False)
+        modal.transient(self)
+        modal.grab_set()
+
+        ctk.CTkLabel(
+            modal,
+            text="Exportar Excel Final Consolidado",
+            font=ctk.CTkFont(size=15, weight="bold"),
+        ).pack(pady=(16, 6), padx=16, anchor="w")
+
+        ctk.CTkLabel(
+            modal,
+            text="Período principal (ex: Abr/2026). Deixe vazio para incluir tudo:",
+            font=ctk.CTkFont(size=12),
+        ).pack(pady=(0, 6), padx=16, anchor="w")
+
+        entry = ctk.CTkEntry(modal, placeholder_text="Ex.: Abr/2026")
+        entry.pack(fill="x", padx=16, pady=(0, 4))
+        entry.focus_set()
+
+        info_lbl = ctk.CTkLabel(modal, text="", text_color="#ff6b6b", font=ctk.CTkFont(size=11))
+        info_lbl.pack(fill="x", padx=16, pady=(0, 4), anchor="w")
+
+        ctk.CTkLabel(
+            modal,
+            text=f"Arquivo: {Path(EXCEL_FIXO_PATH).name}",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(padx=16, anchor="w")
+
+        btn_frame = ctk.CTkFrame(modal)
+        btn_frame.pack(side="bottom", fill="x", pady=12)
+
+        def on_ok():
+            texto = entry.get().strip()
+            periodo_resultado[0] = texto if texto else None
+            modal.destroy()
+
+        def on_cancel():
+            cancelado[0] = True
+            modal.destroy()
+
+        ctk.CTkButton(btn_frame, text="Cancelar", command=on_cancel, width=120).pack(side="right", padx=12)
+        ctk.CTkButton(btn_frame, text="Exportar", command=on_ok, width=120, fg_color="#16a085").pack(side="right")
+
+        modal.wait_window()
+
+        if cancelado[0]:
+            return
+
         try:
-            periodo = simpledialog.askstring(
-                "Exportar Relatório Consolidado",
-                "Digite o período para filtrar os dados (ex: Dez/2025).\n\n"
-                "Deixe em branco para incluir todos os dados disponíveis:",
-                parent=self,
+            periodo_filtro = periodo_resultado[0]
+
+            periodos_trimestre = obter_periodos_trimestre(periodo_filtro) if periodo_filtro else None
+
+            arquivo = ExcelConsolidado.exportar(
+                periodo=periodo_filtro,
+                nome_arquivo=EXCEL_FIXO_PATH,
+                periodos_trimestre=periodos_trimestre,
             )
-            # None = usuário cancelou; "" = deixou em branco (todos)
-            if periodo is None:
-                return
-
-            periodo_filtro = periodo.strip() if periodo.strip() else None
-
-            arquivo = ExcelConsolidado.exportar(periodo=periodo_filtro)
             messagebox.showinfo(
-                "Relatório Exportado ✅",
-                f"Relatório gerado com sucesso!\n\n📁 {arquivo}\n\n"
-                "O arquivo foi aberto automaticamente."
+                "Excel Exportado ✅",
+                f"Relatório atualizado com sucesso!\n\n📁 {Path(arquivo).name}\n\n"
+                "O arquivo foi aberto automaticamente.",
             )
         except Exception as e:
             messagebox.showerror("Erro ao Exportar", f"Não foi possível gerar o relatório:\n{e}")

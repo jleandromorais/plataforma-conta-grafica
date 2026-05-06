@@ -206,7 +206,17 @@ class TelaPMPV(ctk.CTkFrame):
     def _atualizar_trimestre(self, _=None):
         tri = self.combo_trimestre.get()
         if not tri or tri not in self.trimestres: return
-        biss = self.chk_biss.get()
+        try:
+            ano = int(self.entry_ano.get())
+        except (ValueError, AttributeError):
+            ano = datetime.now().year
+        import calendar
+        biss = calendar.isleap(ano)
+        # Sincroniza a checkbox com a detecção automática
+        if biss:
+            self.chk_biss.select()
+        else:
+            self.chk_biss.deselect()
         for i, mes_idx in enumerate(self.trimestres[tri]):
             m_atual = self.lista_meses[mes_idx]
             dias = self.mapa_dias[m_atual]

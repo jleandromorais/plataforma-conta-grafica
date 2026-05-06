@@ -135,6 +135,25 @@ class DatabasePMPV:
         """)
 
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sr_trimestre (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                trimestre        TEXT NOT NULL,
+                mes              TEXT NOT NULL,
+                vp               REAL DEFAULT 0,
+                vf               REAL DEFAULT 0,
+                pr               REAL DEFAULT 0,
+                selic_mensal     REAL DEFAULT 0,
+                diferenca        REAL DEFAULT 0,
+                sr_parcela       REAL DEFAULT 0,
+                sr_selic         REAL DEFAULT 0,
+                sr_anterior      REAL DEFAULT 0,
+                total            REAL DEFAULT 0,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(trimestre, mes)
+            )
+        """)
+
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS cgf_resumo (
                 periodo                 TEXT PRIMARY KEY,
                 volume_faturado         REAL DEFAULT 0,
@@ -418,14 +437,15 @@ class DatabasePMPV:
             self.criar_periodo_consolidacao(periodo)
 
     def criar_periodo_consolidacao(self, periodo: str, obs: str = "") -> int:
-        """Cria um novo período de consolidação"""
+        """Cria o período na consolidação se ainda não existir (idempotente)."""
         periodo = self._normalizar_periodo(periodo)
         self.cursor.execute(
-            "INSERT INTO consolidacao (periodo, observacoes) VALUES (?, ?)", 
-            (periodo, obs)
+            "INSERT OR IGNORE INTO consolidacao (periodo, observacoes) VALUES (?, ?)",
+            (periodo, obs),
         )
         self.conn.commit()
-        return self.cursor.lastrowid
+        self.cursor.execute("SELECT id FROM consolidacao WHERE periodo = ?", (periodo,))
+        return self.cursor.fetchone()[0]
     
     def _update_consolidacao(self, periodo: str, **campos):
         """
@@ -789,6 +809,49 @@ class DatabasePMPV:
         """, (periodo, vp, vf, pr, sr))
         self.conn.commit()
 
+    def salvar_sr_trimestre(self, trimestre: str, meses: list[dict]):
+        """Salva os dados mensais do SR trimestral.
+        Cada dict em meses deve ter: mes, vp, vf, pr, selic_mensal,
+        diferenca, sr_parcela, sr_selic, sr_anterior, total.
+        """
+        for m in meses:
+            self.cursor.execute("""
+                INSERT INTO sr_trimestre
+                    (trimestre, mes, vp, vf, pr, selic_mensal,
+                     diferenca, sr_parcela, sr_selic, sr_anterior, total,
+                     data_atualizacao)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                ON CONFLICT(trimestre, mes) DO UPDATE SET
+                    vp=excluded.vp, vf=excluded.vf, pr=excluded.pr,
+                    selic_mensal=excluded.selic_mensal,
+                    diferenca=excluded.diferenca,
+                    sr_parcela=excluded.sr_parcela,
+                    sr_selic=excluded.sr_selic,
+                    sr_anterior=excluded.sr_anterior,
+                    total=excluded.total,
+                    data_atualizacao=CURRENT_TIMESTAMP
+            """, (
+                trimestre, m["mes"],
+                m.get("vp", 0), m.get("vf", 0), m.get("pr", 0),
+                m.get("selic_mensal", 0), m.get("diferenca", 0),
+                m.get("sr_parcela", 0), m.get("sr_selic", 0),
+                m.get("sr_anterior", 0), m.get("total", 0),
+            ))
+        self.conn.commit()
+
+    def buscar_sr_trimestre(self, trimestre: str) -> list[dict]:
+        self.cursor.execute(
+            "SELECT * FROM sr_trimestre WHERE trimestre=? ORDER BY id",
+            (trimestre,)
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
+    def listar_sr_trimestres(self) -> list[str]:
+        self.cursor.execute(
+            "SELECT DISTINCT trimestre FROM sr_trimestre ORDER BY trimestre DESC"
+        )
+        return [r[0] for r in self.cursor.fetchall()]
+
     def buscar_sr(self, periodo: str) -> Dict:
         return self._primeiro_por_periodo("sr_resultados", periodo)
 
@@ -921,6 +984,30 @@ class DatabasePMPV:
 
     def desativar_sessao_excel_final_ativa(self):
         self.cursor.execute("UPDATE excel_final_sessoes SET ativo = 0 WHERE ativo = 1")
+        self.conn.commit()
+
+    def zerar_sessao_excel_final(self, nome_sessao_fixa: str, caminho_fixo: str):
+        """Limpa execuções da sessão fixa e a reativa zerada, pronta para novo ciclo."""
+        self.cursor.execute("UPDATE excel_final_sessoes SET ativo = 0")
+        self.cursor.execute(
+            "DELETE FROM excel_final_execucoes WHERE nome_sessao = ?",
+            (nome_sessao_fixa,),
+        )
+        self.cursor.execute(
+            "SELECT id FROM excel_final_sessoes WHERE nome = ?",
+            (nome_sessao_fixa,),
+        )
+        row = self.cursor.fetchone()
+        if row:
+            self.cursor.execute(
+                "UPDATE excel_final_sessoes SET caminho_arquivo = ?, ativo = 1, data_atualizacao = CURRENT_TIMESTAMP WHERE id = ?",
+                (caminho_fixo, row[0]),
+            )
+        else:
+            self.cursor.execute(
+                "INSERT INTO excel_final_sessoes (nome, caminho_arquivo, ativo, data_atualizacao) VALUES (?, ?, 1, CURRENT_TIMESTAMP)",
+                (nome_sessao_fixa, caminho_fixo),
+            )
         self.conn.commit()
 
     def registrar_execucao_excel_final(
