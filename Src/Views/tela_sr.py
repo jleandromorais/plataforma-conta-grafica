@@ -186,11 +186,11 @@ class TelaSR(ctk.CTkFrame):
                       font=("Roboto", 11), fg_color=INP,
                       command=self._carregar_sessoes).pack(side="left")
 
-        # Seleção do trimestre SR
+        # Seleção do trimestre
         row2 = ctk.CTkFrame(load, fg_color="transparent")
-        row2.pack(fill="x", padx=16, pady=(0, 4))
+        row2.pack(fill="x", padx=16, pady=(0, 10))
 
-        ctk.CTkLabel(row2, text="Trimestre SR:", font=("Roboto", 11),
+        ctk.CTkLabel(row2, text="Trimestre:", font=("Roboto", 11),
                      text_color=MUTED, width=100).pack(side="left")
 
         # Combo ano
@@ -222,48 +222,6 @@ class TelaSR(ctk.CTkFrame):
         ctk.CTkButton(row2, text="Aplicar trimestre", width=130, height=30,
                       font=("Roboto", 11), fg_color=INP, hover_color=AZUL,
                       command=self._aplicar_trimestre).pack(side="left", padx=(10, 0))
-
-        # Mês anterior ao trimestre SR (1º mês do trimestre PMPV)
-        row3 = ctk.CTkFrame(load, fg_color="transparent")
-        row3.pack(fill="x", padx=16, pady=(0, 10))
-
-        ctk.CTkLabel(
-            row3,
-            text="Mês anterior:",
-            font=("Roboto", 11),
-            text_color=AMAR,
-            width=100,
-        ).pack(side="left")
-
-        self.combo_mes_ant = ctk.CTkComboBox(
-            row3, values=MESES_ANO, width=80, font=("Roboto", 11), state="readonly"
-        )
-        self.combo_mes_ant.set("Dez")
-        self.combo_mes_ant.pack(side="left", padx=2)
-
-        self.entry_ano_ant = ctk.CTkEntry(row3, width=70, justify="center",
-                                           font=("Roboto", 11))
-        self.entry_ano_ant.insert(0, str(datetime.datetime.now().year - 1))
-        self.entry_ano_ant.pack(side="left", padx=(2, 6))
-
-        ctk.CTkLabel(
-            row3,
-            text="dias no mês:",
-            font=("Roboto", 11),
-            text_color=MUTED,
-        ).pack(side="left", padx=(6, 2))
-
-        self.entry_dias_ant = ctk.CTkEntry(row3, width=50, justify="center",
-                                            font=("Roboto", 11))
-        self.entry_dias_ant.insert(0, "31")
-        self.entry_dias_ant.pack(side="left", padx=(0, 10))
-
-        ctk.CTkLabel(
-            row3,
-            text="⚠ 1º mês do trimestre PMPV — preencha para calcular o SR corretamente",
-            font=("Roboto", 10, "italic"),
-            text_color=MUTED,
-        ).pack(side="left")
 
         # LINHAS DOS MESES (scroll)
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
@@ -325,7 +283,7 @@ class TelaSR(ctk.CTkFrame):
         ]
 
     def _aplicar_trimestre(self):
-        """Reconstrói as linhas de mês e sugere automaticamente o mês anterior."""
+        """Reconstrói as linhas de mês conforme o trimestre selecionado."""
         for w in self.scroll.winfo_children():
             w.destroy()
         self._linhas.clear()
@@ -333,40 +291,11 @@ class TelaSR(ctk.CTkFrame):
         for label in self._get_trimestre_labels():
             linha = _LinhasMes(self.scroll, label)
             linha.pack(fill="x", pady=4)
+            # recalcula ao editar qualquer campo
             for ent in (linha.e_vp, linha.e_vf, linha.e_pr,
                         linha.e_selic, linha.e_sr_ant):
                 ent.bind("<KeyRelease>", lambda _e: self._calcular())
             self._linhas.append(linha)
-
-        # Sugere o mês anterior ao 1º mês do trimestre SR
-        self._sugerir_mes_anterior()
-
-    def _sugerir_mes_anterior(self):
-        """Preenche combo/ano do mês anterior com o mês que precede m1 do trimestre SR."""
-        m1 = self.combo_m1.get()
-        try:
-            idx = MESES_ANO.index(m1)
-        except ValueError:
-            return
-        idx_ant = (idx - 1) % 12
-        mes_ant = MESES_ANO[idx_ant]
-        self.combo_mes_ant.set(mes_ant)
-
-        # Ajusta o ano: se o mês anterior for Dez e m1 for Jan, usa ano - 1
-        try:
-            ano_sr = int(self.entry_ano.get().strip() or "2026")
-        except ValueError:
-            ano_sr = 2026
-        ano_ant = ano_sr - 1 if idx == 0 else ano_sr
-        self.entry_ano_ant.delete(0, "end")
-        self.entry_ano_ant.insert(0, str(ano_ant))
-
-        # Dias padrão do mês anterior
-        _DIAS = {"Jan": 31, "Fev": 28, "Mar": 31, "Abr": 30, "Mai": 31,
-                 "Jun": 30, "Jul": 31, "Ago": 31, "Set": 30, "Out": 31,
-                 "Nov": 30, "Dez": 31}
-        self.entry_dias_ant.delete(0, "end")
-        self.entry_dias_ant.insert(0, str(_DIAS.get(mes_ant, 30)))
 
     def _carregar_sessoes(self):
         db = DatabasePMPV()
@@ -387,22 +316,8 @@ class TelaSR(ctk.CTkFrame):
         self.combo_sessao.configure(values=labels)
         self.combo_sessao.set(labels[0])
 
-    def _get_mes_anterior_label(self) -> str:
-        """Retorna o label 'Mês/Ano' do mês anterior configurado pelo usuário."""
-        ano = self.entry_ano_ant.get().strip() or "2025"
-        if len(ano) == 2:
-            ano = "20" + ano
-        return f"{self.combo_mes_ant.get()}/{ano}"
-
     def _carregar_do_banco(self):
-        """Preenche VP e VF nas linhas do trimestre SR.
-
-        - Linhas 2 e 3 (índices 1 e 2): correspondem aos meses 1 e 2 da sessão
-          PMPV (índices i+1 no banco). VP = soma(volume × dias).
-        - Linha 1 (índice 0): corresponde ao mês anterior ao trimestre PMPV,
-          informado pelo usuário. Busca VP no sr_resultados ou recalcula a partir
-          dos dados_mes do período anterior; VF vem do CGF desse mês.
-        """
+        """Preenche VP (PMPV, por mês) e VF (CGF, por mês) nas linhas."""
         if not self._sessoes:
             messagebox.showinfo("Sem sessões",
                                 "Nenhuma sessão PMPV encontrada.\n"
@@ -417,51 +332,16 @@ class TelaSR(ctk.CTkFrame):
         sessao = self._sessoes[idx]
         sid = sessao["id"]
 
-        meses_tri = self._get_trimestre_labels()   # [m1, m2, m3] do SR
-        mes_ant_label = self._get_mes_anterior_label()
-
-        try:
-            dias_ant = int(self.entry_dias_ant.get().strip() or "31")
-        except ValueError:
-            dias_ant = 31
-
-        # Dias padrão por mês (para os meses 2 e 3 do PMPV → linhas 1 e 2 do SR)
-        _DIAS = {"Jan": 31, "Fev": 28, "Mar": 31, "Abr": 30, "Mai": 31,
-                 "Jun": 30, "Jul": 31, "Ago": 31, "Set": 30, "Out": 31,
-                 "Nov": 30, "Dez": 31}
+        meses_tri = self._get_trimestre_labels()
 
         db = DatabasePMPV()
         try:
-            # ── Linha 0: mês anterior (fora da sessão PMPV atual) ──────────
-            linha0 = self._linhas[0]
-
-            # VP do mês anterior: tenta sr_resultados primeiro, depois reconstrói
-            sr_ant = db.buscar_sr(mes_ant_label)
-            if sr_ant and sr_ant.get("vp"):
-                vp0 = float(sr_ant["vp"])
-            else:
-                # Reconstrói a partir dos dados_mes da sessão mais recente
-                # que contenha esse mês (posição 1 no banco = Mês 1 da sessão PMPV)
-                dados_m0 = db.carregar_dados_mes(sid, 1) or []
-                vp0 = sum(float(l.get("volume", 0) or 0) * dias_ant
-                          for l in dados_m0)
-
-            resumo0 = db.buscar_cgf_resumo(mes_ant_label)
-            vf0 = float(resumo0["volume_final"]) if resumo0 and resumo0.get(
-                "volume_final") is not None else 0.0
-
-            linha0.set_vp(vp0)
-            linha0.set_vf(vf0)
-
-            # ── Linhas 1 e 2: meses 1 e 2 da sessão PMPV (índices 2 e 3) ──
-            for i, linha in enumerate(self._linhas[1:], start=1):
-                # Mês i da sessão PMPV corresponde ao índice i+1 no banco
+            for i, linha in enumerate(self._linhas):
+                # VP — soma volumes da sessão PMPV para o mês i+1
                 dados_mes = db.carregar_dados_mes(sid, i + 1) or []
-                mes_abrev = meses_tri[i].split("/")[0]
-                dias = _DIAS.get(mes_abrev, 30)
-                vp = sum(float(l.get("volume", 0) or 0) * dias
-                         for l in dados_mes)
+                vp = sum(float(l.get("volume", 0) or 0) for l in dados_mes)
 
+                # VF — volume_final do CGF para o mês correspondente
                 resumo = db.buscar_cgf_resumo(meses_tri[i])
                 vf = float(resumo["volume_final"]) if resumo and resumo.get(
                     "volume_final") is not None else 0.0
