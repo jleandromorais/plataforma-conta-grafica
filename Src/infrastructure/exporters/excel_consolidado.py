@@ -350,7 +350,7 @@ class ExcelConsolidado:
         ExcelConsolidado._sheet_ret(wb, ret_itens, _label(meses_ret), meses_ret)
         ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
         ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf, db)
-        ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_scg(wb, db, cons, cons_periodos, sr if periodo else sr_lista, periodo)
         ExcelConsolidado._sheet_sr(wb, sr if periodo else sr_lista, periodo)
         ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
         ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
@@ -1210,143 +1210,135 @@ class ExcelConsolidado:
     # ── Sheet 7: SCG Final ───────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_scg(wb, cons: dict | None, cons_periodos: list[dict], sr: dict | list[dict] | None, periodo: str | None):
+    def _sheet_scg(wb, db, cons: dict | None, cons_periodos: list[dict], sr: dict | list[dict] | None, periodo: str | None):
         ws = wb.create_sheet("🧾 SCG Final")
         ws.sheet_view.showGridLines = False
 
-        ws.merge_cells("A1:D1")
+        # ── Coleta os meses disponíveis nas tabelas de origem ────────────────
+        def _meses_de(tabela):
+            try:
+                db.cursor.execute(f"SELECT DISTINCT periodo FROM {tabela} WHERE periodo IS NOT NULL")
+                return sorted({r[0] for r in db.cursor.fetchall() if r[0]}, key=_ord)
+            except Exception:
+                return []
+
+        meses_audit = _meses_de("auditoria_itens")
+        meses_cgf   = _meses_de("cgf_resumo")
+        meses_ret   = _meses_de("ret_itens")
+        meses_conc  = _meses_de("concilia_itens")
+        meses_todos = sorted(set(meses_audit + meses_cgf + meses_ret + meses_conc), key=_ord)
+
+        # ── Agrega cada componente por mês ────────────────────────────────────
+        def _cgr_mes(m):
+            itens = db.listar_auditoria_itens(m) or []
+            return sum(_to_float(i.get("cgr_liquido")) for i in itens)
+
+        def _cgf_mes(m):
+            r = db.buscar_cgf_resumo(m)
+            return _to_float((r or {}).get("volume_final")) if r else 0.0
+
+        def _ret_mes(m):
+            itens = db.listar_ret_itens(m) or []
+            return sum(_to_float(i.get("valor_total")) for i in itens)
+
+        def _rp_mes(m):
+            itens = db.listar_concilia_itens(m) or []
+            return sum(_to_float(i.get("valor")) for i in itens)
+
+        # ── Título ────────────────────────────────────────────────────────────
+        n_cols = 2 + len(meses_todos) + 1   # DADOS + UNIDADE + meses + TOTAL
+        span = f"A1:{chr(64 + n_cols)}1"
+        ws.merge_cells(span)
         t = ws["A1"]
-        t.value = f"CONSOLIDAÇÃO SCG FINAL  |  Período: {periodo or 'N/D'}"
+        t.value = "APURAÇÃO MENSAL DO SALDO DA CONTA GRÁFICA (SCG)"
         t.fill = _fill(_NAVY)
         t.font = _font(bold=True, size=14, color=_HEADER_FG)
         t.alignment = _align("center")
         ws.row_dimensions[1].height = 30
 
         row = 3
-        if periodo is None:
-            _apply_header_row(ws, row,
-                ["Período", "CGR", "CGF", "RPV", "RET", "RP", "SCG"],
-                [18, 14, 14, 14, 14, 14, 14], _NAVY)
+
+        # ── Cabeçalho de colunas ──────────────────────────────────────────────
+        cabecalhos = ["DADOS", "UNIDADE"] + meses_todos + ["TOTAL"]
+        larguras   = [28, 12] + [14] * len(meses_todos) + [16]
+        _apply_header_row(ws, row, cabecalhos, larguras, _NAVY)
+        row += 1
+
+        # ── Linhas de dados ───────────────────────────────────────────────────
+        def _linha(label, unidade, valores_mes: dict, fmt, alt=False):
+            nonlocal row
+            bg = _ROW_ALT if alt else _ROW_NORM
+            total = sum(valores_mes.get(m, 0.0) for m in meses_todos)
+            valores = [label, unidade] + [valores_mes.get(m, 0.0) for m in meses_todos] + [total]
+            fmts    = ["@", "@"] + [fmt] * len(meses_todos) + [fmt]
+            for col_idx, (val, nf) in enumerate(zip(valores, fmts), start=1):
+                c = ws.cell(row=row, column=col_idx, value=val)
+                c.fill   = _fill(bg)
+                c.border = _border()
+                c.font   = _font()
+                if nf != "@":
+                    c.number_format = nf
+                    c.alignment = _align("right")
+                else:
+                    c.alignment = _align("left")
             row += 1
-            for i, item in enumerate(cons_periodos):
+
+        cgr_por_mes = {m: _cgr_mes(m) for m in meses_todos}
+        cgf_por_mes = {m: _cgf_mes(m) for m in meses_todos}
+        ret_por_mes = {m: _ret_mes(m) for m in meses_todos}
+        rp_por_mes  = {m: _rp_mes(m)  for m in meses_todos}
+        rpv_por_mes = {m: cgr_por_mes[m] - cgf_por_mes[m] for m in meses_todos}
+        scg_por_mes = {m: rpv_por_mes[m] + ret_por_mes[m] + rp_por_mes[m] for m in meses_todos}
+
+        _linha("CGR  (Auditoria XML)",      "R$", cgr_por_mes, _BRL, alt=False)
+        _linha("CGF  (Volume Faturado × PMPV)", "R$", cgf_por_mes, _BRL, alt=True)
+        _linha("RPV  = CGR − CGF",          "R$", rpv_por_mes, _BRL, alt=False)
+        _linha("RET  (EAT + EC)",            "R$", ret_por_mes, _BRL, alt=True)
+        _linha("RP   (Penalidades)",         "R$", rp_por_mes,  _BRL, alt=False)
+
+        # ── Linha SCG destacada ───────────────────────────────────────────────
+        row += 1
+        scg_total = sum(scg_por_mes.values())
+        bg_scg = _GREEN if scg_total >= 0 else _RED
+        scg_vals = ["SCG  =  RPV + RET + RP", "R$"] + [scg_por_mes.get(m, 0.0) for m in meses_todos] + [scg_total]
+        scg_fmts = ["@", "@"] + [_BRL] * len(meses_todos) + [_BRL]
+        for col_idx, (val, nf) in enumerate(zip(scg_vals, scg_fmts), start=1):
+            c = ws.cell(row=row, column=col_idx, value=val)
+            c.fill   = _fill(bg_scg)
+            c.border = _border()
+            c.font   = _font(bold=True, color=_HEADER_FG)
+            if nf != "@":
+                c.number_format = nf
+                c.alignment = _align("right")
+            else:
+                c.alignment = _align("left")
+        ws.row_dimensions[row].height = 24
+        row += 2
+
+        # ── SR (se disponível) ────────────────────────────────────────────────
+        sr_lista = sr if isinstance(sr, list) else ([sr] if sr else [])
+        sr_lista = [r for r in sr_lista if r]
+        if sr_lista:
+            _section_title(ws, row, "  📈  SR por Período", n_cols, _NAVY)
+            row += 1
+            _apply_header_row(ws, row,
+                ["Período", "VP (m³)", "VF (m³)", "SR (R$)"],
+                [18, 18, 18, 18], _NAVY)
+            row += 1
+            for i, item in enumerate(sr_lista):
                 _apply_data_row(ws, row,
-                    [item.get("periodo", ""), item.get("cgr", 0.0), item.get("cgf", 0.0),
-                     item.get("rpv", 0.0), item.get("ret", 0.0), item.get("rp", 0.0), item.get("scg", 0.0)],
-                    ["@", _BRL, _BRL, _BRL, _BRL, _BRL, _BRL],
+                    [item.get("periodo", ""), item.get("vp", 0.0),
+                     item.get("vf", 0.0), item.get("sr", 0.0)],
+                    ["@", _VOL, _VOL, _BRL],
                     alternate=(i % 2 == 1))
                 row += 1
 
-            if sr:
-                row += 2
-                _section_title(ws, row, "  📈  SR por Período", 4, _NAVY)
-                row += 1
-                _apply_header_row(ws, row,
-                    ["Período", "VP (m³)", "VF (m³)", "SR (R$)"],
-                    [18, 18, 18, 18], _NAVY)
-                row += 1
-                for i, item in enumerate(sr):
-                    _apply_data_row(ws, row,
-                        [item.get("periodo", ""), item.get("vp", 0.0), item.get("vf", 0.0), item.get("sr", 0.0)],
-                        ["@", _VOL, _VOL, _BRL],
-                        alternate=(i % 2 == 1))
-                    row += 1
-            return
-
-        data = cons or {}
-
-        cgr = data.get("cgr", 0.0)
-        cgf = data.get("cgf", 0.0)
-        rpv = data.get("rpv", cgr - cgf)
-        ret = data.get("ret", 0.0)
-        rp  = data.get("rp", 0.0)
-        scg = data.get("scg", rpv + ret + rp)
-
-        linhas = [
-            ("📄  CGR  (Auditoria XML)",       cgr,  _BLUE,   "+"),
-            ("📋  CGF  (Volume Faturado)",      cgf,  _GOLD,   "−"),
-            ("🧾  RPV  = CGR − CGF",            rpv,  _PURPLE, "="),
-            ("⚡  RET  (Encargos Transporte)",   ret,  _ORANGE, "+"),
-            ("📄  RP   (Conciliação Penalid.)",  rp,   _TEAL,   "+"),
-        ]
-
-        _apply_header_row(ws, row,
-            ["Módulo / Componente", "Valor (R$)", "Op.", "Obs."],
-            [36, 22, 8, 30], _NAVY)
-        row += 1
-
-        for i, (label, val, bg_mod, op) in enumerate(linhas):
-            for col in range(1, 5):
-                c = ws.cell(row=row, column=col)
-                c.fill = _fill(_ROW_ALT if i % 2 else _ROW_NORM)
-                c.border = _border()
-            ws.cell(row=row, column=1, value=label).font = _font()
-            ws.cell(row=row, column=1).alignment = _align("left")
-            v = ws.cell(row=row, column=2, value=val)
-            v.number_format = _BRL
-            v.alignment = _align("right")
-            ws.cell(row=row, column=3, value=op).alignment = _align("center")
-            row += 1
-
-        # Linha separadora
-        row += 1
-
-        # SCG Final
-        ws.merge_cells(f"A{row}:D{row}")
-        lbl = ws.cell(row=row, column=1,
-                      value="💼  SCG  =  RPV  +  RET  +  RP")
-        bg_scg = _GREEN if scg >= 0 else _RED
-        lbl.fill = _fill(bg_scg)
-        lbl.font = _font(bold=True, color=_HEADER_FG, size=13)
-        lbl.alignment = _align("left")
-        lbl.border = _border()
-        ws.row_dimensions[row].height = 28
-        row += 1
-
-        ws.merge_cells(f"A{row}:D{row}")
-        v = ws.cell(row=row, column=1, value=scg)
-        v.number_format = _BRL
-        v.fill = _fill(bg_scg)
-        v.font = _font(bold=True, color=_HEADER_FG, size=22)
-        v.alignment = _align("center")
-        v.border = _border()
-        ws.row_dimensions[row].height = 44
-        row += 2
-
-        # SR (se disponível)
-        if sr:
-            _section_title(ws, row, "  📈  SR  =  (VP − VF) × PR", 4, _NAVY)
-            row += 1
-            _apply_header_row(ws, row,
-                ["VP (m³)", "VF (m³)", "PR (R$/m³)", "SR (R$)"],
-                [20, 20, 20, 22], _NAVY)
-            row += 1
-            _apply_data_row(ws, row,
-                [sr.get("vp", 0.0), sr.get("vf", 0.0),
-                 sr.get("pr", 0.0), sr.get("sr", 0.0)],
-                [_VOL, _VOL, _BRL, _BRL])
-            row += 2
-
-        # Fórmula legível
-        _section_title(ws, row, "  FÓRMULA OFICIAL", 4, "2C3E50")
-        row += 1
-        formulas = [
-            "RPV  =  CGR  −  CGF",
-            "SCG  =  RPV  +  RET  +  RP",
-            "SR   =  (VP  −  VF) × PR",
-        ]
-        for f in formulas:
-            ws.merge_cells(f"A{row}:D{row}")
-            c = ws.cell(row=row, column=1, value=f)
-            c.fill = _fill(_ROW_ALT)
-            c.font = _font(italic=True, size=11)
-            c.alignment = _align("center")
-            c.border = _border()
-            row += 1
-
-        ws.column_dimensions["A"].width = 38
-        ws.column_dimensions["B"].width = 22
-        ws.column_dimensions["C"].width = 10
-        ws.column_dimensions["D"].width = 30
+        # ── Ajusta larguras ───────────────────────────────────────────────────
+        ws.column_dimensions["A"].width = 30
+        ws.column_dimensions["B"].width = 12
+        for i, m in enumerate(meses_todos, start=3):
+            ws.column_dimensions[chr(64 + i)].width = 16
+        ws.column_dimensions[chr(64 + 2 + len(meses_todos) + 1)].width = 18
 
     # ── Sheet SR: Saldo Remanescente ─────────────────────────────────────────
 
