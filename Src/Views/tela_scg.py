@@ -202,7 +202,8 @@ class TelaSCG(ctk.CTkFrame):
         self.frame_tabela_tri.pack(fill="x", padx=16, pady=(8, 12))
 
         # CAIXA RPV
-        rpv_card = ctk.CTkFrame(self, fg_color="#1e1b4b", corner_radius=12)
+        self.rpv_card = ctk.CTkFrame(self, fg_color="#1e1b4b", corner_radius=12)
+        rpv_card = self.rpv_card
         rpv_card.pack(fill="x", padx=24, pady=(14, 0))
         ctk.CTkLabel(rpv_card, text="🔢  RPV — Requisição de Pequeno Valor",
                      font=("Roboto", 13, "bold"), text_color=COR_ROXO).pack(
@@ -321,7 +322,7 @@ class TelaSCG(ctk.CTkFrame):
         for l in self.linhas.values(): l.mostrar_modo_auto()
         # Insere o painel trimestral logo abaixo do toggle
         self.frame_tri.pack(fill="x", padx=24, pady=(8, 0),
-                             before=self.linhas["cgr"].master.master)
+                             before=self.rpv_card)
 
     # ── TRIMESTRAL ────────────────────────────────────────────────────────────
 
