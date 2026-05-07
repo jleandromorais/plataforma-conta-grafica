@@ -265,7 +265,9 @@ class ExcelConsolidado:
         # ── PMPV / PR / PV / SR / SCG — filtrado pelo período principal
         cons_periodos = db.listar_consolidacao_completa(periodo) if periodo else db.listar_consolidacao_completa()
         cons          = db.buscar_consolidacao(periodo) if periodo else ExcelConsolidado._agregar_consolidacao(cons_periodos)
-        pmpv_sessoes  = db.listar_sessoes_com_volumes(periodo)
+        # PMPV: usa apenas a sessão mais recente (evita acúmulo de sessões antigas)
+        _todas_sessoes = db.listar_sessoes_com_volumes()
+        pmpv_sessoes   = _todas_sessoes[:1] if _todas_sessoes else []
         sr            = db.buscar_sr(periodo) if periodo else None
         sr_lista      = [sr] if periodo and sr else db.listar_sr()
         pr            = db.buscar_pr(periodo) if periodo else None
@@ -340,8 +342,8 @@ class ExcelConsolidado:
         # CGF de referência = último mês com dados
         cgf = cgf_lista[-1] if cgf_lista else None
 
-        # PMPV: filtrar trimestre para incluir só Fev–Abr
-        meses_pmpv = [m for m in meses if _abrev_de_periodo(m) in _MESES_PMPV] or meses
+        # PMPV: usa os próprios meses do trimestre informado (sem filtro fixo de abreviatura)
+        meses_pmpv = meses if meses else []
 
         # ── Sheets na ordem ideal: Dashboard primeiro, módulos por trimestre, fechamento
         ExcelConsolidado._sheet_dashboard(
@@ -652,6 +654,10 @@ class ExcelConsolidado:
 
     @staticmethod
     def _sheet_pmpv(wb, db: DatabasePMPV, sessoes, meses_trimestre: list[str] | None = None):
+        # Se não veio trimestre explícito, tenta o trimestre ativo salvo no banco
+        if not meses_trimestre:
+            meses_trimestre = db.buscar_trimestre_ativo() or []
+
         def _nome_mes(mes_num: int) -> str:
             """Converte posição 1/2/3 no nome real do mês do trimestre."""
             if meses_trimestre and mes_num <= len(meses_trimestre):
