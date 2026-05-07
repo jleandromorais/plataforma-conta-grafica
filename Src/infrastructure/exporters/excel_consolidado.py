@@ -1239,8 +1239,9 @@ class ExcelConsolidado:
             return _to_float(cons_m.get("cgf"))
 
         def _ret_mes(m):
-            itens = db.listar_ret_itens(m) or []
-            return sum(_to_float(i.get("valor_total")) for i in itens)
+            # RET já calculado (EAT × (1-PIS/COFINS) + EC) e salvo na consolidacao
+            cons_m = db.buscar_consolidacao(m) or {}
+            return _to_float(cons_m.get("ret"))
 
         def _rp_mes(m):
             itens = db.listar_concilia_itens(m) or []

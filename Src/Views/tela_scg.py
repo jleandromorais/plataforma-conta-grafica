@@ -421,17 +421,19 @@ class TelaSCG(ctk.CTkFrame):
     def _buscar_dados_fontes(periodo: str) -> dict:
         db = DatabasePMPV()
         try:
+            # CGR: soma cgr_liquido dos XMLs de auditoria
             cgr = sum(float(i.get("cgr_liquido") or 0)
                       for i in (db.listar_auditoria_itens(periodo) or []))
 
-            # CGF em R$ vem da tabela consolidacao (salvo pelo módulo CGF como volume × PMPV)
+            # CGF e RET: valores já calculados e salvos na consolidacao pelos módulos
+            # (CGF = volume × PMPV; RET = EAT × (1 - PIS/COFINS) + EC)
             cons = db.buscar_consolidacao(periodo) or {}
             cgf = float(cons.get("cgf") or 0)
+            ret = float(cons.get("ret") or 0)
 
-            ret = sum(float(i.get("valor_total") or 0)
-                      for i in (db.listar_ret_itens(periodo) or []))
-            rp  = sum(float(i.get("valor") or 0)
-                      for i in (db.listar_concilia_itens(periodo) or []))
+            # RP: soma dos valores de conciliação
+            rp = sum(float(i.get("valor") or 0)
+                     for i in (db.listar_concilia_itens(periodo) or []))
         finally:
             db.fechar()
         rpv = cgr - cgf
