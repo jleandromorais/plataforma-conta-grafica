@@ -180,11 +180,11 @@ class RegrasPMPV:
                 c_tot += pr * vf_calculo
                 v_tot_vf += vf_calculo
                 vf_calculo_mes += vf_calculo
-                vf_mes += vol
-                vf_total += vol
-                
-                vp_mes += vol
-                vp_total += vol
+                vf_mes += vf_calculo
+                vf_total += vf_calculo
+
+                vp_mes += vf_calculo
+                vp_total += vf_calculo
 
                 campos_vazios = l['campos_vazios']
                 if campos_vazios:

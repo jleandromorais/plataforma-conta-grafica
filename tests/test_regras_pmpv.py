@@ -27,9 +27,9 @@ class TestRegrasPMPV:
             idx_start=0,
         )
 
-        assert resultado["vp_mensal"] == 1000.0
-        assert resultado["vf_total"] == 1000.0
-        assert resultado["vf_por_mes"]["Janeiro"] == 1000.0
+        assert resultado["vp_mensal"] == 30000.0
+        assert resultado["vf_total"] == 30000.0
+        assert resultado["vf_por_mes"]["Janeiro"] == 30000.0
         assert resultado["volume_total"] == 30000.0
         assert resultado["volume_total_calculo"] == 30000.0
         assert resultado["vf_calculo_por_mes"]["Janeiro"] == 30000.0
@@ -55,7 +55,7 @@ class TestDatabasePMPVVolumes:
                     }
                 ],
             )
-            db.salvar_resultado(sessao_id, 1492433000.0, 0.0, 2.1154, 0.0, 2.1154)
+            db.salvar_resultado(sessao_id, 1492433000.0, 42801234.8661, 42801234.8661, 0.0, 2.1154, 0.0, 2.1154)
 
             sessoes = db.listar_sessoes_com_volumes()
 
