@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.Services.servicos_scg import ServicosSCG
+from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final, remover_excel_final_ativo
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -248,16 +249,52 @@ class TelaSCG(ctk.CTkFrame):
             self.servicos.apagar_periodo(self.periodo_atual)
             self._carregar_periodos()
 
+    @staticmethod
+    def _buscar_dados_fontes(periodo: str) -> dict:
+        """Soma CGR, CGF, RET e RP direto das tabelas de origem para o período."""
+        db = DatabasePMPV()
+        try:
+            cgr = sum(
+                float(i.get("cgr_liquido") or 0)
+                for i in (db.listar_auditoria_itens(periodo) or [])
+            )
+            resumo = db.buscar_cgf_resumo(periodo)
+            cgf = float((resumo or {}).get("volume_final") or 0)
+            ret = sum(
+                float(i.get("valor_total") or 0)
+                for i in (db.listar_ret_itens(periodo) or [])
+            )
+            rp = sum(
+                float(i.get("valor") or 0)
+                for i in (db.listar_concilia_itens(periodo) or [])
+            )
+        finally:
+            db.fechar()
+
+        rpv = cgr - cgf
+        scg = rpv + ret + rp
+        return {"cgr": cgr, "cgf": cgf, "rpv": rpv, "ret": ret, "rp": rp, "scg": scg}
+
     def _ao_mudar_periodo(self, periodo: str):
         self.periodo_atual = periodo
-        dados = self.servicos.buscar_dados_periodo(periodo)
-        if not dados: return
+
+        if self.modo_manual:
+            dados = self.servicos.buscar_dados_periodo(periodo) or {
+                "cgr": 0.0, "cgf": 0.0, "rpv": 0.0, "ret": 0.0, "rp": 0.0, "scg": 0.0
+            }
+        else:
+            # Modo automático: busca das tabelas de origem primeiro
+            dados_fontes = self._buscar_dados_fontes(periodo)
+            dados_bd = self.servicos.buscar_dados_periodo(periodo) or {}
+            # Usa fontes se tiver dados; caso contrário usa o que está salvo na consolidacao
+            tem_dados_fontes = any(v != 0.0 for k, v in dados_fontes.items() if k != "rpv")
+            dados = dados_fontes if tem_dados_fontes else (dados_bd or dados_fontes)
 
         for key, linha in self.linhas.items():
-            v = dados[key]
+            v = dados.get(key, 0.0)
             origem = "Calc" if key == "rpv" else "BD"
             linha.set_valor(v, origem)
-            linha.set_entry_value(v) 
+            linha.set_entry_value(v)
 
         self.lbl_scg.configure(text=f"SCG =  {ServicosSCG.formatar_brl(dados['scg'])}")
         self.lbl_rpv_cgr.configure(text=f"CGR\n{ServicosSCG.formatar_brl(dados['cgr'])}")
