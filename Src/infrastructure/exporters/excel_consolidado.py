@@ -1223,7 +1223,7 @@ class ExcelConsolidado:
                 return []
 
         meses_audit = _meses_de("auditoria_itens")
-        meses_cgf   = _meses_de("cgf_resumo")
+        meses_cgf   = _meses_de("consolidacao")   # CGF em R$ vem de consolidacao
         meses_ret   = _meses_de("ret_itens")
         meses_conc  = _meses_de("concilia_itens")
         meses_todos = sorted(set(meses_audit + meses_cgf + meses_ret + meses_conc), key=_ord)
@@ -1234,8 +1234,9 @@ class ExcelConsolidado:
             return sum(_to_float(i.get("cgr_liquido")) for i in itens)
 
         def _cgf_mes(m):
-            r = db.buscar_cgf_resumo(m)
-            return _to_float((r or {}).get("volume_final")) if r else 0.0
+            # CGF em R$ = volume × PMPV, salvo na tabela consolidacao pelo módulo CGF
+            cons_m = db.buscar_consolidacao(m) or {}
+            return _to_float(cons_m.get("cgf"))
 
         def _ret_mes(m):
             itens = db.listar_ret_itens(m) or []

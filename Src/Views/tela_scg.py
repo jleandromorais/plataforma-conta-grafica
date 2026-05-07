@@ -423,8 +423,11 @@ class TelaSCG(ctk.CTkFrame):
         try:
             cgr = sum(float(i.get("cgr_liquido") or 0)
                       for i in (db.listar_auditoria_itens(periodo) or []))
-            resumo = db.buscar_cgf_resumo(periodo)
-            cgf = float((resumo or {}).get("volume_final") or 0)
+
+            # CGF em R$ vem da tabela consolidacao (salvo pelo módulo CGF como volume × PMPV)
+            cons = db.buscar_consolidacao(periodo) or {}
+            cgf = float(cons.get("cgf") or 0)
+
             ret = sum(float(i.get("valor_total") or 0)
                       for i in (db.listar_ret_itens(periodo) or []))
             rp  = sum(float(i.get("valor") or 0)
