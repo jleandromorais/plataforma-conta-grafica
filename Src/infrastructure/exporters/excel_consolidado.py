@@ -351,6 +351,7 @@ class ExcelConsolidado:
         ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
         ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf, db)
         ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_sr(wb, sr if periodo else sr_lista, periodo)
         ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
         ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
         ExcelConsolidado._sheet_progresso(wb, execucoes, periodo)
@@ -1346,6 +1347,108 @@ class ExcelConsolidado:
         ws.column_dimensions["B"].width = 22
         ws.column_dimensions["C"].width = 10
         ws.column_dimensions["D"].width = 30
+
+    # ── Sheet SR: Saldo Remanescente ─────────────────────────────────────────
+
+    @staticmethod
+    def _sheet_sr(wb, sr: dict | list[dict] | None, periodo: str | None):
+        _NAVY_SR = "1B2A4A"
+        ws = wb.create_sheet("📈 SR")
+        ws.sheet_view.showGridLines = False
+
+        ws.merge_cells("A1:E1")
+        t = ws["A1"]
+        t.value = f"SALDO REMANESCENTE (SR)  =  (VP − VF) × PR  |  Período: {periodo or 'N/D'}"
+        t.fill = _fill(_NAVY_SR)
+        t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("center")
+        ws.row_dimensions[1].height = 30
+
+        row = 3
+
+        registros = sr if isinstance(sr, list) else ([sr] if sr else [])
+        registros = [r for r in registros if r]
+
+        if not registros:
+            ws.merge_cells(f"A{row}:E{row}")
+            c = ws.cell(row=row, column=1, value="Nenhum dado de SR salvo.")
+            c.font = _font(italic=True)
+            c.alignment = _align("center")
+        elif periodo:
+            # Modo período único — exibe detalhado
+            item = registros[0]
+            vp   = _to_float(item.get("vp"))
+            vf   = _to_float(item.get("vf"))
+            pr_v = _to_float(item.get("pr"))
+            sr_v = _to_float(item.get("sr"))
+            diff = vp - vf
+
+            _apply_header_row(ws, row,
+                ["VP (m³)", "VF (m³)", "Diferença (m³)", "PR (R$/m³)", "SR (R$)"],
+                [20, 20, 20, 20, 22], _NAVY_SR)
+            row += 1
+            _apply_data_row(ws, row,
+                [vp, vf, diff, pr_v, sr_v],
+                [_VOL, _VOL, _VOL, _BRL, _BRL])
+            row += 2
+
+            # Card resultado
+            ws.merge_cells(f"A{row}:E{row}")
+            lbl = ws.cell(row=row, column=1, value="📈  SR  =  (VP − VF) × PR")
+            bg = _GREEN if sr_v >= 0 else _RED
+            lbl.fill = _fill(bg)
+            lbl.font = _font(bold=True, color=_HEADER_FG, size=13)
+            lbl.alignment = _align("left")
+            lbl.border = _border()
+            ws.row_dimensions[row].height = 28
+            row += 1
+
+            ws.merge_cells(f"A{row}:E{row}")
+            v = ws.cell(row=row, column=1, value=sr_v)
+            v.number_format = _BRL
+            v.fill = _fill(bg)
+            v.font = _font(bold=True, color=_HEADER_FG, size=22)
+            v.alignment = _align("center")
+            v.border = _border()
+            ws.row_dimensions[row].height = 44
+        else:
+            # Modo lista — todos os períodos
+            _apply_header_row(ws, row,
+                ["Período", "VP (m³)", "VF (m³)", "PR (R$/m³)", "SR (R$)"],
+                [18, 20, 20, 20, 22], _NAVY_SR)
+            row += 1
+            for i, item in enumerate(registros):
+                _apply_data_row(ws, row,
+                    [item.get("periodo", ""), _to_float(item.get("vp")),
+                     _to_float(item.get("vf")), _to_float(item.get("pr")),
+                     _to_float(item.get("sr"))],
+                    ["@", _VOL, _VOL, _BRL, _BRL],
+                    alternate=(i % 2 == 1))
+                row += 1
+
+            # Linha de total
+            if len(registros) > 1:
+                row += 1
+                total_sr = sum(_to_float(r.get("sr")) for r in registros)
+                ws.merge_cells(f"A{row}:D{row}")
+                lbl = ws.cell(row=row, column=1, value="TOTAL SR")
+                bg = _GREEN if total_sr >= 0 else _RED
+                lbl.fill = _fill(bg)
+                lbl.font = _font(bold=True, color=_HEADER_FG)
+                lbl.alignment = _align("right")
+                lbl.border = _border()
+                v = ws.cell(row=row, column=5, value=total_sr)
+                v.number_format = _BRL
+                v.fill = _fill(bg)
+                v.font = _font(bold=True, color=_HEADER_FG)
+                v.alignment = _align("right")
+                v.border = _border()
+
+        ws.column_dimensions["A"].width = 20
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 20
+        ws.column_dimensions["D"].width = 20
+        ws.column_dimensions["E"].width = 22
 
     # ── Sheet 8: PR Final ────────────────────────────────────────────────────
 
