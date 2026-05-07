@@ -265,7 +265,9 @@ class ExcelConsolidado:
         # ── PMPV / PR / PV / SR / SCG — filtrado pelo período principal
         cons_periodos = db.listar_consolidacao_completa(periodo) if periodo else db.listar_consolidacao_completa()
         cons          = db.buscar_consolidacao(periodo) if periodo else ExcelConsolidado._agregar_consolidacao(cons_periodos)
-        pmpv_sessoes  = db.listar_sessoes_com_volumes(periodo)
+        # PMPV: usa apenas a sessão mais recente (evita acúmulo de sessões antigas)
+        _todas_sessoes = db.listar_sessoes_com_volumes()
+        pmpv_sessoes   = _todas_sessoes[:1] if _todas_sessoes else []
         sr            = db.buscar_sr(periodo) if periodo else None
         sr_lista      = [sr] if periodo and sr else db.listar_sr()
         pr            = db.buscar_pr(periodo) if periodo else None
@@ -340,26 +342,27 @@ class ExcelConsolidado:
         # CGF de referência = último mês com dados
         cgf = cgf_lista[-1] if cgf_lista else None
 
-        # PMPV: filtrar trimestre para incluir só Fev–Abr
-        meses_pmpv = [m for m in meses if _abrev_de_periodo(m) in _MESES_PMPV] or meses
+        # PMPV: usa os próprios meses do trimestre informado (sem filtro fixo de abreviatura)
+        meses_pmpv = meses if meses else []
 
-        # Sheets — cada um com o seu label e meses reais
-        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, label_trimestre)
-        ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes, meses_pmpv)
-        ExcelConsolidado._sheet_auditoria(wb, audit_itens, _label(meses_audit), meses_audit)
-        ExcelConsolidado._sheet_ret(wb, ret_itens, _label(meses_ret), meses_ret)
-        ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
-        ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf, db)
-        ExcelConsolidado._sheet_scg(wb, cons, cons_periodos, sr if periodo else sr_lista, periodo)
-        ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
-        ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
-        ExcelConsolidado._sheet_progresso(wb, execucoes, periodo)
+        # ── Sheets na ordem ideal: Dashboard primeiro, módulos por trimestre, fechamento
         ExcelConsolidado._sheet_dashboard(
             wb, cons, cons_periodos, pr if periodo else (pr_lista[0] if pr_lista else None),
             pv if periodo else (pv_lista[0] if pv_lista else None),
             sr if periodo else (sr_lista[0] if sr_lista else None),
             label_trimestre,
         )
+        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, label_trimestre)
+        ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes, meses_pmpv)
+        ExcelConsolidado._sheet_auditoria(wb, audit_itens, _label(meses_audit), meses_audit)
+        ExcelConsolidado._sheet_ret(wb, ret_itens, _label(meses_ret), meses_ret)
+        ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
+        ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf, db)
+        ExcelConsolidado._sheet_scg(wb, db, cons, cons_periodos, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_sr(wb, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
+        ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
+        ExcelConsolidado._sheet_progresso(wb, execucoes, periodo)
 
         # Se o arquivo estiver aberto no Excel, tenta fechar via taskkill antes de salvar
         try:
@@ -390,148 +393,271 @@ class ExcelConsolidado:
     @staticmethod
     def _sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, periodo):
         ws = wb.create_sheet("📋 Resumo Executivo")
-        ws.sheet_view.showGridLines = False
+        ws.sheet_view.showGridLines     = False
+        ws.sheet_view.showRowColHeaders = False
+        ws.sheet_properties.tabColor    = "1A3A5C"
 
-        # ── Título
-        ws.merge_cells("A1:H1")
-        t = ws["A1"]
-        t.value = "RELATÓRIO CONSOLIDADO — CONTA GRÁFICA"
-        t.fill = _fill(_TITLE_BG)
-        t.font = _font(bold=True, size=18, color=_HEADER_FG)
-        t.alignment = _align("center")
-        ws.row_dimensions[1].height = 40
+        # ── Paleta consistente com Dashboard ──────────────────────────────────
+        BG       = "F8FAFC"   # fundo claro (papel)
+        SURFACE  = "FFFFFF"
+        ACCENT   = "0E7C7B"   # teal escuro
+        NAVY     = "1A3A5C"
+        GOLD     = "B7950B"
+        BLUE     = "2E86C1"
+        PURPLE   = "6C3483"
+        ORANGE   = "D35400"
+        GREEN    = "1E8449"
+        RED      = "C0392B"
+        MUTED    = "5A6B85"
+        DIM      = "8896B0"
+        BORDER   = "DDE3EC"
+        WHITE    = "FFFFFF"
 
-        ws.merge_cells("A2:H2")
-        sub = ws["A2"]
-        sub.value = (
-            f"Período: {periodo or 'Todos'}   |   "
-            f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-        )
-        sub.fill = _fill("2E4057")
-        sub.font = _font(size=11, color="CCDDEE")
-        sub.alignment = _align("center")
-        ws.row_dimensions[2].height = 22
+        # Larguras
+        ws.column_dimensions["A"].width = 1.5
+        for col in "BCDEFGH":
+            ws.column_dimensions[col].width = 16
+        ws.column_dimensions["I"].width = 1.5
 
-        row = 4
+        FULL_START = 2
+        FULL_END   = 8
 
-        def _card(label: str, value: str, bg: str, row: int, col: int = 1, span: int = 2):
-            ws.merge_cells(
-                start_row=row, start_column=col,
-                end_row=row, end_column=col + span - 1
-            )
-            c = ws.cell(row=row, column=col, value=label)
-            c.fill = _fill(bg)
-            c.font = _font(bold=True, color=_HEADER_FG, size=11)
-            c.alignment = _align("left")
-            c.border = _border()
+        NONE_BDR = Border()
 
-            ws.merge_cells(
-                start_row=row + 1, start_column=col,
-                end_row=row + 1, end_column=col + span - 1
-            )
-            v = ws.cell(row=row + 1, column=col, value=value)
-            v.fill = _fill("F2F3F4")
-            v.font = _font(bold=True, size=14)
-            v.alignment = _align("center")
-            v.border = _border()
-            ws.row_dimensions[row].height = 20
-            ws.row_dimensions[row + 1].height = 28
+        def _rh(r, h):
+            ws.row_dimensions[r].height = h
+
+        def _bg_row(r, h, bg, c1=1, c2=9):
+            _rh(r, h)
+            for ci in range(c1, c2 + 1):
+                cell = ws.cell(row=r, column=ci)
+                cell.fill = _fill(bg)
+                cell.border = NONE_BDR
+
+        def _merge(r, c1, c2, value, bg, fnt, align_h="center", fmt="@", row_h=None):
+            if c1 != c2:
+                ws.merge_cells(start_row=r, start_column=c1, end_row=r, end_column=c2)
+            cell = ws.cell(row=r, column=c1, value=value)
+            cell.fill = _fill(bg)
+            cell.font = fnt
+            cell.alignment = _align(align_h, "center")
+            cell.border = NONE_BDR
+            if fmt != "@":
+                cell.number_format = fmt
+            if row_h:
+                _rh(r, row_h)
+            return cell
+
+        def _fill_range(r, c1, c2, bg):
+            for ci in range(c1, c2 + 1):
+                cell = ws.cell(row=r, column=ci)
+                cell.fill = _fill(bg)
+                cell.border = NONE_BDR
+
+        # Fundo
+        for r in range(1, 60):
+            _bg_row(r, ws.row_dimensions[r].height or 15, BG)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # HEADER
+        # ══════════════════════════════════════════════════════════════════════
+        _bg_row(1, 4, ACCENT)
+
+        _bg_row(2, 50, NAVY)
+        _merge(2, FULL_START, 5,
+               "   RELATÓRIO CONSOLIDADO",
+               NAVY, _font(bold=True, size=18, color=WHITE), "left")
+        _merge(2, 6, FULL_END,
+               f"{periodo or 'Todos os Períodos'}  ",
+               NAVY, _font(bold=True, size=13, color="A8D5E2"), "right")
+
+        _bg_row(3, 22, "2E4057")
+        _merge(3, FULL_START, FULL_END,
+               f"   Conta Gráfica · Tarifa de Gás Canalizado · "
+               f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+               "2E4057", _font(size=10, color="CCDDEE", italic=True), "left")
+
+        _bg_row(4, 14, BG)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # CARDS DE RESUMO
+        # ══════════════════════════════════════════════════════════════════════
+        def _resumo_card(row, c1, c2, icon, label, value, fmt, color):
+            """Card com label/valor em layout vertical clean."""
+            # Top stripe
+            _fill_range(row, c1, c2, color)
+            _rh(row, 3)
+
+            # Label
+            _merge(row+1, c1, c2, f" {icon}  {label}",
+                   SURFACE, _font(bold=True, size=10, color=MUTED), "left", "@", 22)
+            # Borders esquerda/direita
+            for cc in (ws.cell(row=row+1, column=c1), ws.cell(row=row+1, column=c2)):
+                cc.border = Border(
+                    left=Side(style="thin", color=BORDER),
+                    right=Side(style="thin", color=BORDER))
+
+            # Valor
+            _merge(row+2, c1, c2, value,
+                   SURFACE, _font(bold=True, size=15, color=color), "center", fmt, 32)
+            for cc in (ws.cell(row=row+2, column=c1), ws.cell(row=row+2, column=c2)):
+                cc.border = Border(
+                    left=Side(style="thin", color=BORDER),
+                    right=Side(style="thin", color=BORDER))
+
+            # Bottom border
+            _fill_range(row+3, c1, c2, BORDER)
+            _rh(row+3, 1)
 
         sr_total = (sr_lista[0] if periodo and sr_lista else None) or None
 
-        # CGR
         cgr_val = (cons or {}).get("cgr", 0.0)
-        _card("🔍  CGR  (Auditoria XML)", _money_fmt(cgr_val), _BLUE, row, col=1, span=2)
-        # CGF
         cgf_val = (cons or {}).get("cgf", 0.0)
-        _card("📋  CGF  (Volume Faturado)", _money_fmt(cgf_val), _GOLD, row, col=3, span=2)
-        # RPV
         rpv_val = (cons or {}).get("rpv", cgr_val - cgf_val)
-        _card("🧾  RPV  = CGR − CGF", _money_fmt(rpv_val), _PURPLE, row, col=5, span=2)
-        row += 3
-
-        # RET
         ret_val = (cons or {}).get("ret", 0.0)
-        _card("⚡  RET  (Encargos)", _money_fmt(ret_val), _ORANGE, row, col=1, span=2)
-        # RP
-        rp_val = (cons or {}).get("rp", 0.0)
-        _card("📄  RP   (Conciliação)", _money_fmt(rp_val), _TEAL, row, col=3, span=2)
-        # SR
-        sr_val = sum((item or {}).get("sr", 0.0) or 0.0 for item in sr_lista) if not periodo else (sr_total or {}).get("sr", 0.0)
-        _card("📈  SR   (Volume Prospectivo − VF) × PR", _money_fmt(sr_val), _NAVY, row, col=5, span=2)
-        row += 3
-
-        # SCG Final
+        rp_val  = (cons or {}).get("rp", 0.0)
         scg_val = (cons or {}).get("scg", 0.0)
-        ws.merge_cells(f"A{row}:F{row}")
-        c = ws.cell(row=row, column=1, value="💼  SCG FINAL  =  RPV + RET + RP")
-        c.fill = _fill(_NAVY)
-        c.font = _font(bold=True, color=_HEADER_FG, size=13)
-        c.alignment = _align("center")
-        c.border = _border()
-        ws.row_dimensions[row].height = 24
+        sr_val  = sum((item or {}).get("sr", 0.0) or 0.0 for item in sr_lista) if not periodo else _to_float((sr_total or {}).get("sr", 0.0))
+        pr_ref  = (pr_lista[0] if pr_lista else {}) or {}
+        pv_ref  = (pv_lista[0] if pv_lista else {}) or {}
 
-        row += 1
-        ws.merge_cells(f"A{row}:F{row}")
-        v = ws.cell(row=row, column=1, value=scg_val)
-        v.number_format = _BRL
-        bg = _GREEN if scg_val >= 0 else _RED
-        v.fill = _fill(bg)
-        v.font = _font(bold=True, color=_HEADER_FG, size=20)
-        v.alignment = _align("center")
-        v.border = _border()
-        ws.row_dimensions[row].height = 36
+        # Linha 1: CGR, CGF, RPV
+        R = 5
+        _resumo_card(R, 2, 3, "🔍", "CGR · Auditoria XML",     cgr_val, _BRL, BLUE)
+        _resumo_card(R, 4, 5, "📋", "CGF · Volume × PMPV",     cgf_val, _BRL, GOLD)
+        _resumo_card(R, 6, 7, "🧾", "RPV · CGR − CGF",         rpv_val, _BRL, PURPLE)
 
-        row += 2
+        _bg_row(R+4, 8, BG)
+        # Linha 2: RET, RP, SR
+        R = R + 5
+        _resumo_card(R, 2, 3, "⚡", "RET · Encargos",          ret_val, _BRL, ORANGE)
+        _resumo_card(R, 4, 5, "📄", "RP · Conciliação",        rp_val,  _BRL, ACCENT)
+        _resumo_card(R, 6, 7, "📈", "SR · Saldo Remanesc.",    sr_val,  _BRL, NAVY)
 
-        pr_ref = (pr_lista[0] if pr_lista else {}) or {}
-        pv_ref = (pv_lista[0] if pv_lista else {}) or {}
-        _card("💡  PR Final  = (SGR + SR) / VP", _money4_fmt(pr_ref.get("pr", 0.0)), _BLUE, row, col=1, span=3)
-        _card("💰  PV Final  = PMPV + PR", _money4_fmt(pv_ref.get("pv", 0.0)), _GREEN, row, col=4, span=3)
+        # Espaço
+        _bg_row(R+4, 16, BG)
 
-        row += 3
+        # ══════════════════════════════════════════════════════════════════════
+        # SCG FINAL — destaque grande
+        # ══════════════════════════════════════════════════════════════════════
+        R = R + 5
+        scg_color = GREEN if scg_val >= 0 else RED
 
-        # PMPV Mensal
-        if pmpv_sessoes or True:
-            _section_title(ws, row, "📊  PMPV — Últimas Sessões Salvas", 6, _TEAL)
-            row += 1
-            _apply_header_row(ws, row,
-                ["Sessão", "Data", "Volume Prospectivo (m³)", "VF (m³)", "PMPV (R$/m³)", "Preço Final"],
-                [30, 18, 16, 16, 16, 16], _TEAL)
-            row += 1
-            for i, s in enumerate(pmpv_sessoes[:10]):
-                _apply_data_row(ws, row,
-                    [s.get("nome", ""), s.get("data_criacao", ""),
-                     s.get("vp", 0.0), s.get("vf", 0.0), "", ""],
-                    ["@", "@", _VOL, _VOL, _BRL, _BRL],
-                    alternate=(i % 2 == 1))
-                row += 1
+        _bg_row(R, 4, scg_color)
+        _bg_row(R+1, 24, NAVY)
+        _merge(R+1, FULL_START, FULL_END,
+               "   💼  SCG FINAL  =  RPV  +  RET  +  RP",
+               NAVY, _font(bold=True, size=12, color=WHITE), "left", "@", 24)
 
+        _bg_row(R+2, 50, scg_color)
+        _merge(R+2, FULL_START, FULL_END, scg_val,
+               scg_color, _font(bold=True, size=24, color=WHITE), "center", _BRL, 50)
+
+        _bg_row(R+3, 8, BG)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # PR e PV
+        # ══════════════════════════════════════════════════════════════════════
+        R = R + 5
+        _resumo_card(R, 2, 4, "💡", "PR FINAL · (SCG + ΣSR) ÷ VP",
+                     _to_float(pr_ref.get("pr")), _VOL4, ACCENT)
+        _resumo_card(R, 5, 7, "💰", "PV FINAL · PMPV + PR",
+                     _to_float(pv_ref.get("pv")), _VOL4, GREEN)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # PMPV — sessões salvas
+        # ══════════════════════════════════════════════════════════════════════
+        R = R + 5
+        _bg_row(R, 4, BG)
+        _bg_row(R+1, 26, ACCENT)
+        _merge(R+1, FULL_START, FULL_END,
+               "   📊  PMPV — Sessões Salvas",
+               ACCENT, _font(bold=True, size=11, color=WHITE), "left", "@", 26)
+
+        if pmpv_sessoes:
+            R = R + 2
+            _apply_header_row(ws, R,
+                [None, "Sessão", "Data", "VP (m³)", "VF (m³)", "PMPV", "Final", None],
+                [1, 25, 16, 14, 14, 12, 12, 1], NAVY)
+            for i, s in enumerate(pmpv_sessoes[:8]):
+                R += 1
+                row_bg = SURFACE if i % 2 == 0 else "F0F4F8"
+                vals = ["", s.get("nome", ""), s.get("data_criacao", ""),
+                        _to_float(s.get("vp")), _to_float(s.get("vf")), "", "", ""]
+                fmts = ["@", "@", "@", _VOL, _VOL, _BRL, _BRL, "@"]
+                for ci, (v, f) in enumerate(zip(vals, fmts), start=1):
+                    cell = ws.cell(row=R, column=ci, value=v)
+                    cell.fill = _fill(row_bg)
+                    cell.font = _font(size=9, color=MUTED)
+                    cell.alignment = _align("right" if f != "@" else "left")
+                    cell.border = NONE_BDR
+                    if f != "@":
+                        cell.number_format = f
+                _rh(R, 18)
+        else:
+            R = R + 2
+            _bg_row(R, 22, SURFACE)
+            _merge(R, FULL_START, FULL_END,
+                   "   Nenhuma sessão PMPV salva ainda.",
+                   SURFACE, _font(italic=True, size=10, color=DIM), "left", "@", 22)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # CONSOLIDAÇÃO POR PERÍODO (se múltiplos períodos)
+        # ══════════════════════════════════════════════════════════════════════
         if not periodo and cons_periodos:
-            row += 2
-            _section_title(ws, row, "📚  Consolidação por Período", 8, _NAVY)
-            row += 1
-            _apply_header_row(ws, row,
-                ["Período", "CGR", "CGF", "RPV", "RET", "RP", "SCG", "Atualizado"],
-                [18, 14, 14, 14, 14, 14, 14, 20], _NAVY)
-            row += 1
-            for i, item in enumerate(cons_periodos):
-                _apply_data_row(ws, row,
-                    [item.get("periodo", ""), item.get("cgr", 0.0), item.get("cgf", 0.0),
-                     item.get("rpv", 0.0), item.get("ret", 0.0), item.get("rp", 0.0),
-                     item.get("scg", 0.0), (item.get("data_atualizacao") or "")[:16]],
-                    ["@", _BRL, _BRL, _BRL, _BRL, _BRL, _BRL, "@"],
-                    alternate=(i % 2 == 1))
-                row += 1
+            R = R + 2
+            _bg_row(R, 12, BG)
+            R += 1
+            _bg_row(R, 26, NAVY)
+            _merge(R, FULL_START, FULL_END,
+                   "   📚  Consolidação por Período",
+                   NAVY, _font(bold=True, size=11, color=WHITE), "left", "@", 26)
+            R += 1
 
-        ws.column_dimensions["A"].width = 32
-        for col in "BCDEFG":
-            ws.column_dimensions[col].width = 18
+            _apply_header_row(ws, R,
+                [None, "Período", "CGR", "CGF", "RPV", "RET", "RP", "SCG"],
+                [1, 14, 14, 14, 14, 14, 14, 14], NAVY)
+
+            for i, item in enumerate(cons_periodos):
+                R += 1
+                row_bg = SURFACE if i % 2 == 0 else "F0F4F8"
+                scg_item = _to_float(item.get("scg"))
+                vals = ["", item.get("periodo", ""),
+                        _to_float(item.get("cgr")), _to_float(item.get("cgf")),
+                        _to_float(item.get("rpv")), _to_float(item.get("ret")),
+                        _to_float(item.get("rp")),  scg_item]
+                fmts = ["@", "@", _BRL, _BRL, _BRL, _BRL, _BRL, _BRL]
+                for ci, (v, f) in enumerate(zip(vals, fmts), start=1):
+                    cell = ws.cell(row=R, column=ci, value=v)
+                    cell.fill = _fill(row_bg)
+                    cell.font = _font(
+                        size=9,
+                        color=(GREEN if (ci == 8 and scg_item >= 0)
+                               else RED if (ci == 8 and scg_item < 0) else MUTED),
+                        bold=(ci == 8))
+                    cell.alignment = _align("right" if f != "@" else "left")
+                    cell.border = NONE_BDR
+                    if f != "@":
+                        cell.number_format = f
+                _rh(R, 18)
+
+        # Rodapé
+        R = R + 3
+        _bg_row(R, 6, BG)
+        _bg_row(R+1, 2, ACCENT)
+        _bg_row(R+2, 22, NAVY)
+        _merge(R+2, FULL_START, FULL_END,
+               f"   ARPE · Conta Gráfica · {datetime.now().year}",
+               NAVY, _font(italic=True, size=9, color="CCDDEE"), "center", "@", 22)
 
     # ── Sheet 2: PMPV ────────────────────────────────────────────────────────
 
     @staticmethod
     def _sheet_pmpv(wb, db: DatabasePMPV, sessoes, meses_trimestre: list[str] | None = None):
+        # Se não veio trimestre explícito, tenta o trimestre ativo salvo no banco
+        if not meses_trimestre:
+            meses_trimestre = db.buscar_trimestre_ativo() or []
+
         def _nome_mes(mes_num: int) -> str:
             """Converte posição 1/2/3 no nome real do mês do trimestre."""
             if meses_trimestre and mes_num <= len(meses_trimestre):
@@ -1209,143 +1335,248 @@ class ExcelConsolidado:
     # ── Sheet 7: SCG Final ───────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_scg(wb, cons: dict | None, cons_periodos: list[dict], sr: dict | list[dict] | None, periodo: str | None):
+    def _sheet_scg(wb, db, cons: dict | None, cons_periodos: list[dict], sr: dict | list[dict] | None, periodo: str | None):
         ws = wb.create_sheet("🧾 SCG Final")
         ws.sheet_view.showGridLines = False
 
-        ws.merge_cells("A1:D1")
+        # ── Ordenação cronológica local ──────────────────────────────────────
+        def _ord(p):
+            ab = _abrev_de_periodo(p)
+            an = p.split("/")[1] if "/" in p else "0"
+            try:
+                return int(an) * 12 + _MES_ORD.get(ab, 0)
+            except Exception:
+                return 0
+
+        # ── Coleta os meses disponíveis nas tabelas de origem ────────────────
+        def _meses_de(tabela):
+            try:
+                db.cursor.execute(f"SELECT DISTINCT periodo FROM {tabela} WHERE periodo IS NOT NULL")
+                return sorted({r[0] for r in db.cursor.fetchall() if r[0]}, key=_ord)
+            except Exception:
+                return []
+
+        meses_audit = _meses_de("auditoria_itens")
+        meses_cgf   = _meses_de("consolidacao")   # CGF em R$ vem de consolidacao
+        meses_ret   = _meses_de("ret_itens")
+        meses_conc  = _meses_de("concilia_itens")
+        meses_todos = sorted(set(meses_audit + meses_cgf + meses_ret + meses_conc), key=_ord)
+
+        # ── Agrega cada componente por mês ────────────────────────────────────
+        def _cgr_mes(m):
+            itens = db.listar_auditoria_itens(m) or []
+            return sum(_to_float(i.get("cgr_liquido")) for i in itens)
+
+        def _cgf_mes(m):
+            # CGF em R$ = volume × PMPV, salvo na tabela consolidacao pelo módulo CGF
+            cons_m = db.buscar_consolidacao(m) or {}
+            return _to_float(cons_m.get("cgf"))
+
+        def _ret_mes(m):
+            # RET já calculado (EAT × (1-PIS/COFINS) + EC) e salvo na consolidacao
+            cons_m = db.buscar_consolidacao(m) or {}
+            return _to_float(cons_m.get("ret"))
+
+        def _rp_mes(m):
+            itens = db.listar_concilia_itens(m) or []
+            return sum(_to_float(i.get("valor")) for i in itens)
+
+        # ── Título ────────────────────────────────────────────────────────────
+        n_cols = 2 + len(meses_todos) + 1   # DADOS + UNIDADE + meses + TOTAL
+        span = f"A1:{chr(64 + n_cols)}1"
+        ws.merge_cells(span)
         t = ws["A1"]
-        t.value = f"CONSOLIDAÇÃO SCG FINAL  |  Período: {periodo or 'N/D'}"
+        t.value = "APURAÇÃO MENSAL DO SALDO DA CONTA GRÁFICA (SCG)"
         t.fill = _fill(_NAVY)
         t.font = _font(bold=True, size=14, color=_HEADER_FG)
         t.alignment = _align("center")
         ws.row_dimensions[1].height = 30
 
         row = 3
-        if periodo is None:
-            _apply_header_row(ws, row,
-                ["Período", "CGR", "CGF", "RPV", "RET", "RP", "SCG"],
-                [18, 14, 14, 14, 14, 14, 14], _NAVY)
+
+        # ── Cabeçalho de colunas ──────────────────────────────────────────────
+        cabecalhos = ["DADOS", "UNIDADE"] + meses_todos + ["TOTAL"]
+        larguras   = [28, 12] + [14] * len(meses_todos) + [16]
+        _apply_header_row(ws, row, cabecalhos, larguras, _NAVY)
+        row += 1
+
+        # ── Linhas de dados ───────────────────────────────────────────────────
+        def _linha(label, unidade, valores_mes: dict, fmt, alt=False):
+            nonlocal row
+            bg = _ROW_ALT if alt else _ROW_NORM
+            total = sum(valores_mes.get(m, 0.0) for m in meses_todos)
+            valores = [label, unidade] + [valores_mes.get(m, 0.0) for m in meses_todos] + [total]
+            fmts    = ["@", "@"] + [fmt] * len(meses_todos) + [fmt]
+            for col_idx, (val, nf) in enumerate(zip(valores, fmts), start=1):
+                c = ws.cell(row=row, column=col_idx, value=val)
+                c.fill   = _fill(bg)
+                c.border = _border()
+                c.font   = _font()
+                if nf != "@":
+                    c.number_format = nf
+                    c.alignment = _align("right")
+                else:
+                    c.alignment = _align("left")
             row += 1
-            for i, item in enumerate(cons_periodos):
+
+        cgr_por_mes = {m: _cgr_mes(m) for m in meses_todos}
+        cgf_por_mes = {m: _cgf_mes(m) for m in meses_todos}
+        ret_por_mes = {m: _ret_mes(m) for m in meses_todos}
+        rp_por_mes  = {m: _rp_mes(m)  for m in meses_todos}
+        rpv_por_mes = {m: cgr_por_mes[m] - cgf_por_mes[m] for m in meses_todos}
+        scg_por_mes = {m: rpv_por_mes[m] + ret_por_mes[m] + rp_por_mes[m] for m in meses_todos}
+
+        _linha("CGR  (Auditoria XML)",      "R$", cgr_por_mes, _BRL, alt=False)
+        _linha("CGF  (Volume Faturado × PMPV)", "R$", cgf_por_mes, _BRL, alt=True)
+        _linha("RPV  = CGR − CGF",          "R$", rpv_por_mes, _BRL, alt=False)
+        _linha("RET  (EAT + EC)",            "R$", ret_por_mes, _BRL, alt=True)
+        _linha("RP   (Penalidades)",         "R$", rp_por_mes,  _BRL, alt=False)
+
+        # ── Linha SCG destacada ───────────────────────────────────────────────
+        row += 1
+        scg_total = sum(scg_por_mes.values())
+        bg_scg = _GREEN if scg_total >= 0 else _RED
+        scg_vals = ["SCG  =  RPV + RET + RP", "R$"] + [scg_por_mes.get(m, 0.0) for m in meses_todos] + [scg_total]
+        scg_fmts = ["@", "@"] + [_BRL] * len(meses_todos) + [_BRL]
+        for col_idx, (val, nf) in enumerate(zip(scg_vals, scg_fmts), start=1):
+            c = ws.cell(row=row, column=col_idx, value=val)
+            c.fill   = _fill(bg_scg)
+            c.border = _border()
+            c.font   = _font(bold=True, color=_HEADER_FG)
+            if nf != "@":
+                c.number_format = nf
+                c.alignment = _align("right")
+            else:
+                c.alignment = _align("left")
+        ws.row_dimensions[row].height = 24
+        row += 2
+
+        # ── SR (se disponível) ────────────────────────────────────────────────
+        sr_lista = sr if isinstance(sr, list) else ([sr] if sr else [])
+        sr_lista = [r for r in sr_lista if r]
+        if sr_lista:
+            _section_title(ws, row, "  📈  SR por Período", n_cols, _NAVY)
+            row += 1
+            _apply_header_row(ws, row,
+                ["Período", "VP (m³)", "VF (m³)", "SR (R$)"],
+                [18, 18, 18, 18], _NAVY)
+            row += 1
+            for i, item in enumerate(sr_lista):
                 _apply_data_row(ws, row,
-                    [item.get("periodo", ""), item.get("cgr", 0.0), item.get("cgf", 0.0),
-                     item.get("rpv", 0.0), item.get("ret", 0.0), item.get("rp", 0.0), item.get("scg", 0.0)],
-                    ["@", _BRL, _BRL, _BRL, _BRL, _BRL, _BRL],
+                    [item.get("periodo", ""), item.get("vp", 0.0),
+                     item.get("vf", 0.0), item.get("sr", 0.0)],
+                    ["@", _VOL, _VOL, _BRL],
                     alternate=(i % 2 == 1))
                 row += 1
 
-            if sr:
-                row += 2
-                _section_title(ws, row, "  📈  SR por Período", 4, _NAVY)
-                row += 1
-                _apply_header_row(ws, row,
-                    ["Período", "VP (m³)", "VF (m³)", "SR (R$)"],
-                    [18, 18, 18, 18], _NAVY)
-                row += 1
-                for i, item in enumerate(sr):
-                    _apply_data_row(ws, row,
-                        [item.get("periodo", ""), item.get("vp", 0.0), item.get("vf", 0.0), item.get("sr", 0.0)],
-                        ["@", _VOL, _VOL, _BRL],
-                        alternate=(i % 2 == 1))
-                    row += 1
-            return
+        # ── Ajusta larguras ───────────────────────────────────────────────────
+        ws.column_dimensions["A"].width = 30
+        ws.column_dimensions["B"].width = 12
+        for i, m in enumerate(meses_todos, start=3):
+            ws.column_dimensions[chr(64 + i)].width = 16
+        ws.column_dimensions[chr(64 + 2 + len(meses_todos) + 1)].width = 18
 
-        data = cons or {}
+    # ── Sheet SR: Saldo Remanescente ─────────────────────────────────────────
 
-        cgr = data.get("cgr", 0.0)
-        cgf = data.get("cgf", 0.0)
-        rpv = data.get("rpv", cgr - cgf)
-        ret = data.get("ret", 0.0)
-        rp  = data.get("rp", 0.0)
-        scg = data.get("scg", rpv + ret + rp)
+    @staticmethod
+    def _sheet_sr(wb, sr: dict | list[dict] | None, periodo: str | None):
+        _NAVY_SR = "1B2A4A"
+        ws = wb.create_sheet("📈 SR")
+        ws.sheet_view.showGridLines = False
 
-        linhas = [
-            ("📄  CGR  (Auditoria XML)",       cgr,  _BLUE,   "+"),
-            ("📋  CGF  (Volume Faturado)",      cgf,  _GOLD,   "−"),
-            ("🧾  RPV  = CGR − CGF",            rpv,  _PURPLE, "="),
-            ("⚡  RET  (Encargos Transporte)",   ret,  _ORANGE, "+"),
-            ("📄  RP   (Conciliação Penalid.)",  rp,   _TEAL,   "+"),
-        ]
+        ws.merge_cells("A1:E1")
+        t = ws["A1"]
+        t.value = f"SALDO REMANESCENTE (SR)  =  (VP − VF) × PR  |  Período: {periodo or 'N/D'}"
+        t.fill = _fill(_NAVY_SR)
+        t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("center")
+        ws.row_dimensions[1].height = 30
 
-        _apply_header_row(ws, row,
-            ["Módulo / Componente", "Valor (R$)", "Op.", "Obs."],
-            [36, 22, 8, 30], _NAVY)
-        row += 1
+        row = 3
 
-        for i, (label, val, bg_mod, op) in enumerate(linhas):
-            for col in range(1, 5):
-                c = ws.cell(row=row, column=col)
-                c.fill = _fill(_ROW_ALT if i % 2 else _ROW_NORM)
-                c.border = _border()
-            ws.cell(row=row, column=1, value=label).font = _font()
-            ws.cell(row=row, column=1).alignment = _align("left")
-            v = ws.cell(row=row, column=2, value=val)
-            v.number_format = _BRL
-            v.alignment = _align("right")
-            ws.cell(row=row, column=3, value=op).alignment = _align("center")
-            row += 1
+        registros = sr if isinstance(sr, list) else ([sr] if sr else [])
+        registros = [r for r in registros if r]
 
-        # Linha separadora
-        row += 1
+        if not registros:
+            ws.merge_cells(f"A{row}:E{row}")
+            c = ws.cell(row=row, column=1, value="Nenhum dado de SR salvo.")
+            c.font = _font(italic=True)
+            c.alignment = _align("center")
+        elif periodo:
+            # Modo período único — exibe detalhado
+            item = registros[0]
+            vp   = _to_float(item.get("vp"))
+            vf   = _to_float(item.get("vf"))
+            pr_v = _to_float(item.get("pr"))
+            sr_v = _to_float(item.get("sr"))
+            diff = vp - vf
 
-        # SCG Final
-        ws.merge_cells(f"A{row}:D{row}")
-        lbl = ws.cell(row=row, column=1,
-                      value="💼  SCG  =  RPV  +  RET  +  RP")
-        bg_scg = _GREEN if scg >= 0 else _RED
-        lbl.fill = _fill(bg_scg)
-        lbl.font = _font(bold=True, color=_HEADER_FG, size=13)
-        lbl.alignment = _align("left")
-        lbl.border = _border()
-        ws.row_dimensions[row].height = 28
-        row += 1
-
-        ws.merge_cells(f"A{row}:D{row}")
-        v = ws.cell(row=row, column=1, value=scg)
-        v.number_format = _BRL
-        v.fill = _fill(bg_scg)
-        v.font = _font(bold=True, color=_HEADER_FG, size=22)
-        v.alignment = _align("center")
-        v.border = _border()
-        ws.row_dimensions[row].height = 44
-        row += 2
-
-        # SR (se disponível)
-        if sr:
-            _section_title(ws, row, "  📈  SR  =  (VP − VF) × PR", 4, _NAVY)
-            row += 1
             _apply_header_row(ws, row,
-                ["VP (m³)", "VF (m³)", "PR (R$/m³)", "SR (R$)"],
-                [20, 20, 20, 22], _NAVY)
+                ["VP (m³)", "VF (m³)", "Diferença (m³)", "PR (R$/m³)", "SR (R$)"],
+                [20, 20, 20, 20, 22], _NAVY_SR)
             row += 1
             _apply_data_row(ws, row,
-                [sr.get("vp", 0.0), sr.get("vf", 0.0),
-                 sr.get("pr", 0.0), sr.get("sr", 0.0)],
-                [_VOL, _VOL, _BRL, _BRL])
+                [vp, vf, diff, pr_v, sr_v],
+                [_VOL, _VOL, _VOL, _BRL, _BRL])
             row += 2
 
-        # Fórmula legível
-        _section_title(ws, row, "  FÓRMULA OFICIAL", 4, "2C3E50")
-        row += 1
-        formulas = [
-            "RPV  =  CGR  −  CGF",
-            "SCG  =  RPV  +  RET  +  RP",
-            "SR   =  (VP  −  VF) × PR",
-        ]
-        for f in formulas:
-            ws.merge_cells(f"A{row}:D{row}")
-            c = ws.cell(row=row, column=1, value=f)
-            c.fill = _fill(_ROW_ALT)
-            c.font = _font(italic=True, size=11)
-            c.alignment = _align("center")
-            c.border = _border()
+            # Card resultado
+            ws.merge_cells(f"A{row}:E{row}")
+            lbl = ws.cell(row=row, column=1, value="📈  SR  =  (VP − VF) × PR")
+            bg = _GREEN if sr_v >= 0 else _RED
+            lbl.fill = _fill(bg)
+            lbl.font = _font(bold=True, color=_HEADER_FG, size=13)
+            lbl.alignment = _align("left")
+            lbl.border = _border()
+            ws.row_dimensions[row].height = 28
             row += 1
 
-        ws.column_dimensions["A"].width = 38
-        ws.column_dimensions["B"].width = 22
-        ws.column_dimensions["C"].width = 10
-        ws.column_dimensions["D"].width = 30
+            ws.merge_cells(f"A{row}:E{row}")
+            v = ws.cell(row=row, column=1, value=sr_v)
+            v.number_format = _BRL
+            v.fill = _fill(bg)
+            v.font = _font(bold=True, color=_HEADER_FG, size=22)
+            v.alignment = _align("center")
+            v.border = _border()
+            ws.row_dimensions[row].height = 44
+        else:
+            # Modo lista — todos os períodos
+            _apply_header_row(ws, row,
+                ["Período", "VP (m³)", "VF (m³)", "PR (R$/m³)", "SR (R$)"],
+                [18, 20, 20, 20, 22], _NAVY_SR)
+            row += 1
+            for i, item in enumerate(registros):
+                _apply_data_row(ws, row,
+                    [item.get("periodo", ""), _to_float(item.get("vp")),
+                     _to_float(item.get("vf")), _to_float(item.get("pr")),
+                     _to_float(item.get("sr"))],
+                    ["@", _VOL, _VOL, _BRL, _BRL],
+                    alternate=(i % 2 == 1))
+                row += 1
+
+            # Linha de total
+            if len(registros) > 1:
+                row += 1
+                total_sr = sum(_to_float(r.get("sr")) for r in registros)
+                ws.merge_cells(f"A{row}:D{row}")
+                lbl = ws.cell(row=row, column=1, value="TOTAL SR")
+                bg = _GREEN if total_sr >= 0 else _RED
+                lbl.fill = _fill(bg)
+                lbl.font = _font(bold=True, color=_HEADER_FG)
+                lbl.alignment = _align("right")
+                lbl.border = _border()
+                v = ws.cell(row=row, column=5, value=total_sr)
+                v.number_format = _BRL
+                v.fill = _fill(bg)
+                v.font = _font(bold=True, color=_HEADER_FG)
+                v.alignment = _align("right")
+                v.border = _border()
+
+        ws.column_dimensions["A"].width = 20
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 20
+        ws.column_dimensions["D"].width = 20
+        ws.column_dimensions["E"].width = 22
 
     # ── Sheet 8: PR Final ────────────────────────────────────────────────────
 
@@ -1611,57 +1842,50 @@ class ExcelConsolidado:
         sr: dict | None,
         periodo: str | None,
     ):
-        ws = wb.create_sheet("📊 Dashboard")
-        ws.sheet_view.showGridLines   = False
+        ws = wb.create_sheet("📊 Dashboard", 0)   # primeira aba
+        ws.sheet_view.showGridLines     = False
         ws.sheet_view.showRowColHeaders = False
-        ws.sheet_properties.tabColor  = "0D2137"
-        ws.sheet_view.zoomScale       = 90
+        ws.sheet_properties.tabColor    = "0F1A2E"
+        ws.sheet_view.zoomScale         = 100
 
-        # ── Paleta Dashboard ──────────────────────────────────────────────────
-        BG         = "F0F4F8"   # fundo geral (cinza muito claro)
-        HDR1       = "0D2137"   # header topo escuro
-        HDR2       = "1A3A5C"   # header 2ª linha
-        CARD_SALDO = "0A3D62"   # Saldo a Recuperar — azul petróleo
-        CARD_SALDO2= "0C4A76"   # sub-linha do card
-        CARD_SCG   = "154360"   # SCG — azul mais claro
-        CARD_SCG2  = "1A5276"
-        CARD_PR    = "0E6252"   # Parcela PR — verde escuro
-        CARD_PR2   = "117A65"
-        CARD_PV    = "1D4E1F"   # PV Final — verde floresta
-        CARD_PV2   = "1E8449"
-        CARD_RPV   = "3D1A6E"   # RPV — roxo escuro
-        CARD_RPV2  = "5B2C6F"
-        CARD_RET   = "7E2000"   # RET — castanho/laranja
-        CARD_RET2  = "A04000"
-        CARD_RP    = "0B3954"   # RP — azul escuro
-        CARD_RP2   = "1A5276"
-        CARD_SR    = "1B1F3B"   # SR — azul noite
-        CARD_SR2   = "2C3E6B"
-        GOLD       = "F4D03F"   # valor destaque amarelo
-        WHITE      = "FFFFFF"
-        MUTED      = "B0BEC5"   # texto secundário
-        SEP        = "DDE3EC"   # linha separadora
+        # ══════════════════════════════════════════════════════════════════════
+        # PALETA DESIGN SYSTEM (Dark Modern)
+        # ══════════════════════════════════════════════════════════════════════
+        BG       = "0F1A2E"   # fundo geral (dark navy)
+        SURFACE  = "1A2940"   # fundo de cards
+        SURFACE2 = "0B1424"   # fundo escuro alternativo
+        ACCENT   = "00D9C6"   # ciano destaque (verde-água)
+        ACCENT2  = "60E5DA"
+        GOLD     = "FFD166"   # destaque amarelo
+        BLUE     = "4FC3F7"   # azul claro
+        PURPLE   = "B388FF"   # roxo claro
+        GREEN    = "69F0AE"   # verde claro (positivo)
+        RED      = "FF5252"   # vermelho (negativo)
+        ORANGE   = "FFAB40"   # laranja
+        WHITE    = "FFFFFF"
+        MUTED    = "8896B0"   # texto secundário
+        DIM      = "5A6B85"   # texto terciário
+        BORDER   = "243A5C"   # borda sutil
 
-        # ── Layout de colunas ─────────────────────────────────────────────────
-        # A=marg | B:C=card1 | D=gap | E:F=card2 | G=gap | H:I=card3 | J=gap | K:L=card4 | M=marg
+        # ── Layout: 4 cards × 2 colunas + gaps ────────────────────────────────
+        # A(margem) | B-D card1 | E gap | F-H card2 | I gap | J-L card3 | M gap | N-P card4 | Q margem
         col_cfg = [
-            ("A", 1.2),
-            ("B", 14.0), ("C", 14.0),
-            ("D", 1.8),
-            ("E", 14.0), ("F", 14.0),
-            ("G", 1.8),
-            ("H", 14.0), ("I", 14.0),
-            ("J", 1.8),
-            ("K", 14.0), ("L", 14.0),
-            ("M", 1.2),
+            ("A", 2.0),
+            ("B", 11.0), ("C", 11.0), ("D", 11.0),
+            ("E", 1.5),
+            ("F", 11.0), ("G", 11.0), ("H", 11.0),
+            ("I", 1.5),
+            ("J", 11.0), ("K", 11.0), ("L", 11.0),
+            ("M", 1.5),
+            ("N", 11.0), ("O", 11.0), ("P", 11.0),
+            ("Q", 2.0),
         ]
         for col_ltr, w in col_cfg:
             ws.column_dimensions[col_ltr].width = w
 
-        # col index: A=1 B=2 C=3 D=4 E=5 F=6 G=7 H=8 I=9 J=10 K=11 L=12 M=13
-        CARD_STARTS = [2, 5, 8, 11]   # B, E, H, K
-        FULL_START  = 2                # B
-        FULL_END    = 12               # L
+        CARD_STARTS = [2, 6, 10, 14]   # B, F, J, N — primeira coluna de cada card
+        FULL_START = 2
+        FULL_END   = 16
 
         # ── Dados ─────────────────────────────────────────────────────────────
         d     = cons or {}
@@ -1676,268 +1900,361 @@ class ExcelConsolidado:
         pv_d  = pv or {}
         pr_v  = _to_float(pr_d.get("pr"))
         pv_v  = _to_float(pv_d.get("pv"))
+        pmpv_v= _to_float(pv_d.get("pmpv"))
         vp_v  = _to_float(pr_d.get("vp") or sr_d.get("vp"))
         sr_v  = _to_float(sr_d.get("sr"))
         saldo = scg + sr_v
 
-        # ── Helpers ───────────────────────────────────────────────────────────
-        W  = Border(
-            left=Side(style="thin", color=WHITE),
-            right=Side(style="thin", color=WHITE),
-            top=Side(style="thin", color=WHITE),
-            bottom=Side(style="thin", color=WHITE),
-        )
+        # ── Helpers de estilo ─────────────────────────────────────────────────
         NONE_BDR = Border()
 
-        def _rh(r, h): ws.row_dimensions[r].height = h
+        def _no_border(r, c1, c2):
+            for ci in range(c1, c2 + 1):
+                ws.cell(row=r, column=ci).border = NONE_BDR
 
-        def _bg_row(r, h, bg, c1=1, c2=13):
+        def _rh(r, h):
+            ws.row_dimensions[r].height = h
+
+        def _bg_row(r, h, bg, c1=1, c2=17):
             _rh(r, h)
             for ci in range(c1, c2 + 1):
-                ws.cell(row=r, column=ci).fill = _fill(bg)
+                cell = ws.cell(row=r, column=ci)
+                cell.fill = _fill(bg)
+                cell.border = NONE_BDR
 
         def _merge(r, c1, c2, value, bg, fnt, align_h="center", fmt="@", row_h=None):
             if c1 != c2:
                 ws.merge_cells(start_row=r, start_column=c1, end_row=r, end_column=c2)
             cell = ws.cell(row=r, column=c1, value=value)
-            cell.fill      = _fill(bg)
-            cell.font      = fnt
+            cell.fill = _fill(bg)
+            cell.font = fnt
             cell.alignment = _align(align_h, "center")
-            cell.border    = W
+            cell.border = NONE_BDR
             if fmt != "@":
                 cell.number_format = fmt
             if row_h:
                 _rh(r, row_h)
             return cell
 
-        def card(row, col, label, main_val, main_fmt, c_dark, c_lite,
-                 s1_lbl="", s1_val=None, s1_fmt=_BRL,
-                 s2_lbl="", s2_val=None, s2_fmt=_BRL):
-            """Desenha um card de métrica em 2 colunas × 7 linhas."""
-            c2 = col + 1
+        def _fill_range(r, c1, c2, bg):
+            for ci in range(c1, c2 + 1):
+                cell = ws.cell(row=r, column=ci)
+                cell.fill = _fill(bg)
+                cell.border = NONE_BDR
 
-            # R+0  label bar (dark)
-            _merge(row,   col, c2, f"  {label}",
-                   c_dark, _font(bold=True, size=10, color=WHITE), "left", "@", 18)
+        def _kpi_card(row, col, icon, label, value, fmt, accent_color,
+                      sub1_lbl=None, sub1_val=None, sub1_fmt=_BRL,
+                      sub2_lbl=None, sub2_val=None, sub2_fmt=_BRL):
+            """Desenha um card KPI moderno (3 colunas × 8 linhas).
+            Estrutura:
+              R+0: barra accent superior (3px)
+              R+1: ícone + label
+              R+2: valor principal (grande, em GOLD/ACCENT)
+              R+3: separador sutil
+              R+4: sub-info 1 (label esq | valor dir)
+              R+5: sub-info 2 (label esq | valor dir)
+              R+6: spacer
+              R+7: barra accent inferior fina
+            """
+            c2 = col + 2
 
-            # R+1  spacer
-            for ci in (col, c2):
-                cc = ws.cell(row=row+1, column=ci)
-                cc.fill = _fill(c_dark); cc.border = W
-            _rh(row+1, 6)
+            # R+0: accent stripe topo
+            _fill_range(row, col, c2, accent_color)
+            _rh(row, 4)
 
-            # R+2  main value (grande)
-            _merge(row+2, col, c2, main_val,
-                   c_dark, _font(bold=True, size=22, color=WHITE), "center", main_fmt, 36)
+            # R+1: ícone + label
+            _merge(row+1, col, c2, f"   {icon}  {label}",
+                   SURFACE, _font(bold=True, size=10, color=MUTED), "left", "@", 22)
 
-            # R+3  spacer
-            for ci in (col, c2):
-                cc = ws.cell(row=row+3, column=ci)
-                cc.fill = _fill(c_dark); cc.border = W
-            _rh(row+3, 6)
+            # R+2: valor principal — 2 linhas
+            _merge(row+2, col, c2, value,
+                   SURFACE, _font(bold=True, size=18, color=WHITE), "center", fmt, 36)
 
-            # R+4  sub 1
-            lc = ws.cell(row=row+4, column=col,  value=f"  {s1_lbl}" if s1_lbl else "")
-            vc = ws.cell(row=row+4, column=c2,   value=s1_val)
-            for cc, al in ((lc, "left"), (vc, "right")):
-                cc.fill      = _fill(c_lite)
-                cc.font      = _font(size=9, color=MUTED if not s1_lbl else GOLD if cc is vc else "D0E8F5")
-                cc.alignment = _align(al, "center")
-                cc.border    = W
-            if s1_val is not None and s1_fmt != "@":
-                vc.number_format = s1_fmt
-            lc.font = _font(size=9, color="D0E8F5")
-            vc.font = _font(bold=True, size=9, color=GOLD)
-            _rh(row+4, 17)
+            # R+3: separador sutil (linha de 1px com cor BORDER)
+            _fill_range(row+3, col, c2, BORDER)
+            _rh(row+3, 2)
 
-            # R+5  sub 2
-            lc2 = ws.cell(row=row+5, column=col, value=f"  {s2_lbl}" if s2_lbl else "")
-            vc2 = ws.cell(row=row+5, column=c2,  value=s2_val)
-            for cc, al in ((lc2, "left"), (vc2, "right")):
-                cc.fill      = _fill(c_lite)
-                cc.alignment = _align(al, "center")
-                cc.border    = W
-            lc2.font = _font(size=9, color="D0E8F5")
-            vc2.font = _font(bold=True, size=9, color=GOLD)
-            if s2_val is not None and s2_fmt != "@":
-                vc2.number_format = s2_fmt
-            _rh(row+5, 17)
+            # R+4 e R+5: sub-infos
+            for offset, (lbl, val, vfmt) in enumerate([
+                (sub1_lbl, sub1_val, sub1_fmt),
+                (sub2_lbl, sub2_val, sub2_fmt),
+            ]):
+                rr = row + 4 + offset
+                if lbl is None:
+                    # linha vazia mas com bg
+                    _fill_range(rr, col, c2, SURFACE2)
+                    _rh(rr, 16)
+                    continue
+                lc = ws.cell(row=rr, column=col, value=f"  {lbl}")
+                # mid + valor (ocupa 2 colunas finais)
+                _fill_range(rr, col, c2, SURFACE2)
+                lc.fill = _fill(SURFACE2)
+                lc.font = _font(size=9, color=MUTED)
+                lc.alignment = _align("left", "center")
+                lc.border = NONE_BDR
 
-            # R+6  bottom accent strip
-            for ci in (col, c2):
-                cc = ws.cell(row=row+6, column=ci)
-                cc.fill = _fill("091520"); cc.border = W
-            _rh(row+6, 4)
+                vc = ws.cell(row=rr, column=c2, value=val)
+                vc.fill = _fill(SURFACE2)
+                vc.font = _font(bold=True, size=10, color=accent_color)
+                vc.alignment = _align("right", "center")
+                vc.border = NONE_BDR
+                if val is not None and vfmt != "@":
+                    vc.number_format = vfmt
+                _rh(rr, 16)
 
-        # ══════════════════════════════════════════════════════════════════════
-        # HEADER
-        # ══════════════════════════════════════════════════════════════════════
-        # R1 — Banner principal
-        _bg_row(1, 46, HDR1)
-        _merge(1, FULL_START, 9,
-               "    ARPE  ·  CONTA GRÁFICA  ·  TARIFA DE GÁS CANALIZADO",
-               HDR1, _font(bold=True, size=18, color=WHITE), "left")
-        # Badge CG versão (canto direito)
-        _merge(1, 10, FULL_END,
-               f"  {periodo or 'GERAL'}  ",
-               GOLD, _font(bold=True, size=14, color="0D2137"), "right")
+            # R+6: spacer
+            _fill_range(row+6, col, c2, BG)
+            _rh(row+6, 6)
 
-        # R2 — Subtítulo
-        _bg_row(2, 24, HDR2)
-        _merge(2, FULL_START, FULL_END,
-               f"    Dashboard Executivo  ·  Gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}",
-               HDR2, _font(size=10, color="7FB3D3", italic=True), "left")
-
-        # R3 — Barra colorida decorativa (accent azul claro)
-        _bg_row(3, 4, "2E86C1")
-
-        # R4 — Espaço
-        _bg_row(4, 10, BG)
+        def _section_band(row, label):
+            """Faixa decorativa de seção."""
+            _bg_row(row, 6, BG)
+            _bg_row(row+1, 28, SURFACE2)
+            _merge(row+1, FULL_START, FULL_END,
+                   f"   {label}",
+                   SURFACE2, _font(bold=True, size=11, color=ACCENT), "left", "@", 28)
+            # accent line bem fina embaixo
+            _bg_row(row+2, 2, ACCENT)
+            _bg_row(row+3, 8, BG)
+            return row + 4
 
         # ══════════════════════════════════════════════════════════════════════
-        # FAIXA DE CARDS 1 — SALDO A RECUPERAR | SCG | PR | PV
+        # FUNDO GERAL
         # ══════════════════════════════════════════════════════════════════════
-        _bg_row(5,  2, BG)   # gap antes dos cards
-        R = 6
-
-        card(R, CARD_STARTS[0],
-             "SALDO A RECUPERAR", saldo, _BRL, CARD_SALDO, CARD_SALDO2,
-             "SCG Atualizado",        scg,   _BRL,
-             "Saldo Remanescente SR", sr_v,  _BRL)
-
-        card(R, CARD_STARTS[1],
-             "SALDO CONTA GRÁFICA — SCG", scg, _BRL, CARD_SCG, CARD_SCG2,
-             "RPV (Preço Venda)", rpv, _BRL,
-             "RET + RP",          ret + rp, _BRL)
-
-        card(R, CARD_STARTS[2],
-             "PARCELA DE RECUPERAÇÃO", pr_v, _VOL4, CARD_PR, CARD_PR2,
-             "Volume Prospectivo (m³)", vp_v, _VOL,
-             "PR = Saldo ÷ Volume",     None, "@")
-
-        card(R, CARD_STARTS[3],
-             "PREÇO FINAL — PV", pv_v, _VOL4, CARD_PV, CARD_PV2,
-             "PMPV (R$/m³)",    None, "@",
-             "PR  (R$/m³)",      pr_v, _VOL4)
-
-        # fill gap columns entre cards (cor BG)
-        for gap_col in (4, 7, 10):
-            for rr in range(R, R + 7):
-                ws.cell(row=rr, column=gap_col).fill = _fill(BG)
-                ws.cell(row=rr, column=1).fill       = _fill(BG)
-                ws.cell(row=rr, column=13).fill      = _fill(BG)
+        for r in range(1, 80):
+            _bg_row(r, ws.row_dimensions[r].height or 15, BG)
 
         # ══════════════════════════════════════════════════════════════════════
-        # FAIXA DE CARDS 2 — CGR | RPV | RET | SR
+        # HEADER (linhas 1-4)
         # ══════════════════════════════════════════════════════════════════════
-        R2 = R + 8   # gap de 1 linha
-        _bg_row(R + 7, 10, BG)
+        # R1: faixa decorativa fina
+        _bg_row(1, 3, ACCENT)
 
-        card(R2, CARD_STARTS[0],
-             "CGR — AUDITORIA XML", cgr, _BRL, "0A3D62", "0C4A76",
-             "Total NF-e + CT-e", cgr, _BRL,
-             "", None, "@")
+        # R2: banner principal
+        _bg_row(2, 56, SURFACE2)
+        _merge(2, FULL_START, 11,
+               "   ARPE  ·  CONTA GRÁFICA",
+               SURFACE2, _font(bold=True, size=22, color=WHITE), "left")
+        _merge(2, 12, FULL_END,
+               f" {periodo or 'GERAL'}  ",
+               SURFACE2, _font(bold=True, size=14, color=ACCENT), "right")
 
-        card(R2, CARD_STARTS[1],
-             "RPV  =  CGR  −  CGF", rpv, _BRL, CARD_RPV, CARD_RPV2,
-             "CGR (Auditoria)",      cgr, _BRL,
-             "CGF (Volume Fat.)",    cgf, _BRL)
+        # R3: subtítulo
+        _bg_row(3, 22, SURFACE)
+        _merge(3, FULL_START, 11,
+               "   Tarifa de Gás Canalizado · Dashboard Executivo",
+               SURFACE, _font(size=10, color=MUTED, italic=True), "left")
+        _merge(3, 12, FULL_END,
+               f"Gerado {datetime.now().strftime('%d/%m/%Y · %H:%M')}  ",
+               SURFACE, _font(size=10, color=DIM), "right")
 
-        card(R2, CARD_STARTS[2],
-             "RET — ENCARGOS TRANSP.", ret, _BRL, CARD_RET, CARD_RET2,
-             "EAT (bruto)",           ret, _BRL,
-             "PIS/COFINS deduzido",   None, "@")
-
-        card(R2, CARD_STARTS[3],
-             "SALDO REMANESCENTE SR", sr_v, _BRL, CARD_SR, CARD_SR2,
-             "RP (Conciliação)",      rp,  _BRL,
-             "CGF (Volume Fat.)",     cgf, _BRL)
-
-        for gap_col in (4, 7, 10):
-            for rr in range(R2, R2 + 7):
-                ws.cell(row=rr, column=gap_col).fill = _fill(BG)
-                ws.cell(row=rr, column=1).fill       = _fill(BG)
-                ws.cell(row=rr, column=13).fill      = _fill(BG)
+        # R4: gap
+        _bg_row(4, 18, BG)
 
         # ══════════════════════════════════════════════════════════════════════
-        # SEPARADOR + TÍTULO DO GRÁFICO
+        # SEÇÃO 1: KPIs PRINCIPAIS
         # ══════════════════════════════════════════════════════════════════════
-        R3 = R2 + 8
-        _bg_row(R3,     10, BG)
-        _bg_row(R3 + 1, 3,  "2E86C1")   # accent stripe
+        R = _section_band(5, "INDICADORES PRINCIPAIS")
+        # KPI row 1: SALDO | SCG | PR | PV
+        saldo_color = GREEN if saldo >= 0 else RED
+        scg_color   = GREEN if scg   >= 0 else RED
 
-        R4 = R3 + 2
-        _bg_row(R4, 24, HDR1)
-        _merge(R4, FULL_START, FULL_END,
-               "    PARCELA DE RECUPERAÇÃO (R$/m³)  ·  HISTÓRICO POR PERÍODO",
-               HDR1, _font(bold=True, size=12, color=WHITE), "left")
+        _kpi_card(R, CARD_STARTS[0], "💰", "SALDO A RECUPERAR",
+                  saldo, _BRL, saldo_color,
+                  "SCG Atualizado",         scg,  _BRL,
+                  "Saldo Remanescente SR",  sr_v, _BRL)
 
-        # ── Tabela de dados para o gráfico ────────────────────────────────────
-        R5 = R4 + 1
-        # cabeçalho da tabela (tamanho mínimo, cor discreta)
+        _kpi_card(R, CARD_STARTS[1], "💼", "SCG — CONTA GRÁFICA",
+                  scg, _BRL, scg_color,
+                  "RPV (CGR − CGF)", rpv,      _BRL,
+                  "RET + RP",        ret + rp, _BRL)
+
+        _kpi_card(R, CARD_STARTS[2], "📈", "PARCELA DE RECUPERAÇÃO",
+                  pr_v, _VOL4, ACCENT,
+                  "Volume Prosp. (m³)", vp_v, _VOL,
+                  "Saldo / VP",         None, "@")
+
+        _kpi_card(R, CARD_STARTS[3], "🎯", "PREÇO FINAL — PV",
+                  pv_v, _VOL4, GOLD,
+                  "PMPV (R$/m³)", pmpv_v, _VOL4,
+                  "PR (R$/m³)",   pr_v,   _VOL4)
+
+        # gap entre cards (colunas E, I, M)
+        for r in range(R, R + 8):
+            for gap_col in (5, 9, 13):
+                ws.cell(row=r, column=gap_col).fill = _fill(BG)
+                ws.cell(row=r, column=gap_col).border = NONE_BDR
+            ws.cell(row=r, column=1).fill  = _fill(BG)
+            ws.cell(row=r, column=17).fill = _fill(BG)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # SEÇÃO 2: COMPONENTES DA CONTA GRÁFICA
+        # ══════════════════════════════════════════════════════════════════════
+        R2 = R + 9
+        R2 = _section_band(R2, "COMPONENTES DA CONTA GRÁFICA")
+
+        _kpi_card(R2, CARD_STARTS[0], "🔍", "CGR · AUDITORIA XML",
+                  cgr, _BRL, BLUE,
+                  "Notas Fiscais (NF-e)", cgr, _BRL,
+                  None, None, "@")
+
+        _kpi_card(R2, CARD_STARTS[1], "📋", "CGF · VOLUME × PMPV",
+                  cgf, _BRL, GOLD,
+                  "Volume Faturado", None, "@",
+                  "× PMPV trimestral", None, "@")
+
+        _kpi_card(R2, CARD_STARTS[2], "⚡", "RET · ENCARGOS",
+                  ret, _BRL, ORANGE,
+                  "EAT × (1 − PIS/COFINS)", None, "@",
+                  "+ Encargos Capacidade",   None, "@")
+
+        _kpi_card(R2, CARD_STARTS[3], "📄", "RP · CONCILIAÇÃO",
+                  rp, _BRL, PURPLE,
+                  "Penalidades Recebidas", None, "@",
+                  "− Penalidades Aplicadas", None, "@")
+
+        for r in range(R2, R2 + 8):
+            for gap_col in (5, 9, 13):
+                ws.cell(row=r, column=gap_col).fill = _fill(BG)
+                ws.cell(row=r, column=gap_col).border = NONE_BDR
+            ws.cell(row=r, column=1).fill  = _fill(BG)
+            ws.cell(row=r, column=17).fill = _fill(BG)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # SEÇÃO 3: FÓRMULA OFICIAL (CASCATA VISUAL)
+        # ══════════════════════════════════════════════════════════════════════
+        R3 = R2 + 9
+        R3 = _section_band(R3, "EQUAÇÃO DA CONTA GRÁFICA")
+
+        # Fórmula em formato de cascata visual:
+        # CGR − CGF = RPV ; RPV + RET + RP = SCG ; SCG + SR = SALDO
+        # Linha única: 5 cards menores com símbolos entre eles
+
+        def _formula_box(row, col_start, col_end, label, value, fmt, color):
+            _bg_row(row, 22, SURFACE)
+            _merge(row, col_start, col_end, label,
+                   SURFACE, _font(size=9, color=MUTED), "center", "@", 22)
+            _bg_row(row+1, 30, SURFACE)
+            _merge(row+1, col_start, col_end, value,
+                   SURFACE, _font(bold=True, size=14, color=color), "center", fmt, 30)
+            # accent inferior
+            _fill_range(row+2, col_start, col_end, color)
+            _rh(row+2, 2)
+
+        def _formula_op(row, col_start, col_end, op):
+            _bg_row(row, 22, BG)
+            _bg_row(row+1, 30, BG)
+            _merge(row+1, col_start, col_end, op,
+                   BG, _font(bold=True, size=18, color=ACCENT), "center", "@", 30)
+            _bg_row(row+2, 2, BG)
+
+        # Layout: CGR (B-C) [-] CGF (E-F) [=] RPV (H-I) [+] RET+RP (K-L) [=] SCG (N-P)
+        FR = R3
+        _formula_box(FR, 2, 3,   "CGR",         cgr,      _BRL, BLUE)
+        _formula_op(FR, 4, 4, "−")
+        _formula_box(FR, 5, 6,   "CGF",         cgf,      _BRL, GOLD)
+        _formula_op(FR, 7, 7, "=")
+        _formula_box(FR, 8, 9,   "RPV",         rpv,      _BRL, PURPLE)
+        _formula_op(FR, 10, 10, "+")
+        _formula_box(FR, 11, 12, "RET + RP",    ret + rp, _BRL, ORANGE)
+        _formula_op(FR, 13, 13, "=")
+        _formula_box(FR, 14, 16, "SCG",         scg,      _BRL, scg_color)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # SEÇÃO 4: HISTÓRICO PR (gráfico)
+        # ══════════════════════════════════════════════════════════════════════
+        R4 = FR + 4
+        R4 = _section_band(R4, "PARCELA DE RECUPERAÇÃO · HISTÓRICO POR PERÍODO")
+
+        # Tabela de dados oculta para o gráfico (cores discretas)
+        TBL_R = R4
         for ci, lbl in ((2, "Período"), (3, "PR (R$/m³)")):
-            cc = ws.cell(row=R5, column=ci, value=lbl)
-            cc.fill = _fill("E8EEF4")
-            cc.font = _font(bold=True, size=8, color="5A7A9A")
+            cc = ws.cell(row=TBL_R, column=ci, value=lbl)
+            cc.fill = _fill(SURFACE)
+            cc.font = _font(bold=True, size=8, color=DIM)
             cc.alignment = _align("center")
-        _rh(R5, 12)
+            cc.border = NONE_BDR
+        _rh(TBL_R, 14)
 
         periodos_g = cons_periodos[-14:] if cons_periodos else []
-        dr = R5 + 1
-        for item in periodos_g:
-            p_txt  = item.get("periodo", "")
-            p_pr   = _to_float(item.get("pr")) if item.get("pr") else (
+        dr = TBL_R + 1
+        for i, item in enumerate(periodos_g):
+            p_txt = item.get("periodo", "")
+            p_pr = _to_float(item.get("pr")) if item.get("pr") else (
                 _to_float(item.get("scg", 0)) / max(_to_float(item.get("vp", 1)), 1)
             )
-            ws.cell(row=dr, column=2, value=p_txt).fill  = _fill("F5F8FA")
+            pc = ws.cell(row=dr, column=2, value=p_txt)
+            pc.fill = _fill(SURFACE if i % 2 == 0 else SURFACE2)
+            pc.font = _font(size=9, color=MUTED)
+            pc.alignment = _align("center")
+            pc.border = NONE_BDR
+
             vc = ws.cell(row=dr, column=3, value=p_pr)
-            vc.fill = _fill("F5F8FA"); vc.number_format = _VOL4
-            _rh(dr, 11); dr += 1
+            vc.fill = _fill(SURFACE if i % 2 == 0 else SURFACE2)
+            vc.font = _font(size=9, color=ACCENT, bold=True)
+            vc.alignment = _align("center")
+            vc.number_format = _VOL4
+            vc.border = NONE_BDR
+            _rh(dr, 13)
+            dr += 1
 
         if not periodos_g and pr_v:
-            ws.cell(row=dr, column=2, value=periodo or "Atual")
-            ws.cell(row=dr, column=3, value=pr_v).number_format = _VOL4
+            ws.cell(row=dr, column=2, value=periodo or "Atual").fill = _fill(SURFACE)
+            vc = ws.cell(row=dr, column=3, value=pr_v)
+            vc.fill = _fill(SURFACE)
+            vc.number_format = _VOL4
             dr += 1
 
         data_end = dr - 1
 
-        # ── Gráfico de linha ──────────────────────────────────────────────────
-        if data_end > R5 + 1:
-            from openpyxl.chart.label import DataLabel
+        # Gráfico de linha estilizado
+        if data_end > TBL_R + 1:
             chart = LineChart()
             chart.title  = None
             chart.style  = 2
             chart.legend = None
-            chart.y_axis.numFmt          = '#,##0.0000'
-            chart.y_axis.delete          = False
-            chart.y_axis.majorGridlines  = None
-            chart.x_axis.tickLblPos      = "low"
-            chart.x_axis.delete          = False
-            chart.height = 14
-            chart.width  = 30
+            chart.y_axis.numFmt           = '#,##0.0000'
+            chart.y_axis.delete           = False
+            chart.y_axis.majorGridlines   = None
+            chart.x_axis.tickLblPos       = "low"
+            chart.x_axis.delete           = False
+            chart.height = 10
+            chart.width  = 28
 
-            data_ref = Reference(ws, min_col=3, min_row=R5 + 1, max_row=data_end)
+            data_ref = Reference(ws, min_col=3, min_row=TBL_R + 1, max_row=data_end)
             chart.add_data(data_ref)
-            cats = Reference(ws, min_col=2, min_row=R5 + 1, max_row=data_end)
+            cats = Reference(ws, min_col=2, min_row=TBL_R + 1, max_row=data_end)
             chart.set_categories(cats)
 
             s = chart.series[0]
-            s.graphicalProperties.line.solidFill        = "2E86C1"
-            s.graphicalProperties.line.width            = 28000
+            s.graphicalProperties.line.solidFill        = ACCENT
+            s.graphicalProperties.line.width            = 32000
             s.marker.symbol                              = "circle"
-            s.marker.size                                = 7
-            s.marker.graphicalProperties.solidFill      = "F4D03F"
-            s.marker.graphicalProperties.line.solidFill = "2E86C1"
+            s.marker.size                                = 8
+            s.marker.graphicalProperties.solidFill      = GOLD
+            s.marker.graphicalProperties.line.solidFill = ACCENT
 
-            ws.add_chart(chart, f"B{data_end + 2}")
+            ws.add_chart(chart, f"E{TBL_R}")
+
+        # Garante fundo BG nas linhas adjacentes ao gráfico
+        for r in range(TBL_R, data_end + 22):
+            for ci in range(1, 18):
+                cell = ws.cell(row=r, column=ci)
+                if cell.fill.fgColor.rgb in (None, "00000000", "FFFFFFFF"):
+                    cell.fill = _fill(BG)
 
         # ══════════════════════════════════════════════════════════════════════
-        # FÓRMULAS OFICIAIS (rodapé informativo)
+        # RODAPÉ
         # ══════════════════════════════════════════════════════════════════════
-        foot_r = data_end + 22
-        _bg_row(foot_r, 3, "0D2137")
-        _merge(foot_r, FULL_START, FULL_END,
-               "   SCG = RPV + RET + RP   |   RPV = CGR − CGF   |   "
-               "PR = (SCG + SR) ÷ VP   |   PV = PMPV + PR   |   "
-               f"ARPE · {datetime.now().year}",
-               "0D2137", _font(italic=True, size=9, color="5A7A9A"), "center")
+        foot_r = max(data_end + 22, FR + 6)
+        _bg_row(foot_r, 8, BG)
+        _bg_row(foot_r+1, 2, ACCENT)
+        _bg_row(foot_r+2, 28, SURFACE2)
+        _merge(foot_r+2, FULL_START, FULL_END,
+               "  SCG = RPV + RET + RP    ·    RPV = CGR − CGF    ·    "
+               "PR = (SCG + ΣSR) ÷ VP    ·    PV = PMPV + PR",
+               SURFACE2, _font(italic=True, size=9, color=MUTED), "center", "@", 28)
+        _bg_row(foot_r+3, 22, SURFACE2)
+        _merge(foot_r+3, FULL_START, FULL_END,
+               f"ARPE · Conta Gráfica · {datetime.now().year}",
+               SURFACE2, _font(size=8, color=DIM), "center", "@", 22)
