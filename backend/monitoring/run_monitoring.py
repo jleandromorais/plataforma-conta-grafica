@@ -21,8 +21,11 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # Importar módulos do monitoring
-from anomaly_detector import create_detector
-from alerter import create_emailer
+from monitoring.anomaly_detector import create_detector
+from monitoring.alerter import create_emailer
+
+# Logger de módulo — substituído pelo logger configurado em main()
+logger = logging.getLogger('monitoring')
 
 # ============================================================================
 # CONFIGURAÇÃO DE LOGGING

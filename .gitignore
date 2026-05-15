@@ -74,6 +74,7 @@ temp/
 *.rar
 Src/Arch/
 _dados_referencia/
+backend/data/
 
 # Project local files
 plataforma_pmpv.db

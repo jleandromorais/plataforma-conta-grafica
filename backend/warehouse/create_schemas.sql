@@ -238,3 +238,37 @@ CREATE TABLE IF NOT EXISTS marts.visao_geral (
     valor_ret_total NUMERIC(15,2),
     atualizado_em TIMESTAMP DEFAULT NOW()
 );
+
+-- Marts Layer: Data Quality Results (criada pelo run_checks.py, definida aqui para garantia)
+CREATE TABLE IF NOT EXISTS marts.data_quality_results (
+    id SERIAL PRIMARY KEY,
+    run_id VARCHAR(50),
+    dag_id VARCHAR(100),
+    check_name VARCHAR(100),
+    status VARCHAR(20),
+    n_failed INTEGER,
+    sample_error_rows_json TEXT,
+    run_ts TIMESTAMP DEFAULT NOW()
+);
+
+-- Marts Layer: Monitoring Alerts (criada pelo run_monitoring.py)
+CREATE TABLE IF NOT EXISTS marts.monitoring_alerts (
+    id SERIAL PRIMARY KEY,
+    alert_type VARCHAR(100),
+    severity VARCHAR(20),
+    message TEXT,
+    details_json TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    resolved_at TIMESTAMP
+);
+
+-- Audit: Log de importações (rastreabilidade de cada carga ETL)
+CREATE TABLE IF NOT EXISTS marts.import_log (
+    id SERIAL PRIMARY KEY,
+    dag_id VARCHAR(100),
+    tabela_destino VARCHAR(100),
+    n_registros INTEGER,
+    status VARCHAR(20),
+    mensagem TEXT,
+    executado_em TIMESTAMP DEFAULT NOW()
+);

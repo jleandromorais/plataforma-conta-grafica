@@ -3,7 +3,10 @@ import json
 import argparse
 from datetime import datetime
 from sqlalchemy import create_engine, text
-from data_quality.checks import run_sql_check, run_threshold_check, carregar_configuracao
+try:
+    from data_quality.checks import run_sql_check, run_threshold_check, carregar_configuracao
+except ImportError:
+    from checks import run_sql_check, run_threshold_check, carregar_configuracao
 
 def parse_expectations(filepath):
     """Lê o ficheiro SQL e separa os blocos de queries baseados em comentários."""

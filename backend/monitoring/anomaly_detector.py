@@ -73,31 +73,22 @@ class AnomalyDetector:
         return self.alerts
 
     def _detect_data_quality_failures(self):
-        """
-        1.2 - Detecta falhas de qualidade de dados nas últimas 24h
-        
-        Verifica:
-        - Registros com status = 'FAILED' em data_quality_checks
-        - Últimas 24 horas
-        - Agrupa por tipo de validação
-        """
+        """Detecta falhas de qualidade de dados nas últimas 24h via marts.data_quality_results."""
         query = """
-        SELECT 
+        SELECT
             check_name,
-            COUNT(*) as failure_count,
-            MAX(check_timestamp) as last_failure,
-            STRING_AGG(DISTINCT error_message, '; ')::TEXT as error_details
-        FROM data_quality_checks
-        WHERE 
-            status = 'FAILED'
-            AND check_timestamp >= NOW() - INTERVAL '24 hours'
+            COUNT(*) AS failure_count,
+            MAX(run_ts) AS last_failure,
+            STRING_AGG(DISTINCT dag_id, '; ')::TEXT AS dag_ids
+        FROM marts.data_quality_results
+        WHERE
+            status = 'FAIL'
+            AND run_ts >= NOW() - INTERVAL '24 hours'
         GROUP BY check_name
         ORDER BY failure_count DESC
         """
-        
         try:
             result = self.db.execute(query).fetchall()
-            
             for row in result:
                 alert = {
                     'type': 'DATA_QUALITY_FAILURE',
@@ -116,29 +107,21 @@ class AnomalyDetector:
             logger.error(f"Erro ao detectar data quality failures: {str(e)}")
 
     def _detect_import_delay(self):
-        """
-        1.3 - Detecta atraso de importação > 3 dias
-        
-        Verifica:
-        - Última importação bem-sucedida por fonte
-        - Se > 3 dias atrás = ALERTA
-        """
+        """Detecta DAGs sem carga há mais de 3 dias via marts.import_log."""
         query = """
-        SELECT 
-            source_name,
-            MAX(import_timestamp) as last_import,
-            NOW() - MAX(import_timestamp) as delay_duration,
-            COUNT(*) as total_imports
-        FROM import_log
-        WHERE status = 'SUCCESS'
-        GROUP BY source_name
-        HAVING NOW() - MAX(import_timestamp) > INTERVAL '3 days'
+        SELECT
+            tabela_destino,
+            MAX(executado_em) AS last_import,
+            NOW() - MAX(executado_em) AS delay_duration,
+            COUNT(*) AS total_imports
+        FROM marts.import_log
+        WHERE status = 'OK'
+        GROUP BY tabela_destino
+        HAVING NOW() - MAX(executado_em) > INTERVAL '3 days'
         ORDER BY delay_duration DESC
         """
-        
         try:
             result = self.db.execute(query).fetchall()
-            
             for row in result:
                 delay_hours = row[2].total_seconds() / 3600
                 alert = {
@@ -149,8 +132,8 @@ class AnomalyDetector:
                     'last_import': row[1].isoformat() if row[1] else None,
                     'delay_hours': round(delay_hours, 1),
                     'delay_days': round(delay_hours / 24, 1),
-                    'message': f"Importação de '{row[0]}' atrasada: {round(delay_hours / 24, 1)} dias",
-                    'action': "Verificar conectividade com a fonte e logs de importação"
+                    'message': f"Tabela '{row[0]}' sem carga há {round(delay_hours / 24, 1)} dias",
+                    'action': "Verificar DAG no Airflow e logs de importação"
                 }
                 self.alerts.append(alert)
                 logger.warning(f"ALERTA: {alert['message']}")
@@ -158,44 +141,33 @@ class AnomalyDetector:
             logger.error(f"Erro ao detectar import delay: {str(e)}")
 
     def _detect_zero_volume(self):
-        """
-        1.4 - Detecta volume CGF zerado ou NULL
-        
-        Verifica:
-        - Registros com volume = 0 ou NULL no último período
-        - Compara com média histórica
-        """
+        """Detecta períodos CGF com volume_final_cgf zerado ou NULL em staging.cgf."""
         query = """
-        SELECT 
-            DATE(data_referencia) as data_ref,
-            COUNT(*) as total_registros,
-            COUNT(CASE WHEN volume IS NULL OR volume = 0 THEN 1 END) as zero_null_count,
-            ROUND(100.0 * COUNT(CASE WHEN volume IS NULL OR volume = 0 THEN 1 END) 
-                / NULLIF(COUNT(*), 0), 2) as zero_percent,
-            ROUND(AVG(CASE WHEN volume > 0 THEN volume END), 2) as avg_volume
-        FROM cgf_dados
-        WHERE data_referencia >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY DATE(data_referencia)
-        HAVING COUNT(CASE WHEN volume IS NULL OR volume = 0 THEN 1 END) > 
-               COUNT(*) * 0.10
-        ORDER BY data_ref DESC
+        SELECT
+            periodo,
+            COUNT(*) AS total_registros,
+            COUNT(CASE WHEN volume_final_cgf IS NULL OR volume_final_cgf = 0 THEN 1 END) AS zero_null_count,
+            ROUND(100.0 * COUNT(CASE WHEN volume_final_cgf IS NULL OR volume_final_cgf = 0 THEN 1 END)
+                / NULLIF(COUNT(*), 0), 2) AS zero_percent
+        FROM staging.cgf
+        WHERE importado_em >= NOW() - INTERVAL '7 days'
+        GROUP BY periodo
+        HAVING COUNT(CASE WHEN volume_final_cgf IS NULL OR volume_final_cgf = 0 THEN 1 END) > 0
+        ORDER BY periodo DESC
         """
-        
         try:
             result = self.db.execute(query).fetchall()
-            
             for row in result:
                 alert = {
                     'type': 'ZERO_VOLUME',
                     'severity': 'CRITICAL',
                     'timestamp': datetime.now().isoformat(),
-                    'data_referencia': row[0].isoformat() if row[0] else None,
+                    'periodo': row[0],
                     'total_registros': row[1],
                     'zero_null_count': row[2],
-                    'zero_percent': row[3],
-                    'avg_volume': row[4],
-                    'message': f"Volume zerado/NULL em {row[0]}: {row[3]}% dos registros",
-                    'action': "Investigar fonte de dados e validar importação"
+                    'zero_percent': float(row[3]) if row[3] else 0,
+                    'message': f"Volume CGF zerado/NULL no período {row[0]}: {row[3]}% dos registros",
+                    'action': "Investigar ETL CGF e validar arquivo de origem"
                 }
                 self.alerts.append(alert)
                 logger.error(f"ALERTA CRÍTICO: {alert['message']}")
@@ -203,42 +175,27 @@ class AnomalyDetector:
             logger.error(f"Erro ao detectar zero volume: {str(e)}")
 
     def _detect_duplicate_period(self):
-        """
-        1.5 - Detecta período duplicado
-        
-        Verifica:
-        - Períodos que aparecem mais de 1x para mesma conta/origem
-        - Isso indica importação duplicada
-        """
+        """Detecta períodos PMPV duplicados em staging.pmpv_agregados."""
         query = """
-        SELECT 
-            data_referencia,
-            conta_id,
-            COUNT(*) as occurrences,
-            STRING_AGG(DISTINCT origem::TEXT, ', ')::TEXT as origens,
-            COUNT(DISTINCT origem) as num_origens
-        FROM cgf_dados
-        WHERE data_referencia >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY data_referencia, conta_id
+        SELECT
+            periodo,
+            COUNT(*) AS occurrences
+        FROM staging.pmpv_agregados
+        GROUP BY periodo
         HAVING COUNT(*) > 1
-        ORDER BY occurrences DESC, data_referencia DESC
+        ORDER BY occurrences DESC
         """
-        
         try:
             result = self.db.execute(query).fetchall()
-            
             for row in result:
                 alert = {
                     'type': 'DUPLICATE_PERIOD',
                     'severity': 'WARNING',
                     'timestamp': datetime.now().isoformat(),
-                    'data_referencia': row[0].isoformat() if row[0] else None,
-                    'conta_id': row[1],
-                    'occurrences': row[2],
-                    'origens': row[3],
-                    'num_origens': row[4],
-                    'message': f"Período duplicado: Conta {row[1]} em {row[0]} ({row[2]}x)",
-                    'action': "Revisar e remover registros duplicados, verificar lógica de importação"
+                    'periodo': row[0],
+                    'occurrences': row[1],
+                    'message': f"Período PMPV duplicado: {row[0]} aparece {row[1]}x",
+                    'action': "Verificar lógica de importação e remover duplicatas"
                 }
                 self.alerts.append(alert)
                 logger.warning(f"ALERTA: {alert['message']}")
@@ -246,44 +203,36 @@ class AnomalyDetector:
             logger.error(f"Erro ao detectar duplicate period: {str(e)}")
 
     def _detect_abnormal_rejection_rate(self):
-        """
-        1.6 - Detecta taxa anormal de rejeição
-        
-        Verifica:
-        - Taxa de rejeição por fonte
-        - Se > 5% em período recente = ALERTA
-        """
+        """Detecta alta taxa de falhas DQ por DAG via marts.data_quality_results (últimos 7 dias)."""
         query = """
-        SELECT 
-            source_name,
-            DATE(import_timestamp) as import_date,
-            COUNT(*) as total_processed,
-            COUNT(CASE WHEN status = 'REJECTED' THEN 1 END) as rejected_count,
-            ROUND(100.0 * COUNT(CASE WHEN status = 'REJECTED' THEN 1 END) 
-                / NULLIF(COUNT(*), 0), 2) as rejection_rate
-        FROM import_log
-        WHERE import_timestamp >= NOW() - INTERVAL '7 days'
-        GROUP BY source_name, DATE(import_timestamp)
-        HAVING ROUND(100.0 * COUNT(CASE WHEN status = 'REJECTED' THEN 1 END) 
+        SELECT
+            dag_id,
+            DATE(run_ts) AS run_date,
+            COUNT(*) AS total_checks,
+            COUNT(CASE WHEN status = 'FAIL' THEN 1 END) AS failed_checks,
+            ROUND(100.0 * COUNT(CASE WHEN status = 'FAIL' THEN 1 END)
+                / NULLIF(COUNT(*), 0), 2) AS failure_rate
+        FROM marts.data_quality_results
+        WHERE run_ts >= NOW() - INTERVAL '7 days'
+        GROUP BY dag_id, DATE(run_ts)
+        HAVING ROUND(100.0 * COUNT(CASE WHEN status = 'FAIL' THEN 1 END)
                 / NULLIF(COUNT(*), 0), 2) > 5.0
-        ORDER BY rejection_rate DESC
+        ORDER BY failure_rate DESC
         """
-        
         try:
             result = self.db.execute(query).fetchall()
-            
             for row in result:
                 alert = {
                     'type': 'ABNORMAL_REJECTION_RATE',
                     'severity': 'WARNING',
                     'timestamp': datetime.now().isoformat(),
-                    'source_name': row[0],
-                    'import_date': row[1].isoformat() if row[1] else None,
-                    'total_processed': row[1],
-                    'rejected_count': row[2],
-                    'rejection_rate': row[4],
-                    'message': f"Taxa de rejeição anormal em '{row[0]}': {row[4]}% em {row[1]}",
-                    'action': "Analisar motivos de rejeição e contatar fonte de dados"
+                    'dag_id': row[0],
+                    'run_date': row[1].isoformat() if row[1] else None,
+                    'total_checks': row[2],
+                    'failed_checks': row[3],
+                    'failure_rate': float(row[4]) if row[4] else 0,
+                    'message': f"Taxa de falha DQ anormal em '{row[0]}': {row[4]}% em {row[1]}",
+                    'action': "Revisar DAG e fontes de dados"
                 }
                 self.alerts.append(alert)
                 logger.warning(f"ALERTA: {alert['message']}")

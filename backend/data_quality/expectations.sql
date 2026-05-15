@@ -89,23 +89,23 @@ HAVING COUNT(*) > 1;
 
 /* --- STAGING.CGF --- */
 
--- CHECK: cgf_volume_logica
+-- CHECK: cgf_volume_final_negativo
 -- TYPE: failing_rows
-SELECT empresa, periodo, volume_inicial_cgf, volume_final_cgf 
-FROM staging.cgf 
-WHERE volume_final_cgf < volume_inicial_cgf;
+SELECT periodo, volume_final_cgf, total_faturado_liquido
+FROM staging.cgf
+WHERE volume_final_cgf < 0;
 
--- CHECK: cgf_tipo_operacao_invalido
+-- CHECK: cgf_inconsistencia_canceladas
 -- TYPE: failing_rows
-SELECT empresa, periodo, tipo_operacao 
-FROM staging.cgf 
-WHERE tipo_operacao NOT IN ('ENTRADA', 'SAIDA', 'AJUSTE');
+SELECT periodo, total_faturado_liquido, total_canceladas, volume_final_cgf
+FROM staging.cgf
+WHERE total_canceladas > total_faturado_liquido;
 
--- CHECK: cgf_data_futura
+-- CHECK: cgf_status_invalido
 -- TYPE: failing_rows
-SELECT empresa, periodo, data_registro 
-FROM staging.cgf 
-WHERE data_registro > CURRENT_DATE;
+SELECT periodo, status
+FROM staging.cgf
+WHERE status NOT IN ('OK', 'REVISAO_MANUAL', 'ERRO');
 
 -- CHECK: cgf_gaps_volume_final
 -- TYPE: threshold
@@ -115,15 +115,10 @@ WHERE data_registro > CURRENT_DATE;
 
 /* --- CROSS-TABELAS (CONSISTENCY CHECKS) --- */
 
--- CHECK: cross_empresa_auditoria_em_cgf
+-- CHECK: cross_periodos_invalidos_ret
 -- TYPE: failing_rows
-SELECT DISTINCT a.empresa 
-FROM staging.auditoria a 
-LEFT JOIN staging.cgf c ON a.empresa = c.empresa 
-WHERE c.empresa IS NULL;
+SELECT empresa, periodo FROM staging.ret WHERE periodo NOT LIKE '__/____';
 
--- CHECK: cross_periodos_invalidos
+-- CHECK: cross_periodos_invalidos_auditoria
 -- TYPE: failing_rows
-SELECT periodo FROM staging.ret WHERE periodo NOT LIKE '__/____'
-UNION
-SELECT periodo FROM staging.cgf WHERE periodo NOT LIKE '__/____';
+SELECT empresa, periodo FROM staging.auditoria WHERE periodo NOT LIKE '__/____';

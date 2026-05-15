@@ -12,9 +12,22 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    # PYTHONPATH inclui raiz /opt/airflow, /opt/airflow/backend E a pasta Src
     PYTHONPATH: /opt/airflow:/opt/airflow/backend:/opt/airflow/Src
-    # ❌ REMOVIDO: _PIP_ADDITIONAL_REQUIREMENTS (Pois agora instalamos via Dockerfile)
+    # Variáveis do banco de dados de dados (postgres-plataforma)
+    PG_USER: postgres
+    PG_PASSWORD: admin
+    PG_HOST: postgres-plataforma
+    PG_PORT: '5432'
+    PG_DB: plataforma
+    EMPRESA_PADRAO: COPERGÁS
+    SRC_PATH: /opt/airflow/Src
+    BASE_DIR: /opt/airflow
+    # Pastas de dados por módulo
+    AUDITORIA_XML_DIR: /opt/airflow/backend/data/SCG-26/RPV - Recuperação do Preço de Venda/CGR
+    RET_PDF_DIR: /opt/airflow/backend/data/SCG-26/RET - Recuperação de Encargos de Transporte
+    CONCILIA_PDF_DIR: /opt/airflow/backend/data/SCG-26/RP - Recuperação de Penalidades
+    CGF_EXCEL_DIR: /opt/airflow/backend/data/SCG-26/RPV - Recuperação do Preço de Venda/CGF
+    PMPV_EXCEL_DIR: /opt/airflow/backend/data/SCG-26/RPV - Recuperação do Preço de Venda
   volumes:
     - ./backend/airflow/dags:/opt/airflow/dags
     - ./backend:/opt/airflow/backend
@@ -23,10 +36,13 @@ x-airflow-common: &airflow-common
     - ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins
     - ./reports:/opt/airflow/reports
+    - ./pmpv_data.db:/opt/airflow/pmpv_data.db
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
     postgres:
+      condition: service_healthy
+    postgres-data:
       condition: service_healthy
 
 services:
@@ -86,7 +102,7 @@ services:
     <<: *airflow-common
     command: scheduler
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
       interval: 30s
       timeout: 10s
       retries: 5

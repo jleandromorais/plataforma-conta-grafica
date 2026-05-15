@@ -7,10 +7,10 @@ CREATE SCHEMA IF NOT EXISTS marts;
 -- Criar Tabelas
 CREATE TABLE IF NOT EXISTS staging.auditoria (empresa VARCHAR, periodo VARCHAR, numero_documento VARCHAR, valor_bruto NUMERIC, cgr_liquido NUMERIC, status VARCHAR);
 CREATE TABLE IF NOT EXISTS staging.ret (empresa VARCHAR, periodo VARCHAR, quantidade NUMERIC, valor_unitario NUMERIC, valor_total NUMERIC, status VARCHAR);
-CREATE TABLE IF NOT EXISTS staging.pmpv_agregados (periodo VARCHAR, pmpv NUMERIC, preco_final NUMERIC, data_atualizacao DATE, fonte VARCHAR);
-CREATE TABLE IF NOT EXISTS staging.cgf (empresa VARCHAR, periodo VARCHAR, volume_inicial_cgf NUMERIC, volume_final_cgf NUMERIC, tipo_operacao VARCHAR, data_registro DATE);
+CREATE TABLE IF NOT EXISTS staging.pmpv_agregados (periodo VARCHAR, pmpv NUMERIC, preco_final NUMERIC, volume_total_vf NUMERIC, custo_total NUMERIC);
+CREATE TABLE IF NOT EXISTS staging.cgf (periodo VARCHAR, total_faturado_liquido NUMERIC, total_consumo_proprio NUMERIC, total_canceladas NUMERIC, total_devolucoes NUMERIC, volume_final_cgf NUMERIC, status VARCHAR);
 
-TRUNCATE TABLE staging.auditoria, staging.ret, staging.pmpv_agregados, staging.cgf;
+TRUNCATE TABLE staging.auditoria, staging.ret, staging.pmpv_agregados, staging.cgf RESTART IDENTITY CASCADE;
 
 -- =======================================================
 -- 1. STAGING.AUDITORIA (10 registos válidos)
@@ -44,26 +44,25 @@ INSERT INTO staging.ret VALUES
 -- =======================================================
 -- 3. STAGING.PMPV_AGREGADOS (5 válidos + 1 inválido)
 -- =======================================================
-INSERT INTO staging.pmpv_agregados VALUES 
-('01/2024', 1.50, 1.80, CURRENT_DATE, 'OFICIAL'),
-('02/2024', 1.55, 1.85, CURRENT_DATE, 'OFICIAL'),
-('03/2024', 1.60, 1.90, CURRENT_DATE, 'OFICIAL'),
-('04/2024', 1.58, 1.88, CURRENT_DATE, 'OFICIAL'),
-('05/2024', 1.62, 1.95, CURRENT_DATE, 'OFICIAL');
+INSERT INTO staging.pmpv_agregados VALUES
+('01/2024', 1.50, 1.80, 500000.0, 750000.00),
+('02/2024', 1.55, 1.85, 520000.0, 806000.00),
+('03/2024', 1.60, 1.90, 510000.0, 816000.00),
+('04/2024', 1.58, 1.88, 530000.0, 837400.00),
+('05/2024', 1.62, 1.95, 540000.0, 874800.00);
 -- INVÁLIDO
-INSERT INTO staging.pmpv_agregados VALUES 
-('06/2024', 1.70, 1.60, CURRENT_DATE, 'OFICIAL'); -- FALHA: preco_final < pmpv
+INSERT INTO staging.pmpv_agregados VALUES
+('06/2024', 1.70, 1.60, 500000.0, 850000.00); -- FALHA: preco_final < pmpv
 
 -- =======================================================
--- 4. STAGING.CGF (5 válidos + 2 inválidos)
+-- 4. STAGING.CGF (5 válidos + 1 inválido)
 -- =======================================================
-INSERT INTO staging.cgf VALUES 
-('EMP1', '01/2024', 1000.0, 1500.0, 'ENTRADA', CURRENT_DATE),
-('EMP2', '01/2024', 500.0, 800.0, 'ENTRADA', CURRENT_DATE),
-('EMP3', '02/2024', 2000.0, 1800.0, 'SAIDA', CURRENT_DATE),
-('EMP4', '03/2024', 300.0, 300.0, 'AJUSTE', CURRENT_DATE),
-('EMP5', '04/2024', 100.0, 150.0, 'ENTRADA', CURRENT_DATE);
--- INVÁLIDOS
-INSERT INTO staging.cgf VALUES 
-('EMP6', '05/2024', 500.0, 200.0, 'ENTRADA', CURRENT_DATE),    -- FALHA: logica volume (final < inicial sendo ENTRADA não faz sentido na nossa lógica geral validada)
-('EMP7', '06/2024', 100.0, 150.0, 'DESCONHECIDO', CURRENT_DATE); -- FALHA: tipo_operacao fora da lista permitida
+INSERT INTO staging.cgf VALUES
+('01/2024', 1500000.0, 5000.0, 50000.0, 10000.0, 1435000.0, 'OK'),
+('02/2024', 1480000.0, 4800.0, 45000.0, 8000.0, 1427000.0, 'OK'),
+('03/2024', 1520000.0, 5100.0, 60000.0, 12000.0, 1443000.0, 'OK'),
+('04/2024', 1490000.0, 4900.0, 55000.0, 9500.0, 1425500.0, 'OK'),
+('05/2024', 1510000.0, 5050.0, 52000.0, 11000.0, 1447000.0, 'OK');
+-- INVÁLIDO
+INSERT INTO staging.cgf VALUES
+('06/2024', 1400000.0, 4700.0, 1500000.0, 9000.0, -109000.0, 'REVISAO_MANUAL'); -- FALHA: canceladas > faturado
