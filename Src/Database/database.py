@@ -1,25 +1,77 @@
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Dict, List
 
+from Src.common.app_paths import raiz_aplicacao
 from Src.common.periodos import normalizar_periodo, variantes_periodo
+
+logger = logging.getLogger(__name__)
 
 
 class DatabasePMPV:
+    # Allow-list de tabelas: nomes de tabela/coluna NÃO podem ser parametrizados
+    # com "?", então são interpolados na string. Para evitar SQL injection,
+    # validamos contra esta lista antes de montar qualquer SQL.
+    _TABELAS_VALIDAS = frozenset({
+        "sessoes", "dados_mes", "resultados", "consolidacao", "pmpv_mensal",
+        "auditoria_itens", "ret_itens", "concilia_itens", "sr_resultados",
+        "sr_trimestre", "cgf_resumo", "pr_resultados", "pv_resultados",
+        "excel_final_sessoes", "excel_final_execucoes", "config",
+    })
+
+    @classmethod
+    def _validar_tabela(cls, tabela: str) -> str:
+        """Garante que `tabela` é um nome conhecido antes de interpolar em SQL."""
+        if tabela not in cls._TABELAS_VALIDAS:
+            raise ValueError(f"Nome de tabela inválido: {tabela!r}")
+        return tabela
+
+    @staticmethod
+    def _validar_identificador(nome: str) -> str:
+        """Valida um nome de coluna/order-by: só letras, números, '_' e espaços/vírgulas/DESC/ASC."""
+        import re
+        if not re.fullmatch(r"[A-Za-z0-9_ ,]+(?:\s+(?:ASC|DESC|asc|desc))?", nome.strip()):
+            raise ValueError(f"Identificador SQL inválido: {nome!r}")
+        return nome
+
     def __init__(self, db_path: str | None = None):
         if db_path is None:
-            raiz_projeto = Path(__file__).resolve().parents[2]
-            db_path = str(raiz_projeto / "pmpv_data.db")
+            db_path = str(raiz_aplicacao() / "pmpv_data.db")
         self.db_path = db_path
         self.conn = None
         self.cursor = None
         self._conectar()
         self._criar_tabelas()
-    
+
     def _conectar(self):
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
+        # WAL melhora concorrência e reduz risco de corrupção/"database is locked".
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA foreign_keys=ON")
+        except sqlite3.Error:
+            logger.exception("Falha ao aplicar PRAGMAs de inicialização")
         self.cursor = self.conn.cursor()
+
+    # ── Suporte a "with DatabasePMPV() as db:" ────────────────────────────
+    # Garante que a conexão SEMPRE feche, mesmo se ocorrer exceção no meio,
+    # evitando o lock do arquivo SQLite no Windows.
+    def __enter__(self) -> "DatabasePMPV":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        # Se houve erro, faz rollback; se não, confirma a transação pendente.
+        try:
+            if self.conn is not None:
+                if exc_type is None:
+                    self.conn.commit()
+                else:
+                    self.conn.rollback()
+        finally:
+            self.fechar()
+        return False  # não suprime exceções
     
     def _criar_tabelas(self):
         # Tabela de SESSÕES
@@ -308,6 +360,8 @@ class DatabasePMPV:
         return anteriores[-3:]
 
     def _garantir_coluna(self, tabela: str, coluna: str, definicao_sql: str):
+        tabela = self._validar_tabela(tabela)
+        coluna = self._validar_identificador(coluna)
         self.cursor.execute(f"PRAGMA table_info({tabela})")
         colunas = {row[1] for row in self.cursor.fetchall()}
         if coluna not in colunas:
@@ -325,6 +379,8 @@ class DatabasePMPV:
         variantes = self._variantes_periodo(periodo)
         if not variantes:
             return []
+        tabela = self._validar_tabela(tabela)
+        order_by = self._validar_identificador(order_by)
         placeholders = ", ".join("?" for _ in variantes)
         self.cursor.execute(
             f"SELECT * FROM {tabela} WHERE periodo IN ({placeholders}) ORDER BY {order_by}",
@@ -398,8 +454,8 @@ class DatabasePMPV:
             self.cursor.execute("UPDATE sessoes SET data_modificacao = CURRENT_TIMESTAMP WHERE id = ?", (sessao_id,))
             self.conn.commit()
             return True
-        except Exception as e:
-            print(f"Erro DB: {e}")
+        except Exception:
+            logger.exception("Erro ao salvar dados do mês (sessao_id=%s, mes=%s)", sessao_id, mes)
             return False
 
     def salvar_resultado(self, sessao_id: int, vol_tot: float, vp_tot: float, vf_tot: float, custo_tot: float,
@@ -414,8 +470,8 @@ class DatabasePMPV:
             """, (sessao_id, vol_tot, vp_tot, vf_tot, custo_tot, pmpv, cg, final))
             self.conn.commit()
             return True
-        except Exception as e:
-            print(f"Erro ao salvar resultado: {e}")
+        except Exception:
+            logger.exception("Erro ao salvar resultado (sessao_id=%s)", sessao_id)
             return False
 
     def carregar_dados_mes(self, sessao_id: int, mes: int) -> List[Dict]:
@@ -1153,5 +1209,32 @@ class DatabasePMPV:
             self.cursor.execute(base_query + " ORDER BY s.data_criacao DESC")
         return [dict(row) for row in self.cursor.fetchall()]
 
+    def backup(self, pasta_destino: str | None = None) -> str | None:
+        """Cria uma cópia de segurança do banco com timestamp no nome.
+
+        Use antes de operações destrutivas. Retorna o caminho do backup ou
+        None em caso de falha (sem interromper o fluxo principal).
+        """
+        import shutil
+        from datetime import datetime
+
+        try:
+            origem = Path(self.db_path)
+            if not origem.exists():
+                return None
+            destino_dir = Path(pasta_destino) if pasta_destino else origem.parent / "backups"
+            destino_dir.mkdir(parents=True, exist_ok=True)
+            carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+            destino = destino_dir / f"{origem.stem}.backup_{carimbo}{origem.suffix}"
+            shutil.copy2(origem, destino)
+            logger.info("Backup do banco criado em %s", destino)
+            return str(destino)
+        except OSError:
+            logger.exception("Falha ao criar backup do banco")
+            return None
+
     def fechar(self):
-        if self.conn: self.conn.close()
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+            self.cursor = None

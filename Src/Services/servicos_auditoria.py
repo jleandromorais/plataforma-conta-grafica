@@ -4,11 +4,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Tuple, List
 import pdfplumber
-import pytesseract
 from dataclasses import dataclass
 
-from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED, read_pdf_text
-from Src.infrastructure.ocr.gemini_pdf import parse_pdf_with_gemini, is_gemini_enabled
+from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED, read_pdf_text, pytesseract
 
 # ── Fórmula regulatória CGR ──────────────────────────────────────────────────
 # Validada contra a planilha "Conta Gráfica e Apuração de Custos" (Jun25→Dez25+):
@@ -537,18 +535,5 @@ class RegrasAuditoria:
             or resultado['numero'] == 'N/A'
             or (resultado['tipo'] == 'NF-e' and resultado['icms'] <= 0.0)
         )
-
-        if resultado_fraco and is_gemini_enabled():
-            gem = parse_pdf_with_gemini(pdf_path)
-            if 'erro' not in gem:
-                gem_melhor = (
-                    gem.get('valor_total', 0.0) > 0.0
-                    and (
-                        gem.get('numero', 'N/A') != 'N/A'
-                        or gem.get('icms', 0.0) > resultado.get('icms', 0.0)
-                    )
-                )
-                if gem_melhor:
-                    return gem
 
         return resultado
