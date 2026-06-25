@@ -38,5 +38,7 @@ class TestServicosCGF:
         assert resultado["volume_consumo_proprio"] == 8110.2058305
         assert resultado["volume_canceladas"] == 100.0
         assert resultado["volume_devolucoes"] == 200.0
-        assert resultado["volume_final"] == 42800934.8660695
+        # Regra atual do VF: canceladas NÃO integram o volume final; o consumo
+        # próprio já foi retirado do faturado. Logo: VF = faturado - devoluções.
+        assert resultado["volume_final"] == 42801234.8660695 - 200.0
         assert any("localizada automaticamente" in linha for linha in resultado["logs"])

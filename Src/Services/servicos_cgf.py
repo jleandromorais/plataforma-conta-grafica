@@ -148,7 +148,7 @@ class ServicosCGF:
             # Processamento de Canceladas / Denegadas
             elif "cancelad" in nome_low or "denegad" in nome_low:
                 logs.append(f"🔴 CANCELADAS: {nome}")
-                canc_col_real = self._resolver_coluna(df, canc_col, ["Volume Canceladas", "Volume Denegadas", "Volume Cancelada"])
+                canc_col_real = self._resolver_coluna(df, canc_col, ["Volume Canc/Deneg", "Volume Canc Deneg", "Volume Canceladas", "Volume Denegadas", "Volume Cancelada"])
                 if canc_col_real is None:
                     logs.append(f"   [!] Coluna de canceladas não encontrada a partir de '{canc_col}'.\n")
                 else:
@@ -173,8 +173,8 @@ class ServicosCGF:
                     total_devolucoes += float(vol_dev)
                     logs.append(f"   - Devoluções: {vol_dev:,.2f}\n")
 
-        # Cálculo Final CGF
-        volume_final = total_faturado - total_canceladas - total_devolucoes
+        # Cálculo Final CGF — canceladas não integram o VF (apenas devoluções e consumo próprio)
+        volume_final = total_faturado - total_devolucoes
 
         # Montar Log de Resumo
         logs.append("-" * 40)

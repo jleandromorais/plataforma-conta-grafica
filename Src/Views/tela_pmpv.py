@@ -144,12 +144,12 @@ class TelaPMPV(ctk.CTkFrame):
 
         linhas = []
         for emp in self.empresas_padrao:
-            linhas.append(self._add_linha(scroll, emp, linhas))
+            linhas.append(self._add_linha(scroll, emp, linhas, tab_nome))
 
-        ctk.CTkButton(parent, text="➕ Adicionar", command=lambda: self._add_nova(scroll, linhas), fg_color="transparent", border_width=1).pack(pady=5)
+        ctk.CTkButton(parent, text="➕ Adicionar", command=lambda: self._add_nova(scroll, linhas, tab_nome), fg_color="transparent", border_width=1).pack(pady=5)
         return linhas
 
-    def _add_linha(self, parent, nome, lista):
+    def _add_linha(self, parent, nome, lista, tab_nome: str = ""):
         row = ctk.CTkFrame(parent)
         row.pack(fill="x", pady=ui.ESP_XS)
         conf = {"width": 100, "height": 34}
@@ -219,8 +219,8 @@ class TelaPMPV(ctk.CTkFrame):
             entry.insert(0, limpo)
             entry._entry.icursor(min(cursor, len(limpo)))
 
-    def _add_nova(self, parent, lista):
-        novo = self._add_linha(parent, "Nova Empresa", lista)
+    def _add_nova(self, parent, lista, tab_nome: str = ""):
+        novo = self._add_linha(parent, "Nova Empresa", lista, tab_nome)
         lista.append(novo)
 
     def _del_linha(self, row, dados, lista):
@@ -401,7 +401,7 @@ class TelaPMPV(ctk.CTkFrame):
             linhas.clear()
 
             for emp_nome, dados in empresas_importadas.items():
-                d = self._add_linha(scroll, emp_nome, linhas)
+                d = self._add_linha(scroll, emp_nome, linhas, tab_nome)
                 linhas.append(d)
                 for campo in ("mol", "trans", "log"):
                     v = dados[campo]

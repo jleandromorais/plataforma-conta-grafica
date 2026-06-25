@@ -55,7 +55,17 @@ class TestDatabasePMPVVolumes:
                     }
                 ],
             )
-            db.salvar_resultado(sessao_id, 1492433000.0, 0.0, 2.1154, 0.0, 2.1154)
+            # Assinatura: (sessao_id, vol_tot, vp_tot, vf_tot, custo_tot, pmpv, cg, final)
+            db.salvar_resultado(
+                sessao_id,
+                1492433000.0,   # vol_tot
+                42801234.8661,  # vp_tot
+                42801234.8661,  # vf_tot
+                0.0,            # custo_tot
+                2.1154,         # pmpv
+                0.0,            # cg
+                2.1154,         # final
+            )
 
             sessoes = db.listar_sessoes_com_volumes()
 

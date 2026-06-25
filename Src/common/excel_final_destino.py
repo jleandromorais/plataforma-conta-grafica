@@ -38,12 +38,34 @@ def obter_periodos_trimestre(periodo_atual: str | None = None) -> list[str]:
         ab, an = parts[0].strip().capitalize()[:3], parts[1].strip()
         return ab in _ABREVS and len(an) == 4 and an.isdigit()
 
+    def _normalizar_abrev(p: str) -> str:
+        parts = (p or "").strip().split("/")
+        if len(parts) != 2:
+            return p.strip().lower()
+        ab = parts[0].strip().capitalize()[:3]
+        an = parts[1].strip()
+        # aceita ano de 2 ou 4 dígitos
+        if len(an) == 2:
+            an = "20" + an
+        return f"{ab}/{an}".lower()
+
     db = DatabasePMPV()
     try:
         meses_raw = db.buscar_trimestre_ativo()
         meses = [m for m in meses_raw if _valido(m)]
 
-        # Trimestre com >= 2 meses válidos: confia nele, não reconstrói
+        # Se temos período atual, verifica se ele pertence ao trimestre ativo
+        if periodo_atual and len(meses) >= 2:
+            norm = normalizar_periodo(periodo_atual) or periodo_atual
+            if _normalizar_abrev(norm) in {_normalizar_abrev(m) for m in meses}:
+                return meses
+            # Período não pertence ao trimestre ativo — reconstrói pelo período atual
+            periodos_ret = db.buscar_periodos_ret_para_trimestre(norm)
+            if periodos_ret:
+                return periodos_ret
+            return [norm]
+
+        # Trimestre com >= 2 meses válidos e sem período para conferir: confia nele
         if len(meses) >= 2:
             return meses
 

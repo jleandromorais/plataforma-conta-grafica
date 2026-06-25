@@ -1,21 +1,22 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 
+from Src.config import ui_theme as ui
 from Src.Services.servicos_pv import ServicosPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
-# Paleta
-BG = "#0f172a"
-CARD = "#1e293b"
-INPUT_BG = "#334155"
-VERDE = "#10b981"
-AZUL = "#3b82f6"
-VERMELHO = "#ef4444"
-AMARELO = "#f59e0b"
-ROXO = "#8b5cf6"
-TEXTO = "#f8fafc"
-MUTED = "#94a3b8"
+# Paleta (aliases do design system central — ver Src/config/ui_theme.py)
+BG = ui.COR_FUNDO
+CARD = ui.COR_CARD
+INPUT_BG = ui.COR_INPUT
+VERDE = ui.COR_SUCESSO
+AZUL = ui.COR_PRIMARIA
+VERMELHO = ui.COR_PERIGO
+AMARELO = ui.COR_DESTAQUE
+ROXO = ui.COR_ROXO
+TEXTO = ui.COR_TEXTO
+MUTED = ui.COR_MUTED
 
 
 class TelaPV(ctk.CTkFrame):
@@ -171,7 +172,7 @@ class TelaPV(ctk.CTkFrame):
         self.entry_pr.pack(fill="x", padx=14, pady=(4, 16))
         self.entry_pr.bind("<KeyRelease>", lambda e: self._recalcular())
 
-        res_card = ctk.CTkFrame(self, fg_color="#1e1b4b", corner_radius=14)
+        res_card = ctk.CTkFrame(self, fg_color=ui.COR_REALCE, corner_radius=14)
         res_card.pack(fill="x", padx=24, pady=(0, 14))
 
         row_res = ctk.CTkFrame(res_card, fg_color="transparent")

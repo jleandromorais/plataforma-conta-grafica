@@ -33,14 +33,18 @@ webserver_config.py
 # Reports
 reports/
 *.xlsx
+*.xls
 *.pdf
 *.csv
+*.xml
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 *.db-journal
+*.db-shm
+*.db-wal
 
 # Environment
 .env

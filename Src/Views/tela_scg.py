@@ -2,22 +2,23 @@ from __future__ import annotations
 
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
+from Src.config import ui_theme as ui
 from Src.Services.servicos_scg import ServicosSCG
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final, remover_excel_final_ativo
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
-# ── Cores ────────────────────────────────────────────────────────────────────
-COR_CARD     = "#1e293b"
-COR_FUNDO    = "#0f172a"
-COR_INPUT    = "#334155"
-COR_VERDE    = "#10b981"
-COR_AZUL     = "#3b82f6"
-COR_VERMELHO = "#ef4444"
-COR_AMARELO  = "#f59e0b"
-COR_ROXO     = "#8b5cf6"
-COR_TEXTO    = "#f8fafc"
-COR_MUTED    = "#94a3b8"
+# ── Cores (aliases do design system central — ver Src/config/ui_theme.py) ──────
+COR_CARD     = ui.COR_CARD
+COR_FUNDO    = ui.COR_FUNDO
+COR_INPUT    = ui.COR_INPUT
+COR_VERDE    = ui.COR_SUCESSO
+COR_AZUL     = ui.COR_PRIMARIA
+COR_VERMELHO = ui.COR_PERIGO
+COR_AMARELO  = ui.COR_DESTAQUE
+COR_ROXO     = ui.COR_ROXO
+COR_TEXTO    = ui.COR_TEXTO
+COR_MUTED    = ui.COR_MUTED
 
 MESES_ANO = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
              "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
@@ -97,6 +98,13 @@ class TelaSCG(ctk.CTkFrame):
         ("rp",  "🔄", "RP   (Conciliação)",       COR_AZUL,    True),
     ]
 
+    TRIMESTRES = {
+        "Jan - Mar": ["Jan", "Fev", "Mar"],
+        "Abr - Jun": ["Abr", "Mai", "Jun"],
+        "Jul - Set": ["Jul", "Ago", "Set"],
+        "Out - Dez": ["Out", "Nov", "Dez"],
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent, fg_color=COR_FUNDO)
         self.servicos      = ServicosSCG()
@@ -121,40 +129,40 @@ class TelaSCG(ctk.CTkFrame):
                      font=("Roboto", 11), text_color=COR_MUTED).pack(side="left")
 
         # BARRA DE PERÍODO
-        bar = ctk.CTkFrame(self, fg_color=COR_CARD, corner_radius=0, height=52)
-        bar.pack(fill="x", pady=(2, 0))
-        bar.pack_propagate(False)
+        self.bar_periodo = ctk.CTkFrame(self, fg_color=COR_CARD, corner_radius=0, height=52)
+        self.bar_periodo.pack(fill="x", pady=(2, 0))
+        self.bar_periodo.pack_propagate(False)
 
-        ctk.CTkLabel(bar, text="Período:", font=("Roboto", 12),
+        ctk.CTkLabel(self.bar_periodo, text="Período:", font=("Roboto", 12),
                      text_color=COR_MUTED).pack(side="left", padx=(20, 6), pady=14)
-        self.combo_periodo = ctk.CTkComboBox(bar, width=180, font=("Roboto", 12),
+        self.combo_periodo = ctk.CTkComboBox(self.bar_periodo, width=180, font=("Roboto", 12),
                                               command=self._ao_mudar_periodo)
         self.combo_periodo.pack(side="left", pady=14)
-        ctk.CTkButton(bar, text="➕ Novo", width=80, height=30, fg_color=COR_AZUL,
+        ctk.CTkButton(self.bar_periodo, text="➕ Novo", width=80, height=30, fg_color=COR_AZUL,
                       font=("Roboto", 11, "bold"),
                       command=self._criar_periodo).pack(side="left", padx=8, pady=14)
-        ctk.CTkButton(bar, text="🗑 Excluir", width=80, height=30, fg_color=COR_VERMELHO,
+        ctk.CTkButton(self.bar_periodo, text="🗑 Excluir", width=80, height=30, fg_color=COR_VERMELHO,
                       font=("Roboto", 11, "bold"),
                       command=self._excluir_periodo).pack(side="left", padx=(0, 20), pady=14)
 
         # TOGGLE MODO FONTE
-        frame_toggle = ctk.CTkFrame(self, fg_color="transparent")
-        frame_toggle.pack(fill="x", padx=24, pady=(14, 0))
+        self.frame_toggle = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_toggle.pack(fill="x", padx=24, pady=(14, 0))
 
-        ctk.CTkLabel(frame_toggle, text="Fonte dos valores:",
+        ctk.CTkLabel(self.frame_toggle, text="Fonte dos valores:",
                      font=("Roboto", 12), text_color=COR_MUTED).pack(side="left")
         self.btn_auto = ctk.CTkButton(
-            frame_toggle, text="🔄 Automático (BD)", width=180, height=32,
+            self.frame_toggle, text="🔄 Automático (BD)", width=180, height=32,
             font=("Roboto", 12, "bold"), fg_color=COR_VERDE,
             command=self._ativar_modo_auto)
         self.btn_auto.pack(side="left", padx=(10, 6))
         self.btn_manual = ctk.CTkButton(
-            frame_toggle, text="✏️ Manual", width=110, height=32,
+            self.frame_toggle, text="✏️ Manual", width=110, height=32,
             font=("Roboto", 12, "bold"), fg_color=COR_INPUT,
             command=self._ativar_modo_manual)
         self.btn_manual.pack(side="left", padx=(0, 6))
         self.btn_trimestral = ctk.CTkButton(
-            frame_toggle, text="📅 Trimestral", width=130, height=32,
+            self.frame_toggle, text="📅 Trimestral", width=130, height=32,
             font=("Roboto", 12, "bold"), fg_color=COR_INPUT,
             command=self._ativar_modo_trimestral)
         self.btn_trimestral.pack(side="left")
@@ -162,39 +170,39 @@ class TelaSCG(ctk.CTkFrame):
         # PAINEL TRIMESTRAL (oculto por padrão)
         self.frame_tri = ctk.CTkFrame(self, fg_color=COR_CARD, corner_radius=12)
 
-        ctk.CTkLabel(self.frame_tri, text="📅  Selecione os 3 meses do trimestre",
+        ctk.CTkLabel(self.frame_tri, text="📅  Trimestre",
                      font=("Roboto", 13, "bold"), text_color=COR_AMARELO).pack(
             anchor="w", padx=16, pady=(12, 6))
 
         row_tri = ctk.CTkFrame(self.frame_tri, fg_color="transparent")
         row_tri.pack(fill="x", padx=16, pady=(0, 4))
 
+        import datetime as _dt
+        ctk.CTkLabel(row_tri, text="Trimestre:", font=("Roboto", 11),
+                     text_color=COR_MUTED).pack(side="left")
+        self.combo_trimestre_scg = ctk.CTkComboBox(
+            row_tri, values=list(self.TRIMESTRES.keys()), width=130,
+            font=("Roboto", 11), state="readonly",
+            command=lambda _: None)
+        self.combo_trimestre_scg.set("Jan - Mar")
+        self.combo_trimestre_scg.pack(side="left", padx=(4, 12))
+
         ctk.CTkLabel(row_tri, text="Ano:", font=("Roboto", 11),
                      text_color=COR_MUTED).pack(side="left")
-        import datetime
         self.entry_ano_tri = ctk.CTkEntry(row_tri, width=65, justify="center",
                                            font=("Roboto", 11))
-        self.entry_ano_tri.insert(0, str(datetime.datetime.now().year))
+        self.entry_ano_tri.insert(0, str(_dt.datetime.now().year))
         self.entry_ano_tri.pack(side="left", padx=(4, 12))
-
-        self._combos_tri: list[ctk.CTkComboBox] = []
-        defaults = ["Jan", "Fev", "Mar"]
-        for d in defaults:
-            cb = ctk.CTkComboBox(row_tri, values=MESES_ANO, width=80,
-                                  font=("Roboto", 11), state="readonly")
-            cb.set(d)
-            cb.pack(side="left", padx=3)
-            self._combos_tri.append(cb)
 
         ctk.CTkButton(row_tri, text="⚡ Carregar Trimestre", width=160, height=32,
                       font=("Roboto", 11, "bold"), fg_color=COR_VERDE,
                       hover_color="#059669",
-                      command=self._carregar_trimestre).pack(side="left", padx=(12, 0))
+                      command=self._carregar_trimestre).pack(side="left", padx=(0, 6))
 
         ctk.CTkButton(row_tri, text="📥 Usar trimestre ativo",
                       width=160, height=32, font=("Roboto", 11),
                       fg_color=COR_INPUT, hover_color=COR_AZUL,
-                      command=self._usar_trimestre_ativo).pack(side="left", padx=(6, 0))
+                      command=self._usar_trimestre_ativo).pack(side="left")
 
         # Tabela mensal (dentro do frame_tri)
         self.frame_tabela_tri = ctk.CTkScrollableFrame(
@@ -202,7 +210,7 @@ class TelaSCG(ctk.CTkFrame):
         self.frame_tabela_tri.pack(fill="x", padx=16, pady=(8, 12))
 
         # CAIXA RPV
-        self.rpv_card = ctk.CTkFrame(self, fg_color="#1e1b4b", corner_radius=12)
+        self.rpv_card = ctk.CTkFrame(self, fg_color=ui.COR_REALCE, corner_radius=12)
         rpv_card = self.rpv_card
         rpv_card.pack(fill="x", padx=24, pady=(14, 0))
         ctk.CTkLabel(rpv_card, text="🔢  RPV — Requisição de Pequeno Valor",
@@ -297,6 +305,7 @@ class TelaSCG(ctk.CTkFrame):
         self.btn_auto.configure(fg_color=COR_VERDE)
         self.btn_manual.configure(fg_color=COR_INPUT)
         self.btn_trimestral.configure(fg_color=COR_INPUT)
+        self.bar_periodo.pack(fill="x", pady=(2, 0), before=self.frame_toggle)
         self.frame_tri.pack_forget()
         self.btn_salvar_manual.pack_forget()
         for l in self.linhas.values(): l.mostrar_modo_auto()
@@ -308,6 +317,7 @@ class TelaSCG(ctk.CTkFrame):
         self.btn_manual.configure(fg_color=COR_AMARELO, text_color="black")
         self.btn_auto.configure(fg_color=COR_INPUT)
         self.btn_trimestral.configure(fg_color=COR_INPUT)
+        self.bar_periodo.pack(fill="x", pady=(2, 0), before=self.frame_toggle)
         self.frame_tri.pack_forget()
         for l in self.linhas.values(): l.mostrar_modo_manual()
         self.btn_salvar_manual.pack(fill="x", padx=20, pady=(6, 12))
@@ -318,6 +328,7 @@ class TelaSCG(ctk.CTkFrame):
         self.btn_trimestral.configure(fg_color=COR_AMARELO, text_color="black")
         self.btn_auto.configure(fg_color=COR_INPUT)
         self.btn_manual.configure(fg_color=COR_INPUT)
+        self.bar_periodo.pack_forget()
         self.btn_salvar_manual.pack_forget()
         for l in self.linhas.values(): l.mostrar_modo_auto()
         # Insere o painel trimestral logo abaixo do toggle
@@ -327,9 +338,11 @@ class TelaSCG(ctk.CTkFrame):
     # ── TRIMESTRAL ────────────────────────────────────────────────────────────
 
     def _get_meses_tri(self) -> list[str]:
+        tri = self.combo_trimestre_scg.get()
         ano = self.entry_ano_tri.get().strip() or "2026"
         if len(ano) == 2: ano = "20" + ano
-        return [f"{cb.get()}/{ano}" for cb in self._combos_tri]
+        meses_abrev = self.TRIMESTRES.get(tri, ["Jan", "Fev", "Mar"])
+        return [f"{m}/{ano}" for m in meses_abrev]
 
     def _usar_trimestre_ativo(self):
         db = DatabasePMPV()
@@ -340,12 +353,16 @@ class TelaSCG(ctk.CTkFrame):
         if not meses or len(meses) < 3:
             messagebox.showwarning("Aviso", "Nenhum trimestre ativo salvo.\nSalve primeiro pelo módulo PMPV.")
             return
-        for i, cb in enumerate(self._combos_tri):
-            partes = meses[i].split("/")
-            cb.set(partes[0])
-            if len(partes) > 1:
-                self.entry_ano_tri.delete(0, "end")
-                self.entry_ano_tri.insert(0, "20" + partes[1] if len(partes[1]) == 2 else partes[1])
+        # Detecta qual trimestre corresponde aos meses ativos
+        abrevs = [m.split("/")[0] for m in meses]
+        ano = meses[-1].split("/")[1] if "/" in meses[-1] else str(__import__("datetime").datetime.now().year)
+        if len(ano) == 2: ano = "20" + ano
+        for nome, lista in self.TRIMESTRES.items():
+            if lista == abrevs:
+                self.combo_trimestre_scg.set(nome)
+                break
+        self.entry_ano_tri.delete(0, "end")
+        self.entry_ano_tri.insert(0, ano)
         self._carregar_trimestre()
 
     def _carregar_trimestre(self):
@@ -388,10 +405,10 @@ class TelaSCG(ctk.CTkFrame):
         ]
 
         for li, (label, unidade, key, cor) in enumerate(campos):
-            bg = "#1e293b" if li % 2 == 0 else "#263548"
+            bg = COR_CARD if li % 2 == 0 else ui.COR_CARD_ALT
             is_scg = key == "scg"
             row_f = ctk.CTkFrame(self.frame_tabela_tri,
-                                  fg_color="#1e1b4b" if is_scg else bg, corner_radius=4)
+                                  fg_color=ui.COR_REALCE if is_scg else bg, corner_radius=4)
             row_f.pack(fill="x", pady=1)
 
             ctk.CTkLabel(row_f, text=label,

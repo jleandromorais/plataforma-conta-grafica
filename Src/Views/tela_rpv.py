@@ -1,20 +1,21 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
+from Src.config import ui_theme as ui
 from Src.Services.servicos_rpv import ServicosRPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
-# ── Paleta ────────────────────────────────────────────────────────────────────
-BG        = "#0f172a"
-CARD      = "#1e293b"
-INPUT_BG  = "#334155"
-VERDE     = "#10b981"
-AZUL      = "#3b82f6"
-VERMELHO  = "#ef4444"
-AMARELO   = "#f59e0b"
-ROXO      = "#8b5cf6"
-TEXTO     = "#f8fafc"
-MUTED     = "#94a3b8"
+# ── Paleta (aliases do design system central — ver Src/config/ui_theme.py) ─────
+BG        = ui.COR_FUNDO
+CARD      = ui.COR_CARD
+INPUT_BG  = ui.COR_INPUT
+VERDE     = ui.COR_SUCESSO
+AZUL      = ui.COR_PRIMARIA
+VERMELHO  = ui.COR_PERIGO
+AMARELO   = ui.COR_DESTAQUE
+ROXO      = ui.COR_ROXO
+TEXTO     = ui.COR_TEXTO
+MUTED     = ui.COR_MUTED
 
 class TelaRPV(ctk.CTkFrame):
     """RPV = CGR − CGF com entrada manual e/ou automática via banco de dados."""
@@ -67,10 +68,13 @@ class TelaRPV(ctk.CTkFrame):
         self.btn_limpar.pack(side="left")
 
         # ── CARTÕES CGR e CGF
+        # Grade de 3 colunas: [card CGR] [ − ] [card CGF]. A coluna central
+        # (peso 0) segura o sinal de menos sem sobrepor os cartões.
         cards_row = ctk.CTkFrame(self, fg_color="transparent")
         cards_row.pack(fill="x", padx=24, pady=16)
         cards_row.columnconfigure(0, weight=1, uniform="c")
-        cards_row.columnconfigure(1, weight=1, uniform="c")
+        cards_row.columnconfigure(1, weight=0)
+        cards_row.columnconfigure(2, weight=1, uniform="c")
 
         # Card CGR
         card_cgr = ctk.CTkFrame(cards_row, fg_color=CARD, corner_radius=12)
@@ -86,12 +90,12 @@ class TelaRPV(ctk.CTkFrame):
         self.entry_cgr.pack(fill="x", padx=16, pady=(4, 18))
         self.entry_cgr.bind("<KeyRelease>", lambda e: self._recalcular())
 
-        # Símbolo "−" central
-        ctk.CTkLabel(cards_row, text="−", font=("Roboto", 40, "bold"), text_color=VERMELHO, width=32).grid(row=0, column=0, sticky="e", padx=(0, 4))
+        # Símbolo "−" central (coluna do meio, sem sobrepor os cartões)
+        ctk.CTkLabel(cards_row, text="−", font=("Roboto", 40, "bold"), text_color=VERMELHO, width=32).grid(row=0, column=1, padx=8)
 
         # Card CGF
         card_cgf = ctk.CTkFrame(cards_row, fg_color=CARD, corner_radius=12)
-        card_cgf.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        card_cgf.grid(row=0, column=2, sticky="nsew", padx=(8, 0))
 
         ctk.CTkLabel(card_cgf, text="📋  CGF", font=("Roboto", 16, "bold"), text_color=VERDE).pack(pady=(18, 2))
         ctk.CTkLabel(card_cgf, text="Conta Gráfica de Faturamento\n(Volume Faturado)", font=("Roboto", 11), text_color=MUTED).pack()
@@ -104,7 +108,7 @@ class TelaRPV(ctk.CTkFrame):
         self.entry_cgf.bind("<KeyRelease>", lambda e: self._recalcular())
 
         # ── RESULTADO RPV
-        res_card = ctk.CTkFrame(self, fg_color="#1e1b4b", corner_radius=14)
+        res_card = ctk.CTkFrame(self, fg_color=ui.COR_REALCE, corner_radius=14)
         res_card.pack(fill="x", padx=24, pady=(0, 16))
 
         row_res = ctk.CTkFrame(res_card, fg_color="transparent")
@@ -113,9 +117,10 @@ class TelaRPV(ctk.CTkFrame):
         ctk.CTkLabel(row_res, text="RPV  =  CGR  −  CGF  =", font=("Roboto", 14), text_color=MUTED).pack(side="left")
         self.lbl_rpv = ctk.CTkLabel(row_res, text="R$ 0,00", font=("Roboto", 28, "bold"), text_color=AMARELO)
         self.lbl_rpv.pack(side="left", padx=16)
-        
+
         self.lbl_sinal = ctk.CTkLabel(row_res, text="", font=("Roboto", 13, "bold"), text_color=VERDE, width=120)
         self.lbl_sinal.pack(side="left")
+
 
         # ── BOTÕES DE AÇÃO
         btn_row = ctk.CTkFrame(self, fg_color="transparent")

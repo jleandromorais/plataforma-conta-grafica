@@ -8,9 +8,13 @@ def carregar_configuracao(caminho_yaml='dq_config.yaml'):
 
 def run_sql_check(name, sql, engine, sample_limit=20):
     """Executa uma query que devolve os registos que falharam a regra (failing rows)."""
+    # Executamos via SQLAlchemy e montamos o DataFrame a partir do resultado.
+    # Isso evita a detecção de conexão do pandas (que quebra entre versões de
+    # pandas/SQLAlchemy) e funciona com qualquer combinação instalada.
     with engine.connect() as conn:
-        df = pd.read_sql(text(sql), conn)
-    
+        result = conn.execute(text(sql))
+        df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+
     n_failed = len(df)
     status = 'FAIL' if n_failed > 0 else 'OK'
     

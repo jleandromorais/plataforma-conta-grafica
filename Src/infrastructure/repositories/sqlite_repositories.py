@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from Src.Database.database import DatabasePMPV
-from Src.domain.ports.repositories import ConsolidacaoRepository, PMPVRepository
+from Src.domain.ports.repositories import (
+    ConsolidacaoRepository,
+    PMPVRepository,
+    PRRepository,
+    SRRepository,
+)
 
 
 class SqliteConsolidacaoRepository(ConsolidacaoRepository):
@@ -72,22 +77,52 @@ class SqlitePMPVRepository(PMPVRepository):
 
     def fechar(self):
         self.db.fechar()
-        
 
-        # (Resposta explicativa para "pq retorna ela msm e (periodo) ?")
-        # 
-        # Retornar o próprio parâmetro `periodo` (ou outro valor que foi inserido/buscado/atualizado)
-        # em métodos que realizam ações de gravação/alteração é um padrão comum para indicar, de forma explícita,
-        # qual foi o identificador ou referência afetada pela operação. 
-        #
-        # Por exemplo:
-        # - Se "criar_periodo_consolidacao" recebe e retorna `periodo`, isso permite ao chamador saber 
-        #   exatamente qual período foi criado (inclusive se houve alguma formatação, normalização ou ajuste).
-        # - Em buscas ou atualizações, retornar `periodo` pode facilitar encadeamentos ou conferências no fluxo,
-        #   principalmente quando há lógica condicional.
-        #
-        # Isso também serve de confirmação/reafirmação para que, ao reutilizar o retorno imediatamente, 
-        # o valor correto (e esperado) já esteja disponível, reduzindo ambiguidades.
-        #
-        # Mas nada impede que métodos retornem apenas status (True/False) — depende da semântica desejada e do estilo da API.
+
+class SqliteSRRepository(SRRepository):
+    def __init__(self, db: DatabasePMPV | None = None):
+        self.db = db or DatabasePMPV()
+
+    def listar_sessoes_com_volumes(self):
+        return self.db.listar_sessoes_com_volumes()
+
+    def fechar(self):
+        self.db.fechar()
+
+
+class SqlitePRRepository(PRRepository):
+    def __init__(self, db: DatabasePMPV | None = None):
+        self.db = db or DatabasePMPV()
+
+    # PR
+    def listar_sr(self):
+        return self.db.listar_sr()
+
+    def buscar_sr(self, periodo: str):
+        return self.db.buscar_sr(periodo)
+
+    def buscar_pr(self, periodo: str):
+        return self.db.buscar_pr(periodo)
+
+    def salvar_pr(self, periodo: str, scg: float, sr: float, vp: float, pr: float):
+        return self.db.salvar_pr(periodo, scg, sr, vp, pr)
+
+    def listar_pr(self):
+        return self.db.listar_pr()
+
+    # PV
+    def buscar_pmpv_mensal(self, periodo: str):
+        return self.db.buscar_pmpv_mensal(periodo)
+
+    def buscar_pv(self, periodo: str):
+        return self.db.buscar_pv(periodo)
+
+    def salvar_pv(self, periodo: str, pmpv: float, pr: float, pv: float):
+        return self.db.salvar_pv(periodo, pmpv, pr, pv)
+
+    def listar_pv(self):
+        return self.db.listar_pv()
+
+    def fechar(self):
+        self.db.fechar()
 
