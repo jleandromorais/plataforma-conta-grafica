@@ -29,6 +29,12 @@ _MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
                 "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
 
+def _split_path_parts(caminho: str) -> list[str]:
+    """Quebra o caminho em partes usando tanto os separadores do SO atual quanto '\\'."""
+    partes = re.split(r'[\\/]', caminho)
+    return [p for p in partes if p]
+
+
 def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
     """
     Varre as partes do caminho em busca do nome de um mês (PT-BR).
@@ -36,11 +42,8 @@ def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
     Prioriza a parte mais próxima do arquivo (subpasta imediata > pastas superiores).
     """
     from datetime import date
-    partes = Path(caminho).parts
+    partes = _split_path_parts(caminho)
     # Usa apenas as pastas (não o nome do arquivo) para determinar competência.
-    # O nome do arquivo pode conter o mês da penalidade (ex: "Fevereiro26")
-    # em vez do mês de competência da pasta (ex: "mar-26"), o que levaria a
-    # classificar o documento no mês errado.
     partes_pastas = partes[:-1] if len(partes) > 1 else partes
     # Quebra também na fronteira letra→dígito (ex: "fev26" → "FEV", "26"),
     # padrão comum nos nomes de subpastas mensais (ex: "EAT fev26").
@@ -82,7 +85,8 @@ def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
 class RegrasRET:
     @staticmethod
     def identificar_tipo(caminho):
-        partes = [p.upper() for p in Path(caminho).parts[:-1]]
+        partes_raw = _split_path_parts(caminho)
+        partes = [p.upper() for p in partes_raw[:-1]]
         for p in reversed(partes):
             if 'EAT' in p: return 'EAT'
             if p == 'EC' or p.startswith('EC ') or p.startswith('EC_'): return 'EC'

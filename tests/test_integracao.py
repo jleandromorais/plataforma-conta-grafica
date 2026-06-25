@@ -119,7 +119,7 @@ class TestIntegracaoDatabaseExcel:
                     return val
             return None
 
-        assert _indicador("Volume Faturado") == 90000   # Volume Total (trimestre)
+        assert _indicador("Volume Prospectivo") == 90000   # Volume Total (trimestre)
         assert _indicador("Custo Total") == 180000
 
         # Verifica aba Janeiro (dados começam na linha 5, após banner + cabeçalho).

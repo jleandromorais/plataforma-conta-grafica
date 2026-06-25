@@ -194,7 +194,7 @@ class TestExcelHandlerPMPV:
         ws = wb[self._ABA_RESUMO]
 
         # Tabela "Indicadores complementares": valores buscados pelo rótulo.
-        assert self._achar_indicador(ws, "Volume Faturado") == 90000
+        assert self._achar_indicador(ws, "Volume Prospectivo") == 90000
         assert self._achar_indicador(ws, "Custo Total") == 180000
         assert self._achar_indicador(ws, "PMPV") == 2.0000
         assert self._achar_indicador(ws, "Conta Gráfica") == -0.0210
