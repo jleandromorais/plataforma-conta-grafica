@@ -779,7 +779,7 @@ class ExcelConsolidado:
 
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
             tl = ws.cell(row=row, column=1,
-                         value=f"  ══ TOTAL GERAL DA SESSÃO  |  PMPV: {_money_fmt(pmpv_val)} /m³")
+                         value=f"  ══ TOTAL GERAL DA SESSÃO  |  PMPV: {_money4_fmt(pmpv_val)} /m³")
             tl.fill = _fill(_TEAL); tl.font = _font(bold=True, size=13, color=_HEADER_FG)
             tl.alignment = _align("left"); tl.border = _border()
             for ci in [2,3,4,5]:
