@@ -1,13 +1,17 @@
 [lint]
-# Ignora regras que geram muito ruído neste projeto sem ganho real
+# Ignora regras de estilo sem impacto funcional
 ignore = [
-    "E701",   # múltiplos statements na mesma linha (if x: y)
-    "E702",   # múltiplos statements separados por ponto-e-vírgula
+    "E501",   # linha longa
+    "E701",   # múltiplos statements na mesma linha (colon)
+    "E702",   # múltiplos statements na mesma linha (semicolon)
     "E722",   # bare except
     "E741",   # nomes ambíguos (l, O, I)
     "E402",   # import não no topo do arquivo
+    "W291",   # trailing whitespace
+    "W292",   # no newline at end of file
+    "W293",   # whitespace em linha em branco
     "F401",   # import não utilizado
-    "F841",   # variável local atribuída mas não usada
+    "F841",   # variável local não usada
     "F541",   # f-string sem placeholders
 ]
 
