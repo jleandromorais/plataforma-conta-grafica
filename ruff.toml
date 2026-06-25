@@ -1,0 +1,24 @@
+[lint]
+# Ignora regras que geram muito ruído neste projeto sem ganho real
+ignore = [
+    "E701",   # múltiplos statements na mesma linha (if x: y)
+    "E702",   # múltiplos statements separados por ponto-e-vírgula
+    "E722",   # bare except
+    "E741",   # nomes ambíguos (l, O, I)
+    "E402",   # import não no topo do arquivo
+    "F401",   # import não utilizado
+    "F841",   # variável local atribuída mas não usada
+    "F541",   # f-string sem placeholders
+]
+
+# Só verifica erros graves (bugs reais)
+select = ["E", "F", "W"]
+
+# Exclui pastas que não são código da aplicação
+exclude = [
+    "venv",
+    ".venv",
+    "_arquivado",
+    "build",
+    "dist",
+]
