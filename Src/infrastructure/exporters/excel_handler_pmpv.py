@@ -112,7 +112,7 @@ def _kpi_card(ws, start_row, start_col, label, value, fmt, bg_dark, bg_lite):
 
     # Linha 2: valor principal
     _mc(start_row+2, start_col, c2, value,
-        bg_dark, _font(bold=True, size=20, color=_WHITE), "center", fmt_)
+        bg_dark, _font(bold=True, size=20, color=_WHITE), "center", fmt)
     ws.row_dimensions[start_row+2].height = 34
 
     # Linha 3: espaço
@@ -598,7 +598,6 @@ class ExcelHandlerPMPV:
         row += 1
 
         indicadores = [
-            ("Volume Faturado (VF) — Trimestre",        vf,     "#,##0.00",  "m³"),
             ("Volume Prospectivo (VP) — Trimestre",      vp,     "#,##0.000", "m³"),
             ("Custo Total — Trimestre",                  custo,  _BRL2,       "R$"),
             ("PMPV = Σ(Pᵢ·Vᵢ) / ΣVᵢ",                 pmpv,   _BRL4,       "R$/m³"),

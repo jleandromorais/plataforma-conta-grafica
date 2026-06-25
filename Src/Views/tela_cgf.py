@@ -4,6 +4,7 @@ from tkinter import filedialog, messagebox
 from pathlib import Path
 from datetime import datetime, date
 
+from Src.config import ui_theme as ui
 from Src.Services.servicos_cgf import ServicosCGF
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import (
@@ -58,7 +59,7 @@ class TelaCGF(ctk.CTkFrame):
         self.col_fat_consumo = ctk.StringVar(value="Produto")
         self.val_fat_consumo = ctk.StringVar(value="consumo proprio")
         self.col_fat_cfop    = ctk.StringVar(value="CFOP")
-        self.col_canc_volume = ctk.StringVar(value="Volume Devolução")
+        self.col_canc_volume = ctk.StringVar(value="Volume Canc/Deneg")
         self.col_dev_volume  = ctk.StringVar(value="Volume Devolução")
 
         self.pmpv_manual = ctk.StringVar(value="")
@@ -70,19 +71,19 @@ class TelaCGF(ctk.CTkFrame):
     # ──────────────────────────────────────────────────────────────────────────
     def _setup_ui(self):
         # HEADER
-        header = ctk.CTkFrame(self, height=80, corner_radius=0, fg_color="#1a1a2e")
+        header = ctk.CTkFrame(self, height=80, corner_radius=0, fg_color=ui.COR_HEADER)
         header.pack(fill="x")
         header.pack_propagate(False)
 
         ctk.CTkLabel(
             header, text="Sistema CGF",
-            font=("Roboto", 32, "bold"), text_color="#00d9ff"
-        ).pack(side="left", padx=30, pady=20)
+            font=ui.FONTE_TITULO, text_color=ui.COR_TEXTO_TITULO
+        ).pack(side="left", padx=ui.ESP_LG, pady=ui.ESP_LG)
 
         ctk.CTkLabel(
             header, text="Cálculo de Volume Faturado — Faturada − Canceladas − Devoluções − Consumo Próprio",
-            font=("Roboto", 14), text_color="#a0a0a0"
-        ).pack(side="left", padx=10)
+            font=ui.FONTE_SUBTITULO, text_color=ui.COR_TEXTO_SUBTITULO
+        ).pack(side="left", padx=ui.ESP_SM)
 
         # CONTAINER PRINCIPAL
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -223,7 +224,7 @@ class TelaCGF(ctk.CTkFrame):
 
         ctk.CTkLabel(
             card_rs, text="CGF em R$  —  Volume × PMPV",
-            font=("Roboto", 13, "bold"), text_color="#3b82f6"
+            font=("Roboto", 13, "bold"), text_color=ui.COR_PRIMARIA
         ).pack(anchor="w", padx=16, pady=(12, 6))
 
         pmpv_row = ctk.CTkFrame(card_rs, fg_color="transparent")
@@ -251,7 +252,7 @@ class TelaCGF(ctk.CTkFrame):
 
         self.lbl_cgf_rs = ctk.CTkLabel(
             card_rs, text="CGF em R$:  ---",
-            font=("Roboto", 18, "bold"), text_color="#10b981"
+            font=("Roboto", 18, "bold"), text_color=ui.COR_SUCESSO
         )
         self.lbl_cgf_rs.pack(anchor="w", padx=16, pady=(0, 12))
 
@@ -269,13 +270,13 @@ class TelaCGF(ctk.CTkFrame):
 
         self.lbl_vp_mensal = ctk.CTkLabel(
             vp_row, text="Mensal: ---",
-            font=("Roboto", 13, "bold"), text_color="#3b82f6"
+            font=("Roboto", 13, "bold"), text_color=ui.COR_PRIMARIA
         )
         self.lbl_vp_mensal.pack(side="left", padx=(0, 30))
 
         self.lbl_vp_trimestral = ctk.CTkLabel(
             vp_row, text="Trimestral: ---",
-            font=("Roboto", 13, "bold"), text_color="#f59e0b"
+            font=("Roboto", 13, "bold"), text_color=ui.COR_DESTAQUE
         )
         self.lbl_vp_trimestral.pack(side="left")
 
@@ -453,7 +454,7 @@ class TelaCGF(ctk.CTkFrame):
         if vol > 0 and pmpv > 0:
             self.lbl_cgf_rs.configure(
                 text=f"CGF em R$:  R$ {self.cgf_rs:,.2f}",
-                text_color="#10b981"
+                text_color=ui.COR_SUCESSO
             )
         else:
             self.lbl_cgf_rs.configure(

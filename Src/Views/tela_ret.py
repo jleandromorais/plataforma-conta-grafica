@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox
 from datetime import datetime
 from pathlib import Path
 
+from Src.config import ui_theme as ui
 from Src.Services.servicos_ret import RegrasRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
@@ -27,23 +28,23 @@ class TelaRET(ctk.CTkFrame):
     
     def _setup_ui(self):
         # HEADER
-        header = ctk.CTkFrame(self, height=80, corner_radius=0, fg_color="#1a1a2e")
+        header = ctk.CTkFrame(self, height=80, corner_radius=0, fg_color=ui.COR_HEADER)
         header.pack(fill="x")
         header.pack_propagate(False)
-        
+
         ctk.CTkLabel(
-            header, 
-            text="Sistema RET Master", 
-            font=("Roboto", 32, "bold"),
-            text_color="#00d9ff"
-        ).pack(side="left", padx=30, pady=20)
-        
+            header,
+            text="Sistema RET",
+            font=ui.FONTE_TITULO,
+            text_color=ui.COR_TEXTO_TITULO
+        ).pack(side="left", padx=ui.ESP_LG, pady=ui.ESP_LG)
+
         ctk.CTkLabel(
-            header, 
-            text="Processamento Automatizado de Encargos", 
-            font=("Roboto", 14),
-            text_color="#a0a0a0"
-        ).pack(side="left", padx=10)
+            header,
+            text="Processamento Automatizado de Encargos",
+            font=ui.FONTE_SUBTITULO,
+            text_color=ui.COR_TEXTO_SUBTITULO
+        ).pack(side="left", padx=ui.ESP_SM)
         
         # CONTAINER PRINCIPAL
         main = ctk.CTkFrame(self, fg_color="transparent")

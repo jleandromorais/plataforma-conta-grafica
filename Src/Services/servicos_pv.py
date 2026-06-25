@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from Src.Database.database import DatabasePMPV
+from Src.domain.ports.repositories import PRRepository
+from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
 
 
 class ServicosPV:
@@ -11,8 +12,8 @@ class ServicosPV:
     - PR: preço regulatório final salvo no módulo PR (tabela pr_resultados)
     """
 
-    def __init__(self, db: DatabasePMPV | None = None):
-        self._db = db or DatabasePMPV()
+    def __init__(self, repo: PRRepository | None = None):
+        self._repo = repo or SqlitePRRepository()
 
     @staticmethod
     def calcular_pv(pmpv: float, pr: float) -> float:
@@ -45,11 +46,11 @@ class ServicosPV:
         ServicosConsolidacao().criar_periodo(nome.strip())
 
     def buscar_dados_periodo(self, periodo: str) -> dict[str, float] | None:
-        pmpv = self._db.buscar_pmpv_mensal(periodo) or 0.0
-        pr_row = self._db.buscar_pr(periodo)
+        pmpv = self._repo.buscar_pmpv_mensal(periodo) or 0.0
+        pr_row = self._repo.buscar_pr(periodo)
         pr = (pr_row or {}).get("pr") or 0.0
 
-        pv_row = self._db.buscar_pv(periodo)
+        pv_row = self._repo.buscar_pv(periodo)
         pv = (pv_row or {}).get("pv") or self.calcular_pv(pmpv, pr)
 
         return {"pmpv": pmpv, "pr": pr, "pv": pv}
@@ -58,11 +59,11 @@ class ServicosPV:
         pmpv = pmpv or 0.0
         pr = pr or 0.0
         pv = self.calcular_pv(pmpv, pr)
-        self._db.salvar_pv(periodo, pmpv, pr, pv)
+        self._repo.salvar_pv(periodo, pmpv, pr, pv)
         return pv
 
     def gerar_texto_historico(self) -> str:
-        periodos = self._db.listar_pv()
+        periodos = self._repo.listar_pv()
         cab = (
             f"{'Período':<14} {'PMPV (R$/m³)':>18} {'PR (R$/m³)':>18} "
             f"{'PV (R$/m³)':>18}   {'Atualizado':<16}\n"

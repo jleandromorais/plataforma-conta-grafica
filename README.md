@@ -411,6 +411,12 @@ DEZ/25   →   Dez/2025
 
 ## ⚙️ Backend
 
+> ⚠️ **DESCONTINUADO (jun/2026).** Esta stack (Airflow + PostgreSQL) foi **arquivada** em
+> `_arquivado/backend/` por duplicar — e divergir de — os cálculos oficiais em `Src/Services/*`.
+> A automação suportada hoje é `pipeline.py` + Windows Task Scheduler + SQLite
+> (ver [COMO_USAR_AUTOMACAO.md](COMO_USAR_AUTOMACAO.md)). As instruções abaixo ficam apenas
+> como referência histórica; troque `backend/` por `_arquivado/backend/` nos caminhos.
+
 A stack de backend é **opcional** e fornece automação, qualidade de dados e relatórios agendados.
 
 ### Serviços Docker

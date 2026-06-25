@@ -1,5 +1,9 @@
 # Comandos Rápidos - Plataforma Conta Gráfica
 
+> ⚠️ Comandos que apontam para `backend/...` referem-se à stack **arquivada** em
+> `_arquivado/backend/` (Airflow/Postgres descontinuado). Para automação atual, use
+> `pipeline.py` — ver [COMO_USAR_AUTOMACAO.md](COMO_USAR_AUTOMACAO.md).
+
 ## 🚀 Inicialização
 
 ```powershell

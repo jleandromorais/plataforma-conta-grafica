@@ -61,6 +61,7 @@ class TestIntegracaoDatabaseExcel:
             },
             'resultado': {
                 'volume_total': 90000,
+                'vp_mensal': 90000,
                 'custo_total': 180000,
                 'pmpv': 2.0000,
                 'conta_grafica': -0.0210,
@@ -80,10 +81,13 @@ class TestIntegracaoDatabaseExcel:
             assert sucesso is True
         
         # 3. Salvar resultado
+        # Assinatura: (sessao_id, vol_tot, vp_tot, vf_tot, custo_tot, pmpv, cg, final)
         res = dados_completos['resultado']
         sucesso = db_temp.salvar_resultado(
             sessao_id,
             res['volume_total'],
+            res['volume_total'],   # vp_tot
+            res['volume_total'],   # vf_tot
             res['custo_total'],
             res['pmpv'],
             res['conta_grafica'],
@@ -103,17 +107,27 @@ class TestIntegracaoDatabaseExcel:
         
         # 5. Verificar conteúdo do Excel
         wb = openpyxl.load_workbook(arquivo_excel)
-        
-        # Verifica aba de resumo
-        ws_resumo = wb["Resumo Executivo"]
-        assert ws_resumo["B3"].value == 90000  # Volume Total
-        assert ws_resumo["B4"].value == 180000  # Custo Total
-        
-        # Verifica aba Janeiro
+
+        # Verifica aba de resumo (nome pode ter emoji; localiza por "Resumo").
+        nome_resumo = next(s for s in wb.sheetnames if "Resumo" in s)
+        ws_resumo = wb[nome_resumo]
+
+        def _indicador(rotulo):
+            for r in range(1, ws_resumo.max_row + 1):
+                lbl = ws_resumo.cell(r, 1).value
+                val = ws_resumo.cell(r, 2).value
+                if lbl and rotulo in str(lbl) and isinstance(val, (int, float)):
+                    return val
+            return None
+
+        assert _indicador("Volume Prospectivo") == 90000   # Volume Total (trimestre)
+        assert _indicador("Custo Total") == 180000
+
+        # Verifica aba Janeiro (dados começam na linha 5, após banner + cabeçalho).
         ws_jan = wb["Janeiro"]
-        assert ws_jan.cell(2, 1).value == "PETROBRAS"
-        assert ws_jan.cell(3, 1).value == "GALP"
-        
+        empresas = [ws_jan.cell(r, 1).value for r in range(5, 7)]
+        assert empresas == ["PETROBRAS", "GALP"]
+
         wb.close()
     
     def test_recuperar_e_reexportar(self, db_temp, dados_completos, tmp_path):

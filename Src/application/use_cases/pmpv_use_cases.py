@@ -1,21 +1,10 @@
+"""Casos de uso do módulo PMPV (camada application).
+
+Orquestra os fluxos do PMPV entre a UI e as camadas de domínio/infraestrutura:
+delega o cálculo a ``RegrasPMPV`` (domínio) e a persistência aos repositórios
+(via Protocol), sem conhecer detalhes de implementação. Ver ARCHITECTURE.md.
+"""
 from __future__ import annotations
-
-
-
-"""
- O diretório `application` neste projeto organiza a lógica de aplicação, isto é, os casos de uso e regras que coordenam a execução dos processos principais da sua solução.
- Ele age como intermediário entre a interface do usuário (UI) e o domínio/núcleo do sistema (domain), orquestrando fluxos, simplificando a interação com as regras de negócio 
- e centralizando procedimentos essenciais que não dizem respeito especificamente nem à infraestrutura (persistência, APIs) nem ao domínio puro (entidades, regras fundamentais).
- Em resumo, no padrão de arquitetura clean/hexagonal/onion, o `application` define "o que" o sistema faz (através dos "use cases"), sem se acoplar à forma "de onde ou como" os dados são acessados.
-"""
-
-
-"""
-No seu caso, neste código, a camada 'application' está organizando os casos de uso do módulo PMPV, de forma que ela atua como intermediária entre a interface do usuário e as regras de negócio (domínio).
-Por exemplo, a classe PMPVUseCases define métodos como `calcular_resultados` e `salvar_sessao_completa`, que orquestram chamadas para regras de negócio em RegrasPMPV e para persistência via repositórios, mas sem saber detalhes de implementação das camadas inferiores.
-Isso permite separar a lógica de orquestração de fluxos (o que o sistema faz) das implementações específicas de domínio e infraestrutura (como faz e onde busca/salva os dados).
-Assim, o comportamento dela é centralizar a lógica de execução dos fluxos principais do módulo, mantendo baixo acoplamento entre as camadas do sistema.
-"""
 
 from typing import Any
 

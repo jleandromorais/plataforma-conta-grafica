@@ -13,11 +13,7 @@ Os "ports" existem para garantir que o domínio dependa apenas de interfaces abs
 Essa separação facilita a troca de infraestrutura sem impactar o núcleo, permite mocks e stubs para testes e mantém o domínio desacoplado de detalhes externos.
 """
 
-from typing import Any, Dict, List, Protocol  # Importa tipos para anotações: 
-# - Any: qualquer tipo de dado
-# - Dict: dicionário (exemplo: Dict[str, Any] = dict com chave string, valor qualquer tipo)
-# - List: lista (exemplo: List[Dict[str, Any]] = lista de dicionários)
-# - Protocol: permite definir interfaces/contratos de métodos (útil para polimorfismo e duck typing)
+from typing import Any, Dict, List, Protocol
 
 
 class ConsolidacaoRepository(Protocol):
@@ -54,27 +50,29 @@ class PMPVRepository(Protocol):
     def listar_pmpv_mensal(self) -> List[Dict[str, Any]]: ...
     def buscar_pmpv_mensal(self, periodo: str) -> float | None: ...
     def fechar(self): ...
-    
-    # O Python Protocol serve para definir uma interface, isto é, um "contrato": 
-    # qualquer classe que implemente TODOS esses métodos, mesmo sem herdar explicitamente de PMPVRepository, será aceita onde se espera um PMPVRepository (duck typing).
-    # Isso permite que o domínio dependa apenas do "quê" (assinatura dos métodos), não do "como".
-
-    # Assim, qualquer classe concreta pode "puxar"/implementar as funções/métodos declarados aqui com a mesma assinatura.
-    # Por exemplo, a classe SqlitePMPVRepository (na camada infrastructure) implementa todos os métodos de PMPVRepository. 
-    # Daí, quando na camada application (use case) você faz algo como:
-    #   repo: PMPVRepository = SqlitePMPVRepository()
-    # o type checker garante que todos os métodos exigidos estão presentes, e o use case não sabe nada sobre SQLite ou detalhes concretos.
-    #
-    # Isso permite:
-    # - Testar o use case usando mocks/stubs, já que você pode criar um "FakeRepository" só para o teste.
-    # - Trocar por outra implementação real no futuro (ex: outro banco, API) sem alterar o domínio ou a orquestração.
-    # - Garantir que métodos obrigatórios estejam implementados, facilitando manutenção e legibilidade.
 
 
-    # deixa eu ve se entendi ,serve para marcacao e todos que usarem esse nome da classe estao ligado a esse arquivo (Prfv ,se possivel ,deixa minhas perguntas como essa a mostra quando for digitar ,para eu ter uma nocao da pergunta que fiz)
-    # 
-    # Exatamente! Quando você define uma classe como PMPVRepository (ou qualquer outro "Protocol") neste arquivo, ela serve como uma "interface/contrato" para o sistema. 
-    # Ou seja, qualquer classe que implemente todos os métodos definidos nesta interface pode ser usada onde se espera um PMPVRepository — 
-    # você não precisa de herança explícita! Assim, todo lugar que declara/usa "repo: PMPVRepository" está, de certa forma, "ligado" a esse contrato/interface desse arquivo.
-    # Isso facilita garantir que o sistema obedeça esse "contrato" de métodos mínimos, ajuda em testes (usando mocks/fakes), e troca fácil de implementação no futuro.
-    # É uma prática comum em arquiteturas como Clean Architecture ou Hexagonal.
+class SRRepository(Protocol):
+    """Porta de saída para o módulo SR (Saldo Regulatório)."""
+    def listar_sessoes_com_volumes(self) -> List[Dict[str, Any]]: ...
+    def fechar(self): ...
+
+
+class PRRepository(Protocol):
+    """Porta de saída para os resultados finais PR e PV.
+
+    Agrupa o acesso às tabelas de resultado final (pr_resultados, pv_resultados)
+    e às leituras de SR/PMPV de que esses cálculos dependem.
+    """
+    # PR
+    def listar_sr(self) -> List[Dict[str, Any]]: ...
+    def buscar_sr(self, periodo: str) -> Dict[str, Any] | None: ...
+    def buscar_pr(self, periodo: str) -> Dict[str, Any] | None: ...
+    def salvar_pr(self, periodo: str, scg: float, sr: float, vp: float, pr: float): ...
+    def listar_pr(self) -> List[Dict[str, Any]]: ...
+    # PV (depende de PMPV e PR)
+    def buscar_pmpv_mensal(self, periodo: str) -> float | None: ...
+    def buscar_pv(self, periodo: str) -> Dict[str, Any] | None: ...
+    def salvar_pv(self, periodo: str, pmpv: float, pr: float, pv: float): ...
+    def listar_pv(self) -> List[Dict[str, Any]]: ...
+    def fechar(self): ...

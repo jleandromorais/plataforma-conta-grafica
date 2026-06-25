@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from Src.Database.database import DatabasePMPV
+from Src.domain.ports.repositories import SRRepository
+from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
 
 
 class ServicosSR:
@@ -13,22 +14,22 @@ class ServicosSR:
         - VF: Volume Faturado — volume real do trimestre, sem ponderação por dias.
     """
 
-    def __init__(self, db: DatabasePMPV | None = None):
-        self._db = db or DatabasePMPV()
+    def __init__(self, repo: SRRepository | None = None):
+        self._repo = repo or SqliteSRRepository()
 
     def listar_sessoes(self) -> list[dict]:
         """
         Retorna todas as sessões com VP e VF calculados, no formato:
         [{"id": 1, "nome": "Sessão X", "data_criacao": "...", "vp": 0.0, "vf": 0.0}, ...]
         """
-        return self._db.listar_sessoes_com_volumes()
+        return self._repo.listar_sessoes_com_volumes()
 
     def buscar_vp_vf(self, sessao_id: int) -> dict[str, float] | None:
         """
         Retorna {"vp": ..., "vf": ...} para a sessão informada, ou None se
         não encontrar.
         """
-        sessoes = self._db.listar_sessoes_com_volumes()
+        sessoes = self._repo.listar_sessoes_com_volumes()
         for s in sessoes:
             if s["id"] == sessao_id:
                 return {"vp": s["vp"] or 0.0, "vf": s["vf"] or 0.0}

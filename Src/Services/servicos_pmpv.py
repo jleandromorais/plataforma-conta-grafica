@@ -156,6 +156,7 @@ class RegrasPMPV:
     def calcular_resultados(dados_extraidos, valor_cg, dias_config, lista_meses, idx_start):
         c_tot = 0.0
         v_tot_vf = 0.0
+        v_tot_calculo = 0.0   # volume "de cálculo" = Σ(volume × dias do mês)
         vp_total = 0.0
         vf_total = 0.0
         vp_por_mes = {} 
@@ -176,9 +177,10 @@ class RegrasPMPV:
 
                 pr = l['molecula'] + l['transporte'] + l['logistica']
                 vf_calculo = vol * dias
-                
-                c_tot += pr * vf_calculo
-                v_tot_vf += vf_calculo
+
+                c_tot += pr * vol
+                v_tot_vf += vol
+                v_tot_calculo += vf_calculo
                 vf_calculo_mes += vf_calculo
                 vf_mes += vol
                 vf_total += vol
@@ -203,12 +205,12 @@ class RegrasPMPV:
         final = pmpv + valor_cg
 
         return {
-            'volume_total': v_tot_vf, 'custo_total': c_tot,
+            'volume_total': v_tot_calculo, 'custo_total': c_tot,
             'pmpv': pmpv, 'conta_grafica': valor_cg, 'preco_final': final,
             'vp_mensal': vp_total, 'vp_por_mes': vp_por_mes,
             'vf_total': vf_total,
             'vf_por_mes': vf_por_mes,
-            'volume_total_calculo': v_tot_vf,
+            'volume_total_calculo': v_tot_calculo,
             'vf_calculo_por_mes': vf_calculo_por_mes,
             'avisos': avisos
         }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from Src.Database.database import DatabasePMPV
+from Src.domain.ports.repositories import PRRepository
+from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
 
 
 class ServicosPR:
@@ -12,8 +13,8 @@ class ServicosPR:
     PR = 0.0 quando VP = 0 para evitar divisão por zero.
     """
 
-    def __init__(self, db: DatabasePMPV | None = None):
-        self._db = db or DatabasePMPV()
+    def __init__(self, repo: PRRepository | None = None):
+        self._repo = repo or SqlitePRRepository()
 
     @staticmethod
     def calcular_pr(scg: float, sr: float, vp: float) -> float:
@@ -65,7 +66,7 @@ class ServicosPR:
             if per and per not in vistos:
                 vistos.add(per)
                 periodos.append(per)
-        for row in self._db.listar_sr():
+        for row in self._repo.listar_sr():
             per = row.get("periodo", "")
             if per and per not in vistos:
                 vistos.add(per)
@@ -86,11 +87,11 @@ class ServicosPR:
         dados_cons = ServicosConsolidacao().buscar_consolidacao(periodo)
         scg = (dados_cons or {}).get("scg") or 0.0
 
-        sr_row = self._db.buscar_sr(periodo)
+        sr_row = self._repo.buscar_sr(periodo)
         sr = (sr_row or {}).get("sr") or 0.0
         vp = (sr_row or {}).get("vp") or 0.0
 
-        pr_row = self._db.buscar_pr(periodo)
+        pr_row = self._repo.buscar_pr(periodo)
         pr = (pr_row or {}).get("pr") or self.calcular_pr(scg, sr, vp)
 
         return {"scg": scg, "sr": sr, "vp": vp, "pr": pr}
@@ -107,7 +108,7 @@ class ServicosPR:
                 continue
             dados_cons = servicos_cons.buscar_consolidacao(periodo)
             scg_total += float((dados_cons or {}).get("scg") or 0.0)
-            sr_row = self._db.buscar_sr(periodo)
+            sr_row = self._repo.buscar_sr(periodo)
             sr_total += float((sr_row or {}).get("sr") or 0.0)
             vp_total += float((sr_row or {}).get("vp") or 0.0)
         pr = self.calcular_pr(scg_total, sr_total, vp_total)
@@ -119,11 +120,11 @@ class ServicosPR:
         sr = sr or 0.0
         vp = vp or 0.0
         pr = self.calcular_pr(scg, sr, vp)
-        self._db.salvar_pr(periodo, scg, sr, vp, pr)
+        self._repo.salvar_pr(periodo, scg, sr, vp, pr)
         return pr
 
     def gerar_texto_historico(self) -> str:
-        periodos = self._db.listar_pr()
+        periodos = self._repo.listar_pr()
         cab = (
             f"{'Período':<14} {'SGR/SCG':>16} {'SR':>16} "
             f"{'VP (m³)':>14} {'PR (R$/m³)':>18}   {'Atualizado':<16}\n"

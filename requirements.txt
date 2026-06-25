@@ -1,8 +1,30 @@
-pandas>=2.0.0
-openpyxl>=3.1.0
-sqlalchemy>=1.4,<2.0
-psycopg2-binary>=2.9.0
-python-dotenv>=1.0.0
-pytesseract>=0.3.10
-PyYAML>=6.0
+# Dependências do GraphAccount Pro — versões fixadas para builds reproduzíveis.
+# Atualize com: pip freeze (conferindo compatibilidade) antes de gerar o .exe.
+
+# Interface gráfica (estavam faltando aqui, embora usadas pela aplicação)
+customtkinter==5.2.2
+pillow==12.1.1
+matplotlib==3.11.0
+
+# Dados / planilhas
+# pandas fixado em 2.x: a 3.0 exige SQLAlchemy 2.0+, incompatível com o
+# Airflow provider (que pede SQLAlchemy 1.4). O app desktop usa sqlite3 puro.
+pandas>=2.2,<3.0
+openpyxl==3.1.5
+pdfplumber==0.11.9
+
+# Banco de dados
+SQLAlchemy>=1.4,<2.0
+psycopg2-binary==2.9.11
+
+# OCR / extração
+pytesseract==0.3.13
+
+# Utilitários
+python-dotenv==1.2.2
+PyYAML==6.0.3
+
+# Opcionais (não instalados neste ambiente; ativados em runtime se presentes).
+# Mantêm restrição mínima — fixe a versão exata quando forem instalados.
 google-genai>=0.3.0
+apache-airflow-providers-postgres>=4.0.0

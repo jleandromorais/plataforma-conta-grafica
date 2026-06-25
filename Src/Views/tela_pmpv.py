@@ -5,12 +5,17 @@ from datetime import datetime
 
 # --- IMPORTAÇÕES DA NOVA ARQUITETURA ---
 # Vai buscar as regras matemáticas à pasta Services
+import logging
+
+from Src.config import ui_theme as ui
 from Src.Services.servicos_pmpv import ExcelPMPV
 # Casos de uso da aplicação (desacoplados da infraestrutura)
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 from Src.common.excel_final_destino import registrar_execucao_excel_final, novo_excel_final
 from Src.Database.database import DatabasePMPV
+
+logger = logging.getLogger(__name__)
 
 # ==========================================
 # 3. INTERFACE GRÁFICA (A Tela)
@@ -72,8 +77,13 @@ class TelaPMPV(ctk.CTkFrame):
         ctk.CTkLabel(conf, text="Ano:", font=("Roboto", 13)).pack(side="left")
         self.entry_ano = ctk.CTkEntry(conf, width=64, justify="center")
         self.entry_ano.insert(0, str(datetime.now().year))
-        self.entry_ano.pack(side="left", padx=(4, 10))
+        self.entry_ano.pack(side="left", padx=(4, 2))
         self.entry_ano._entry.bind("<FocusOut>", self._atualizar_trimestre)
+        self.entry_ano._entry.bind("<KeyRelease>", self._validar_ano)
+        # Cor padrão da borda, para restaurar quando o ano voltar a ser válido
+        self._cor_borda_padrao = self.entry_ano.cget("border_color")
+        self.lbl_aviso_ano = ctk.CTkLabel(conf, text="", text_color="#e74c3c", font=("Roboto", 11))
+        self.lbl_aviso_ano.pack(side="left", padx=(2, 10))
 
         self.chk_biss = ctk.CTkCheckBox(conf, text="Ano Bissexto", command=self._atualizar_trimestre)
         self.chk_biss.pack(side="left", padx=10)
@@ -85,7 +95,7 @@ class TelaPMPV(ctk.CTkFrame):
             nome = f"Mês {i}"
             self.tabview.add(nome)
             self.dados_meses[nome] = self._criar_aba(self.tabview.tab(nome), nome)
-        
+
         self._atualizar_trimestre()
 
         foot = ctk.CTkFrame(self, fg_color="#1a1a1a", corner_radius=15)
@@ -93,37 +103,38 @@ class TelaPMPV(ctk.CTkFrame):
 
         left = ctk.CTkFrame(foot, fg_color="transparent")
         left.pack(side="left", padx=20, pady=20)
-        ctk.CTkLabel(left, text="Conta Gráfica (R$):").pack(anchor="w")
         self.entry_cg = ctk.CTkEntry(left, justify="center")
         self.entry_cg.insert(0, "-0.0210")
-        self.entry_cg.pack(pady=5)
-        ctk.CTkButton(left, text="⚡ CALCULAR", command=self.calcular, fg_color="#27ae60", hover_color="#2ecc71").pack(pady=5)
+        self.entry_cg._entry.bind("<KeyRelease>", self._validar_cg)
+        self.lbl_aviso_cg = ctk.CTkLabel(left, text="", text_color="#e74c3c", font=("Roboto", 11))
+        ctk.CTkButton(left, text="⚡ CALCULAR", command=self.calcular, fg_color=ui.COR_SUCESSO, hover_color=ui.COR_SUCESSO_HOVER).pack(pady=ui.ESP_SM)
 
         center = ctk.CTkFrame(foot, fg_color="transparent")
         center.pack(side="left", expand=True)
-        self.lbl_pmpv = ctk.CTkLabel(center, text="PMPV: R$ 0.0000", font=("Roboto", 20))
+        self.lbl_pmpv = ctk.CTkLabel(
+            center, text="PMPV: R$ 0,0000",
+            font=("Roboto", 32, "bold"), text_color=ui.COR_DESTAQUE,
+        )
         self.lbl_pmpv.pack()
-        self.lbl_final = ctk.CTkLabel(center, text="PREÇO FINAL: R$ 0.0000", font=("Roboto", 28, "bold"), text_color="#f1c40f")
-        self.lbl_final.pack()
         vp_row = ctk.CTkFrame(center, fg_color="transparent")
         vp_row.pack(pady=(4, 0))
-        self.lbl_vp = ctk.CTkLabel(vp_row, text="Volume Prospectivo Total: — m³", font=("Roboto", 13), text_color="#3498db")
+        self.lbl_vp = ctk.CTkLabel(vp_row, text="Volume Prospectivo Total: — m³", font=("Roboto", 16, "bold"), text_color="#3498db")
         self.lbl_vp.pack(side="left")
         self.btn_vp_detail = ctk.CTkButton(vp_row, text="▼ por mês", command=self._popup_vp, width=90, height=22, font=("Roboto", 11), fg_color="#1a5276", hover_color="#2e86c1")
         self.btn_vp_detail.pack(side="left", padx=(8, 0))
 
         right = ctk.CTkFrame(foot, fg_color="transparent")
         right.pack(side="right", padx=20)
-        ctk.CTkLabel(right, text="Ações PMPV", font=("Roboto", 13, "bold")).pack(pady=(0, 4))
-        ctk.CTkButton(right, text="📥 Importar Memória de Cálculo", command=self._importar_memoria_calculo, fg_color="#d35400", hover_color="#e67e22").pack(pady=4, fill="x")
-        ctk.CTkButton(right, text="💾 Salvar Sessão no Banco", command=self.salvar, fg_color="#8e44ad").pack(pady=4, fill="x")
-        ctk.CTkButton(right, text="➕ Adicionar ao Excel Final (Módulo 9)", command=self._adicionar_excel_final, fg_color="#6c3483", hover_color="#884ea0").pack(pady=4, fill="x")
-        ctk.CTkButton(right, text="🗋 Novo Excel (zerar sessão)", command=lambda: novo_excel_final(parent=self), fg_color="#7f8c8d", hover_color="#95a5a6").pack(pady=4, fill="x")
+        ctk.CTkLabel(right, text="Ações PMPV", font=ui.FONTE_LABEL).pack(pady=(0, ui.ESP_XS))
+        ctk.CTkButton(right, text="📥 Importar Memória", command=self._importar_memoria_calculo, fg_color=ui.COR_AVISO, hover_color=ui.COR_AVISO_HOVER).pack(pady=ui.ESP_XS, fill="x")
+        ctk.CTkButton(right, text="💾 Salvar Sessão", command=self.salvar, fg_color=ui.COR_PRIMARIA, hover_color=ui.COR_PRIMARIA_HOVER).pack(pady=ui.ESP_XS, fill="x")
+        ctk.CTkButton(right, text="➕ Adicionar ao Excel Final", command=self._adicionar_excel_final, fg_color=ui.COR_PRIMARIA, hover_color=ui.COR_PRIMARIA_HOVER).pack(pady=ui.ESP_XS, fill="x")
+        ctk.CTkButton(right, text="🗋 Novo (zerar sessão)", command=lambda: novo_excel_final(parent=self), fg_color=ui.COR_NEUTRA, hover_color=ui.COR_NEUTRA_HOVER).pack(pady=ui.ESP_XS, fill="x")
 
     def _criar_aba(self, parent, tab_nome: str = ""):
         head = ctk.CTkFrame(parent, height=30, fg_color="#2c3e50")
         head.pack(fill="x", pady=5)
-        cols = [("Empresa", 200), ("Molécula", 100), ("Transporte", 100), ("Logística", 100), ("Total", 100), ("Volume", 120), ("Ações", 80)]
+        cols = [("Empresa", 200), ("Molécula", 100), ("Transporte", 100), ("Logística", 100), ("Total", 100), ("QDC (m³/dia)", 120), ("Volume (m³)", 110), ("Ações", 80)]
         for txt, w in cols:
             ctk.CTkLabel(head, text=txt, width=w, font=("Roboto", 12, "bold")).pack(side="left", padx=2)
 
@@ -133,33 +144,37 @@ class TelaPMPV(ctk.CTkFrame):
 
         linhas = []
         for emp in self.empresas_padrao:
-            linhas.append(self._add_linha(scroll, emp, linhas))
+            linhas.append(self._add_linha(scroll, emp, linhas, tab_nome))
 
-        ctk.CTkButton(parent, text="➕ Adicionar", command=lambda: self._add_nova(scroll, linhas), fg_color="transparent", border_width=1).pack(pady=5)
+        ctk.CTkButton(parent, text="➕ Adicionar", command=lambda: self._add_nova(scroll, linhas, tab_nome), fg_color="transparent", border_width=1).pack(pady=5)
         return linhas
 
-    def _add_linha(self, parent, nome, lista):
+    def _add_linha(self, parent, nome, lista, tab_nome: str = ""):
         row = ctk.CTkFrame(parent)
-        row.pack(fill="x", pady=2)
-        conf = {"width": 100, "height": 30}
-        
-        e_nom = ctk.CTkEntry(row, width=200, height=30); e_nom.insert(0, nome); e_nom.pack(side="left", padx=2)
-        e_mol = ctk.CTkEntry(row, **conf); e_mol.pack(side="left", padx=2)
-        e_tra = ctk.CTkEntry(row, **conf); e_tra.pack(side="left", padx=2)
-        e_log = ctk.CTkEntry(row, **conf); e_log.pack(side="left", padx=2)
-        
-        l_tot = ctk.CTkLabel(row, text="0.0000", width=100, height=30, fg_color="#34495e", corner_radius=5)
-        l_tot.pack(side="left", padx=2)
-        
-        e_vol = ctk.CTkEntry(row, width=120, height=30, text_color="#f39c12", font=("Roboto", 12, "bold"))
+        row.pack(fill="x", pady=ui.ESP_XS)
+        conf = {"width": 100, "height": 34}
+
+        e_nom = ctk.CTkEntry(row, width=200, height=34); e_nom.insert(0, nome); e_nom.pack(side="left", padx=ui.ESP_XS)
+        e_mol = ctk.CTkEntry(row, **conf); e_mol.pack(side="left", padx=ui.ESP_XS)
+        e_tra = ctk.CTkEntry(row, **conf); e_tra.pack(side="left", padx=ui.ESP_XS)
+        e_log = ctk.CTkEntry(row, **conf); e_log.pack(side="left", padx=ui.ESP_XS)
+
+        l_tot = ctk.CTkLabel(row, text="0.0000", width=100, height=34, fg_color=ui.COR_NEUTRA, corner_radius=5)
+        l_tot.pack(side="left", padx=ui.ESP_XS)
+
+        e_vol = ctk.CTkEntry(row, width=120, height=34, text_color="#f39c12", font=("Roboto", 12, "bold"))
         e_vol.pack(side="left", padx=2)
         e_vol._entry.bind("<FocusOut>", lambda _e, w=e_vol: self._sanitizar_vol(w))
         e_vol._entry.bind("<<Paste>>", lambda _e, w=e_vol: self.after(10, lambda: self._sanitizar_vol(w)))
 
+        l_vol_calc = ctk.CTkLabel(row, text="—", width=110, height=34, fg_color=ui.COR_NEUTRA, corner_radius=5, text_color="#1abc9c", font=("Roboto", 11))
+        l_vol_calc.pack(side="left", padx=2)
+
         ctk.CTkButton(row, text="📋", width=40, command=lambda: self._popup_copy(dados), fg_color="#8e44ad").pack(side="left", padx=2)
         ctk.CTkButton(row, text="🗑️", width=40, command=lambda: self._del_linha(row, dados, lista), fg_color="#c0392b").pack(side="left", padx=2)
 
-        dados = {'nome': e_nom, 'mol': e_mol, 'trans': e_tra, 'log': e_log, 'tot': l_tot, 'vol': e_vol, '_frame': row}
+        dados = {'nome': e_nom, 'mol': e_mol, 'trans': e_tra, 'log': e_log, 'tot': l_tot, 'vol': e_vol, 'vol_calc': l_vol_calc, '_frame': row, '_tab': tab_nome}
+        e_vol._entry.bind("<KeyRelease>", lambda _e, d=dados: self._atualizar_vol_calc(d))
         
         for e in [e_mol, e_tra, e_log]:
             e._entry.bind("<KeyRelease>", lambda e, d=dados: self._calc_row(d))
@@ -169,6 +184,16 @@ class TelaPMPV(ctk.CTkFrame):
     def _calc_row(self, d):
         tot = self._val(d['mol']) + self._val(d['trans']) + self._val(d['log'])
         d['tot'].configure(text=f"{tot:.2f}")
+
+    def _atualizar_vol_calc(self, d):
+        qdc = self._val(d['vol'])
+        tab = d.get('_tab', '')
+        dias = self.dias_config.get(tab, 30)
+        if qdc > 0:
+            vol_m3 = qdc * dias
+            d['vol_calc'].configure(text=self._fmt_volume(vol_m3))
+        else:
+            d['vol_calc'].configure(text="—")
 
     def _val(self, e):
         try: return float(e.get().replace(',', '.'))
@@ -194,8 +219,8 @@ class TelaPMPV(ctk.CTkFrame):
             entry.insert(0, limpo)
             entry._entry.icursor(min(cursor, len(limpo)))
 
-    def _add_nova(self, parent, lista):
-        novo = self._add_linha(parent, "Nova Empresa", lista)
+    def _add_nova(self, parent, lista, tab_nome: str = ""):
+        novo = self._add_linha(parent, "Nova Empresa", lista, tab_nome)
         lista.append(novo)
 
     def _del_linha(self, row, dados, lista):
@@ -203,12 +228,29 @@ class TelaPMPV(ctk.CTkFrame):
             row.destroy()
             if dados in lista: lista.remove(dados)
 
+    def _validar_ano(self, _=None) -> bool:
+        """Valida o campo Ano em tempo real e dá feedback visual ao usuário.
+
+        Retorna True se o ano for válido. Caso contrário, pinta a borda de
+        vermelho e mostra uma dica curta logo ao lado do campo.
+        """
+        texto = self.entry_ano.get().strip()
+        valido = texto.isdigit() and 2000 <= int(texto) <= 2100
+        if valido:
+            self.entry_ano.configure(border_color=self._cor_borda_padrao)
+            self.lbl_aviso_ano.configure(text="")
+        else:
+            self.entry_ano.configure(border_color="#e74c3c")
+            self.lbl_aviso_ano.configure(text="Ano inválido (ex.: 2026)")
+        return valido
+
     def _atualizar_trimestre(self, _=None):
         tri = self.combo_trimestre.get()
         if not tri or tri not in self.trimestres: return
-        try:
-            ano = int(self.entry_ano.get())
-        except (ValueError, AttributeError):
+        # Valida o ano e dá feedback visual; se inválido, usa o ano atual como base
+        if self._validar_ano():
+            ano = int(self.entry_ano.get().strip())
+        else:
             ano = datetime.now().year
         import calendar
         biss = calendar.isleap(ano)
@@ -223,18 +265,21 @@ class TelaPMPV(ctk.CTkFrame):
             if m_atual == "Fevereiro" and biss: dias = 29
             self.dias_config[f"Mês {i+1}"] = dias
 
+        # Atualiza coluna Volume (m³) = QDC × dias em todas as linhas
+        for linhas in self.dados_meses.values():
+            for d in linhas:
+                self._atualizar_vol_calc(d)
+
         # Grava o trimestre activo no banco para os outros módulos usarem
         try:
             periodos = self._get_periodos_trimestre()
             if periodos:
                 from Src.Database.database import DatabasePMPV as _DB
-                db = _DB()
-                try:
+                with _DB() as db:
                     db.salvar_trimestre_ativo(periodos)
-                finally:
-                    db.fechar()
         except Exception:
-            pass
+            logger.exception("Falha ao salvar o trimestre ativo no banco")
+
 
     def _extrair_dados_da_tela(self):
         dados_extraidos = {}
@@ -257,7 +302,39 @@ class TelaPMPV(ctk.CTkFrame):
             dados_extraidos[k] = linhas_puras
         return dados_extraidos
 
+    def _validar_cg(self, _=None) -> bool:
+        """Valida o campo Conta Gráfica em tempo real com feedback visual.
+
+        Aceita números com vírgula ou ponto e sinal negativo (ex.: -0,0210).
+        """
+        texto = self.entry_cg.get().strip()
+        try:
+            float(texto.replace(",", "."))
+            valido = texto not in ("", "-", "+")
+        except ValueError:
+            valido = False
+        if valido:
+            self.entry_cg.configure(border_color=self._cor_borda_padrao)
+            self.lbl_aviso_cg.configure(text="")
+        else:
+            self.entry_cg.configure(border_color="#e74c3c")
+            self.lbl_aviso_cg.configure(text="Valor inválido (ex.: -0,0210)")
+        return valido
+
     def calcular(self):
+        if not self._validar_cg():
+            return messagebox.showwarning(
+                "Conta Gráfica inválida",
+                "O valor da Conta Gráfica (R$) não é um número válido.\n\n"
+                "Digite um número, podendo usar vírgula e sinal negativo.\n"
+                "Exemplo: -0,0210",
+            )
+        if not self._validar_ano():
+            return messagebox.showwarning(
+                "Ano inválido",
+                "O campo Ano precisa ser um ano válido entre 2000 e 2100.\n\n"
+                "Exemplo: 2026",
+            )
         dados = self._extrair_dados_da_tela()
         cg_valor = self._val(self.entry_cg)
         tri = self.combo_trimestre.get()
@@ -274,9 +351,12 @@ class TelaPMPV(ctk.CTkFrame):
         except ValueError as e:
             return messagebox.showwarning("Erro", str(e))
 
-        self.lbl_pmpv.configure(text=f"PMPV: R$ {self.res_final['pmpv']:.4f}")
-        self.lbl_final.configure(text=f"PREÇO FINAL: R$ {self.res_final['preco_final']:.4f}")
-        self.lbl_vp.configure(text=f"Volume Prospectivo Total: {self._fmt_volume(self.res_final['vp_mensal'])} m³")
+        def _brl4(v): return f"R$ {v:,.4f}".replace(",","X").replace(".",",").replace("X",".")
+        periodos = self._get_periodos_trimestre()
+        tri_label = "  ·  ".join(periodos) if periodos else self.combo_trimestre.get()
+        tri_curto = self.combo_trimestre.get()
+        self.lbl_pmpv.configure(text=f"PMPV ({tri_curto})   {_brl4(self.res_final['pmpv'])}")
+        self.lbl_vp.configure(text=f"Volume Prospectivo Total ({tri_curto}):  {self._fmt_volume(self.res_final['vp_mensal'])} m³")
 
         if self.res_final['avisos']:
             messagebox.showinfo(
@@ -321,15 +401,16 @@ class TelaPMPV(ctk.CTkFrame):
             linhas.clear()
 
             for emp_nome, dados in empresas_importadas.items():
-                d = self._add_linha(scroll, emp_nome, linhas)
+                d = self._add_linha(scroll, emp_nome, linhas, tab_nome)
                 linhas.append(d)
                 for campo in ("mol", "trans", "log"):
                     v = dados[campo]
                     d[campo].delete(0, "end")
-                    if v: d[campo].insert(0, f"{v:.4f}")
+                    if v: d[campo].insert(0, f"{v:.10f}".rstrip('0').rstrip('.'))
                 d["vol"].delete(0, "end")
                 d["vol"].insert(0, f"{dados['volume']:.7f}")
                 self._calc_row(d)
+                self._atualizar_vol_calc(d)
 
             importados += 1
 

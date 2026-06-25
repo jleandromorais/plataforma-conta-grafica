@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
+import logging
 import os
 import threading
 import tempfile
@@ -10,6 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 # --- IMPORTAÇÕES DA NOVA ARQUITETURA ---
+from Src.config import ui_theme as ui
 from Src.Services.servicos_concilia import RegrasConcilia
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.excel_concilia import ExcelConcilia
@@ -18,6 +20,8 @@ from Src.common.excel_final_destino import registrar_execucao_excel_final, obter
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
+
+logger = logging.getLogger(__name__)
 
 class TelaConciliador(ctk.CTkFrame):
     def __init__(self, parent=None):
@@ -36,13 +40,16 @@ class TelaConciliador(ctk.CTkFrame):
 
     def _setup_ui(self):
         # HEADER
-        self.header_frame = ctk.CTkFrame(self, height=80, fg_color="transparent")
-        self.header_frame.pack(fill="x", padx=20, pady=20)
-        ctk.CTkLabel(self.header_frame, text="Conciliador Financeiro Inteligente", font=("Roboto", 24, "bold")).pack(side="left")
-        
-        self.ocr_badge = ctk.CTkLabel(self.header_frame, text=self.status_ocr_txt, fg_color=self.cor_ocr, 
-                                     text_color="white", corner_radius=10, font=("Roboto", 12, "bold"), padx=10)
-        self.ocr_badge.pack(side="right")
+        self.header_frame = ctk.CTkFrame(self, height=80, corner_radius=0, fg_color=ui.COR_HEADER)
+        self.header_frame.pack(fill="x")
+        self.header_frame.pack_propagate(False)
+        ctk.CTkLabel(self.header_frame, text="Conciliador Financeiro",
+                     font=ui.FONTE_TITULO, text_color=ui.COR_TEXTO_TITULO
+                     ).pack(side="left", padx=ui.ESP_LG, pady=ui.ESP_LG)
+
+        self.ocr_badge = ctk.CTkLabel(self.header_frame, text=self.status_ocr_txt, fg_color=self.cor_ocr,
+                                     text_color="white", corner_radius=10, font=ui.FONTE_LABEL, padx=10)
+        self.ocr_badge.pack(side="right", padx=ui.ESP_LG)
 
         # SELEÇÃO
         self.selection_frame = ctk.CTkFrame(self)
@@ -53,9 +60,10 @@ class TelaConciliador(ctk.CTkFrame):
         self._criar_input_folder(self.selection_frame, "📂 Pasta de DESPESAS", self.path_desp, self.sel_desp, "red")
 
         # BOTÕES
-        self.btn_run = ctk.CTkButton(self, text="⚡ PROCESSAR E CONCILIAR", command=self.iniciar_thread, 
-                                    font=("Roboto", 16, "bold"), height=50, fg_color="#2980b9")
-        self.btn_run.pack(fill="x", padx=40, pady=(20, 5))
+        self.btn_run = ctk.CTkButton(self, text="⚡ PROCESSAR E CONCILIAR", command=self.iniciar_thread,
+                                    font=("Roboto", 16, "bold"), height=50,
+                                    fg_color=ui.COR_PRIMARIA, hover_color=ui.COR_PRIMARIA_HOVER)
+        self.btn_run.pack(fill="x", padx=40, pady=(ui.ESP_LG, ui.ESP_SM))
 
         self.chk_excel_bonito = ctk.CTkCheckBox(
             self,
@@ -108,6 +116,16 @@ class TelaConciliador(ctk.CTkFrame):
         ctk.CTkButton(sub, text="Selecionar", command=comando, width=100).pack(side="right")
 
     def log_message(self, msg):
+        """Thread-safe: agenda a escrita no log na thread principal do Tkinter.
+
+        Pode ser chamado tanto da UI quanto da thread de processamento (é usado
+        como callback por RegrasConcilia.processar_arquivos). Tkinter não é
+        thread-safe, então o widget só é tocado via `after`.
+        """
+        self.after(0, self._log_message_ui, msg)
+
+    def _log_message_ui(self, msg):
+        """Escrita real no widget — sempre executada na thread principal."""
         self.log_box.insert("end", f"> {datetime.now().strftime('%H:%M:%S')} | {msg}\n")
         self.log_box.see("end")
 
@@ -177,19 +195,35 @@ class TelaConciliador(ctk.CTkFrame):
             self.log_message(f"Total Despesa: R$ {format_brl_plain(tot_desp)}")
             self.log_message(f"Saldo (Despesa - Receita): R$ {format_brl_plain(saldo_despesa_menos_receita)}")
             self.log_message(f"Conferência (Receita - Despesa): R$ {format_brl_plain(saldo_receita_menos_despesa)}")
-
             self.log_message(f"CONCLUÍDO! Salvo em: {caminho_final}")
-            msg = f"Finalizado!\nSaldo (Despesa - Receita): R$ {format_brl_plain(self._ultimo_saldo_rp)}"
-            messagebox.showinfo("Sucesso", msg)
-            self.btn_salvar_scg.configure(state="normal")
-            self.btn_excel_final.configure(state="normal")
+
+            # Atualizações de UI (janelas/botões) na thread principal.
+            msg = f"Finalizado!\nSaldo (Despesa - Receita): R$ {format_brl_plain(saldo_despesa_menos_receita)}"
+            self.after(0, self._on_processamento_sucesso, msg)
 
         except Exception as e:
-            self.log_message(f"ERRO: {e}")
-            messagebox.showerror("Erro", str(e))
+            logger.exception("Falha no processamento da conciliação")
+            self.after(0, self._on_processamento_erro, str(e))
         finally:
             self._limpar_temporarios_zip()
-            self.restaurar_interface()
+            # restaurar_interface toca widgets → sempre na thread principal.
+            self.after(0, self.restaurar_interface)
+
+    def _on_processamento_sucesso(self, msg: str):
+        """Executado na thread principal após o processamento bem-sucedido."""
+        messagebox.showinfo("Sucesso", msg)
+        self.btn_salvar_scg.configure(state="normal")
+        self.btn_excel_final.configure(state="normal")
+
+    def _on_processamento_erro(self, detalhe: str):
+        """Executado na thread principal quando o processamento falha."""
+        self._log_message_ui(f"ERRO: {detalhe}")
+        messagebox.showerror(
+            "Erro na Conciliação",
+            "Não foi possível concluir a conciliação.\n\n"
+            "Verifique se as pastas/PDFs estão acessíveis e tente novamente.\n\n"
+            f"Detalhe técnico: {detalhe}",
+        )
 
     def _coletar_pdfs(self, pasta: Path):
         """Coleta PDFs diretos e também PDFs contidos em ZIPs dentro da pasta."""

@@ -4,7 +4,7 @@ Exportador do Relatório Consolidado da Conta Gráfica.
 Gera um único arquivo .xlsx com todas as etapas do processo:
   📋 Resumo Executivo  |  📊 PMPV  |  🔍 Auditoria XML
   ⚡ RET               |  📄 Conciliação RP  |  📋 CGF
-  🧾 SCG Final
+  🧾 RPV               |  🧾 SCG Final
 """
 from __future__ import annotations
 
@@ -248,7 +248,8 @@ class ExcelConsolidado:
         if not meses and meses_raw:
             meses = meses_raw
 
-        label_trimestre = "  ·  ".join(meses) if meses else (periodo or "completo")
+        # Usa nomes completos de mês nos títulos (ex: "Fevereiro/2026  ·  Março/2026  ·  Abril/2026")
+        label_trimestre = "  ·  ".join(_nome_mes_completo(m) for m in meses) if meses else (periodo or "completo")
 
         p_slug = label_trimestre.replace("/", "-").replace("  ·  ", "_")
 
@@ -358,7 +359,9 @@ class ExcelConsolidado:
         ExcelConsolidado._sheet_ret(wb, ret_itens, _label(meses_ret), meses_ret)
         ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
         ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf, db)
-        ExcelConsolidado._sheet_scg(wb, db, cons, cons_periodos, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_rpv(wb, cons_periodos, meses_audit, meses_cgf, db, periodo)
+        ExcelConsolidado._sheet_scg_mensal(wb, db, cons, cons_periodos, sr if periodo else sr_lista, periodo)
+        ExcelConsolidado._sheet_scg_trimestral(wb, db)
         ExcelConsolidado._sheet_sr(wb, sr if periodo else sr_lista, periodo)
         ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
         ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
@@ -659,10 +662,11 @@ class ExcelConsolidado:
             meses_trimestre = db.buscar_trimestre_ativo() or []
 
         def _nome_mes(mes_num: int) -> str:
-            """Converte posição 1/2/3 no nome real do mês do trimestre."""
+            """Converte posição 1/2/3 no nome real do mês do trimestre (ex: 'Fevereiro/2026')."""
             if meses_trimestre and mes_num <= len(meses_trimestre):
                 return _nome_mes_completo(meses_trimestre[mes_num - 1])
-            return f"Mês {mes_num}"
+            # fallback: mostra a posição numerada apenas se não há trimestre definido
+            return f"Mês {mes_num} (trimestre não definido)"
 
         ws = wb.create_sheet("📊 PMPV")
         ws.sheet_view.showGridLines = False
@@ -690,12 +694,18 @@ class ExcelConsolidado:
         for sessao in sessoes:
             sid  = sessao["id"]
             nome = sessao.get("nome", f"Sessão {sid}")
-            data = sessao.get("data_criacao", "")
+            data_raw = sessao.get("data_criacao", "")
+            # formata '2026-06-12 10:36:57' → '12/06/2026 10:36'
+            try:
+                from datetime import datetime as _dt
+                data = _dt.strptime(data_raw[:16], "%Y-%m-%d %H:%M").strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                data = data_raw
 
             # ── Cabeçalho da sessão ───────────────────────────────────────────
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=_NCOLS_PMPV)
             sh = ws.cell(row=row, column=1,
-                value=f"  Sessão: {nome}  |  Data: {data}  |  "
+                value=f"  Sessão: {nome}  |  Criada em: {data}  |  "
                       f"VP: {_vol_fmt(sessao.get('vp', 0))} m³  |  "
                       f"VF: {_vol_fmt(sessao.get('vf', 0))} m³")
             sh.fill = _fill(_TEAL); sh.font = _font(bold=True, size=12, color=_HEADER_FG)
@@ -1332,11 +1342,135 @@ class ExcelConsolidado:
         ws.column_dimensions["D"].width = 16
         ws.column_dimensions["E"].width = 22
 
+    # ── Sheet 7: RPV ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _sheet_rpv(wb, cons_periodos: list[dict], meses_audit: list[str],
+                   meses_cgf: list[str], db: "DatabasePMPV", periodo: str | None):
+        _RPV_COLOR = "7D3C98"   # roxo RPV
+
+        ws = wb.create_sheet("🧾 RPV")
+        ws.sheet_view.showGridLines = False
+
+        # Título
+        ws.merge_cells("A1:F1")
+        t = ws["A1"]
+        t.value = f"RPV  =  CGR  −  CGF   |   Período: {periodo or 'Todos'}"
+        t.fill = _fill(_RPV_COLOR)
+        t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("center")
+        ws.row_dimensions[1].height = 30
+
+        row = 3
+
+        # Monta lista de períodos com CGR e CGF
+        meses_todos = sorted(
+            set(meses_audit + meses_cgf),
+            key=lambda p: (
+                int(p.split("/")[1]) * 12 + {
+                    "Jan": 1, "Fev": 2, "Mar": 3, "Abr": 4, "Mai": 5, "Jun": 6,
+                    "Jul": 7, "Ago": 8, "Set": 9, "Out": 10, "Nov": 11, "Dez": 12,
+                }.get(p.split("/")[0], 0) if "/" in p else 0
+            )
+        )
+
+        registros = []
+        for mes in meses_todos:
+            cgr = sum(
+                _to_float(i.get("cgr_liquido"))
+                for i in (db.listar_auditoria_itens(mes) or [])
+            )
+            cons_m = db.buscar_consolidacao(mes) or {}
+            cgf = _to_float(cons_m.get("cgf"))
+            rpv = cgr - cgf
+            registros.append({"periodo": mes, "cgr": cgr, "cgf": cgf, "rpv": rpv})
+
+        # Cabeçalho
+        _apply_header_row(ws, row,
+            ["Período", "CGR (R$)", "CGF (R$)", "RPV = CGR − CGF (R$)"],
+            [18, 22, 22, 26], _RPV_COLOR)
+        row += 1
+
+        _BRL = 'R$ #,##0.00'
+        total_cgr = total_cgf = total_rpv = 0.0
+
+        for i, item in enumerate(registros):
+            cgr_v = item["cgr"]
+            cgf_v = item["cgf"]
+            rpv_v = item["rpv"]
+            total_cgr += cgr_v
+            total_cgf += cgf_v
+            total_rpv += rpv_v
+
+            bg = _ROW_ALT if i % 2 else _ROW_NORM
+            rpv_color = _GREEN if rpv_v >= 0 else _RED
+
+            for ci, (val, fmt, bold, color) in enumerate([
+                (item["periodo"], "@",   False, "000000"),
+                (cgr_v,          _BRL,  False, "000000"),
+                (cgf_v,          _BRL,  False, "000000"),
+                (rpv_v,          _BRL,  True,  rpv_color),
+            ], start=1):
+                c = ws.cell(row=row, column=ci, value=val)
+                c.fill = _fill(bg)
+                c.font = _font(bold=bold, color=color)
+                c.border = _border()
+                c.alignment = _align("right" if fmt != "@" else "left")
+                if fmt != "@":
+                    c.number_format = fmt
+            ws.row_dimensions[row].height = 18
+            row += 1
+
+        # Linha de total
+        if registros:
+            row += 1
+            rpv_tot_color = _GREEN if total_rpv >= 0 else _RED
+            for ci, (val, fmt, color) in enumerate([
+                ("TOTAL",      "@",  _HEADER_FG),
+                (total_cgr,   _BRL, _HEADER_FG),
+                (total_cgf,   _BRL, _HEADER_FG),
+                (total_rpv,   _BRL, _HEADER_FG),
+            ], start=1):
+                c = ws.cell(row=row, column=ci, value=val)
+                c.fill = _fill(rpv_tot_color if ci == 4 else _RPV_COLOR)
+                c.font = _font(bold=True, color=color)
+                c.border = _border()
+                c.alignment = _align("right" if fmt != "@" else "left")
+                if fmt != "@":
+                    c.number_format = fmt
+            ws.row_dimensions[row].height = 22
+
+            # Card resultado RPV total
+            row += 2
+            ws.merge_cells(f"A{row}:D{row}")
+            lbl = ws.cell(row=row, column=1, value="🧾  RPV TOTAL  =  CGR  −  CGF")
+            bg_card = _GREEN if total_rpv >= 0 else _RED
+            lbl.fill = _fill(bg_card)
+            lbl.font = _font(bold=True, color=_HEADER_FG, size=13)
+            lbl.alignment = _align("left")
+            lbl.border = _border()
+            ws.row_dimensions[row].height = 28
+            row += 1
+
+            ws.merge_cells(f"A{row}:D{row}")
+            v = ws.cell(row=row, column=1, value=total_rpv)
+            v.number_format = _BRL
+            v.fill = _fill(bg_card)
+            v.font = _font(bold=True, color=_HEADER_FG, size=22)
+            v.alignment = _align("center")
+            v.border = _border()
+            ws.row_dimensions[row].height = 44
+
+        ws.column_dimensions["A"].width = 18
+        ws.column_dimensions["B"].width = 22
+        ws.column_dimensions["C"].width = 22
+        ws.column_dimensions["D"].width = 26
+
     # ── Sheet 7: SCG Final ───────────────────────────────────────────────────
 
     @staticmethod
-    def _sheet_scg(wb, db, cons: dict | None, cons_periodos: list[dict], sr: dict | list[dict] | None, periodo: str | None):
-        ws = wb.create_sheet("🧾 SCG Final")
+    def _sheet_scg_mensal(wb, db, cons: dict | None, cons_periodos: list[dict], sr: dict | list[dict] | None, periodo: str | None):
+        ws = wb.create_sheet("🧾 SCG Mensal")
         ws.sheet_view.showGridLines = False
 
         # ── Ordenação cronológica local ──────────────────────────────────────
@@ -1475,6 +1609,219 @@ class ExcelConsolidado:
         for i, m in enumerate(meses_todos, start=3):
             ws.column_dimensions[chr(64 + i)].width = 16
         ws.column_dimensions[chr(64 + 2 + len(meses_todos) + 1)].width = 18
+
+    # ── Sheet SCG Trimestral ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _sheet_scg_trimestral(wb, db):
+        """Aba SCG agrupada por trimestre fiscal (Nov–Jan, Fev–Abr, Mai–Jul, Ago–Out)."""
+
+        TRIMESTRES_DEF = [
+            ("Nov - Jan", ["Nov", "Dez", "Jan"]),
+            ("Fev - Abr", ["Fev", "Mar", "Abr"]),
+            ("Mai - Jul", ["Mai", "Jun", "Jul"]),
+            ("Ago - Out", ["Ago", "Set", "Out"]),
+        ]
+        _GOLD_SCG  = "B7950B"
+        _GOLD_DARK = "7D6608"
+        _NAVY_SCG  = "1A3A5C"
+
+        ws = wb.create_sheet("📅 SCG Trimestral")
+        ws.sheet_view.showGridLines = False
+
+        # ── helpers internos ────────────────────────────────────────────────
+        def _ord(p):
+            ab = _abrev_de_periodo(p)
+            an = p.split("/")[1] if "/" in p else "0"
+            try:
+                return int(an) * 12 + _MES_ORD.get(ab, 0)
+            except Exception:
+                return 0
+
+        def _meses_de(tabela):
+            try:
+                db.cursor.execute(
+                    f"SELECT DISTINCT periodo FROM {tabela} WHERE periodo IS NOT NULL"
+                )
+                return sorted({r[0] for r in db.cursor.fetchall() if r[0]}, key=_ord)
+            except Exception:
+                return []
+
+        def _cgr_mes(m):
+            return sum(_to_float(i.get("cgr_liquido"))
+                       for i in (db.listar_auditoria_itens(m) or []))
+
+        def _cgf_mes(m):
+            return _to_float((db.buscar_consolidacao(m) or {}).get("cgf"))
+
+        def _ret_mes(m):
+            return _to_float((db.buscar_consolidacao(m) or {}).get("ret"))
+
+        def _rp_mes(m):
+            return sum(_to_float(i.get("valor"))
+                       for i in (db.listar_concilia_itens(m) or []))
+
+        # Todos os meses disponíveis no banco
+        meses_banco = sorted(
+            set(_meses_de("auditoria_itens") +
+                _meses_de("consolidacao") +
+                _meses_de("ret_itens") +
+                _meses_de("concilia_itens")),
+            key=_ord,
+        )
+
+        # Descobre os anos presentes
+        anos = sorted({m.split("/")[1] for m in meses_banco if "/" in m})
+
+        # ── Título ──────────────────────────────────────────────────────────
+        ws.merge_cells("A1:H1")
+        t = ws["A1"]
+        t.value = "APURAÇÃO TRIMESTRAL DO SALDO DA CONTA GRÁFICA (SCG)"
+        t.fill = _fill(_NAVY_SCG)
+        t.font = _font(bold=True, size=14, color=_HEADER_FG)
+        t.alignment = _align("center")
+        ws.row_dimensions[1].height = 34
+
+        # Larguras fixas: col A=etiqueta, B=unidade, C–F=3 meses, G=total trimestre
+        ws.column_dimensions["A"].width = 30
+        ws.column_dimensions["B"].width = 8
+        for col in "CDEFG":
+            ws.column_dimensions[col].width = 18
+        ws.column_dimensions["H"].width = 20
+
+        CAMPOS = [
+            ("CGR  (Auditoria XML)",           "cgr"),
+            ("CGF  (Volume × PMPV)",           "cgf"),
+            ("RPV  = CGR − CGF",               "rpv"),
+            ("RET  (EAT + EC)",                "ret"),
+            ("RP   (Penalidades)",              "rp"),
+        ]
+
+        row = 3
+        grand_scg_total = 0.0
+
+        for ano in anos:
+            # Cabeçalho do ano
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
+            ac = ws.cell(row=row, column=1, value=f"  ANO: {ano}")
+            ac.fill = _fill(_NAVY_SCG)
+            ac.font = _font(bold=True, size=13, color=_HEADER_FG)
+            ac.alignment = _align("left")
+            ac.border = _border()
+            ws.row_dimensions[row].height = 26
+            row += 1
+
+            ano_scg_total = 0.0
+
+            for nome_tri, abrevs in TRIMESTRES_DEF:
+                # Constrói a lista de períodos deste trimestre neste ano
+                # Nov-Jan: Nov/ano-1, Dez/ano-1, Jan/ano
+                if nome_tri == "Nov - Jan":
+                    ano_anterior = str(int(ano) - 1)
+                    periodos_tri = [f"Nov/{ano_anterior}", f"Dez/{ano_anterior}", f"Jan/{ano}"]
+                else:
+                    periodos_tri = [f"{ab}/{ano}" for ab in abrevs]
+
+                # Só exibe trimestres que têm ao menos 1 mês com dados no banco
+                periodos_com_dados = [p for p in periodos_tri if p in meses_banco]
+                if not periodos_com_dados:
+                    continue
+
+                # Calcula valores por mês
+                dados_mes = {}
+                for p in periodos_tri:
+                    cgr = _cgr_mes(p)
+                    cgf = _cgf_mes(p)
+                    ret = _ret_mes(p)
+                    rp  = _rp_mes(p)
+                    rpv = cgr - cgf
+                    scg = rpv + ret + rp
+                    dados_mes[p] = {"cgr": cgr, "cgf": cgf, "rpv": rpv,
+                                    "ret": ret, "rp": rp, "scg": scg}
+
+                # Banner do trimestre
+                label_tri = f"  🗓  {nome_tri} / {ano}"
+                ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
+                bt = ws.cell(row=row, column=1, value=label_tri)
+                bt.fill = _fill(_GOLD_DARK)
+                bt.font = _font(bold=True, size=12, color="FFFFF0")
+                bt.alignment = _align("left")
+                bt.border = _border()
+                ws.row_dimensions[row].height = 22
+                row += 1
+
+                # Cabeçalho de colunas: DADOS | UNI | mês1 | mês2 | mês3 | TOTAL TRIMESTRE
+                cab = ["DADOS", "UNI"] + periodos_tri + ["TOTAL TRIMESTRE"]
+                _apply_header_row(ws, row, cab,
+                                  [30, 8, 18, 18, 18, 20], _NAVY_SCG)
+                row += 1
+
+                # Linhas CGR, CGF, RPV, RET, RP
+                for li, (label, key) in enumerate(CAMPOS):
+                    bg = _ROW_ALT if li % 2 == 1 else _ROW_NORM
+                    tot = sum(dados_mes[p][key] for p in periodos_tri)
+                    vals = ([label, "R$"] +
+                            [dados_mes[p][key] for p in periodos_tri] +
+                            [tot])
+                    fmts = ["@", "@"] + [_BRL] * 3 + [_BRL]
+                    for ci, (v, nf) in enumerate(zip(vals, fmts), start=1):
+                        c = ws.cell(row=row, column=ci, value=v)
+                        c.fill = _fill(bg)
+                        c.border = _border()
+                        c.font = _font()
+                        if nf != "@":
+                            c.number_format = nf
+                            c.alignment = _align("right")
+                        else:
+                            c.alignment = _align("left")
+                    row += 1
+
+                # Linha SCG (destaque)
+                scg_total_tri = sum(dados_mes[p]["scg"] for p in periodos_tri)
+                ano_scg_total += scg_total_tri
+                bg_scg = _GREEN if scg_total_tri >= 0 else _RED
+                scg_vals = (["SCG  =  RPV + RET + RP", "R$"] +
+                            [dados_mes[p]["scg"] for p in periodos_tri] +
+                            [scg_total_tri])
+                scg_fmts = ["@", "@"] + [_BRL] * 3 + [_BRL]
+                for ci, (v, nf) in enumerate(zip(scg_vals, scg_fmts), start=1):
+                    c = ws.cell(row=row, column=ci, value=v)
+                    c.fill = _fill(bg_scg)
+                    c.border = _border()
+                    c.font = _font(bold=True, color=_HEADER_FG)
+                    if nf != "@":
+                        c.number_format = nf
+                        c.alignment = _align("right")
+                    else:
+                        c.alignment = _align("left")
+                ws.row_dimensions[row].height = 22
+                row += 2
+
+            # Total do ano
+            grand_scg_total += ano_scg_total
+            bg_ano = _GREEN if ano_scg_total >= 0 else _RED
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=7)
+            ta = ws.cell(row=row, column=1,
+                         value=f"  ══ TOTAL SCG ANO {ano} ══")
+            ta.fill = _fill(bg_ano)
+            ta.font = _font(bold=True, size=13, color=_HEADER_FG)
+            ta.alignment = _align("left")
+            ta.border = _border()
+            tv = ws.cell(row=row, column=8, value=ano_scg_total)
+            tv.fill = _fill(bg_ano)
+            tv.font = _font(bold=True, size=13, color=_HEADER_FG)
+            tv.number_format = _BRL
+            tv.alignment = _align("right")
+            tv.border = _border()
+            for ci in range(2, 8):
+                ws.cell(row=row, column=ci).fill = _fill(bg_ano)
+                ws.cell(row=row, column=ci).border = _border()
+            ws.row_dimensions[row].height = 26
+            row += 2
+
+        if not anos:
+            ws.cell(row=row, column=1,
+                    value="Nenhum dado SCG encontrado no banco.")
 
     # ── Sheet SR: Saldo Remanescente ─────────────────────────────────────────
 

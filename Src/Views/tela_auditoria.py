@@ -7,6 +7,7 @@ import threading
 from queue import Queue, Empty
 import pandas as pd
 
+from Src.config import ui_theme as ui
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
@@ -77,189 +78,472 @@ class TelaAuditoria(ctk.CTkFrame):
         self.tipo_excel_var = tk.StringVar(value="conta_grafica")
         self.periodo_comparacao_var = tk.StringVar(value="")
         self._periodo_norm_execucao = ""
-        self.periodo_comparacao_var.trace_add("write", lambda *_: self._verificar_habilitacao())
-
         self._setup_ui()
     
+    # ── seletor de mês ────────────────────────────────────────────────────────
+    _MESES_GRID = ["Jan","Fev","Mar","Abr","Mai","Jun",
+                   "Jul","Ago","Set","Out","Nov","Dez"]
+
+    def _build_mes_picker(self, parent):
+        """Grade 4×3 de botões de mês + spinner de ano."""
+        from datetime import date as _date
+        self._ano_picker = _date.today().year
+        self._mes_btn: dict[str, ctk.CTkButton] = {}
+
+        # controle de ano
+        linha_ano = ctk.CTkFrame(parent, fg_color="transparent")
+        linha_ano.pack(fill="x", padx=12, pady=(8, 6))
+        ctk.CTkButton(linha_ano, text="◀", width=28, height=28,
+                      fg_color=ui.COR_INPUT, hover_color=ui.COR_NEUTRA_HOVER,
+                      command=lambda: self._mudar_ano(-1)).pack(side="left")
+        self.lbl_ano_picker = ctk.CTkLabel(
+            linha_ano, text=str(self._ano_picker),
+            font=ctk.CTkFont(size=14, weight="bold"), text_color=ui.COR_TEXTO)
+        self.lbl_ano_picker.pack(side="left", expand=True)
+        ctk.CTkButton(linha_ano, text="▶", width=28, height=28,
+                      fg_color=ui.COR_INPUT, hover_color=ui.COR_NEUTRA_HOVER,
+                      command=lambda: self._mudar_ano(+1)).pack(side="right")
+
+        # grade de meses
+        grade = ctk.CTkFrame(parent, fg_color="transparent")
+        grade.pack(fill="x", padx=10, pady=(0, 10))
+        for col in range(4):
+            grade.grid_columnconfigure(col, weight=1, uniform="mp")
+        for idx, mes in enumerate(self._MESES_GRID):
+            r, c = divmod(idx, 4)
+            btn = ctk.CTkButton(
+                grade, text=mes, height=30, font=ctk.CTkFont(size=12),
+                fg_color=ui.COR_INPUT, hover_color=ui.COR_PRIMARIA_HOVER,
+                text_color=ui.COR_TEXTO, corner_radius=6,
+                command=lambda m=mes: self._selecionar_mes(m),
+            )
+            btn.grid(row=r, column=c, padx=3, pady=3, sticky="ew")
+            self._mes_btn[mes] = btn
+
+        self._aplicar_sel_mes()
+
+    def _mudar_ano(self, delta: int):
+        self._ano_picker += delta
+        self.lbl_ano_picker.configure(text=str(self._ano_picker))
+        self._aplicar_sel_mes()
+
+    def _selecionar_mes(self, mes: str):
+        periodo = f"{mes}/{self._ano_picker}"
+        self.periodo_comparacao_var.set(periodo)
+        self._aplicar_sel_mes()
+
+    def _aplicar_sel_mes(self):
+        atual = self.periodo_comparacao_var.get().strip()
+        for mes, btn in self._mes_btn.items():
+            esperado = f"{mes}/{self._ano_picker}"
+            if atual == esperado:
+                btn.configure(fg_color=ui.COR_PRIMARIA, text_color="white",
+                              font=ctk.CTkFont(size=12, weight="bold"))
+            else:
+                btn.configure(fg_color=ui.COR_INPUT, text_color=ui.COR_TEXTO,
+                              font=ctk.CTkFont(size=12))
+
     def _setup_ui(self):
-        header = ctk.CTkFrame(self, height=60, corner_radius=0)
+        # ── Header ───────────────────────────────────────────────────────────
+        header = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=ui.COR_HEADER)
         header.pack(fill="x")
-        ctk.CTkLabel(header, text="🔍 Auditoria XML Fiscal", 
-                     font=("Roboto", 24, "bold")).pack(side="left", padx=20, pady=10)
-        
-        # Área rolável: concentra os blocos de configuração e resultados.
-        # Em telas menores/escala alta do Windows, isso evita "empurrar" botões para fora.
-        container = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        container.pack(fill="both", expand=True, padx=20, pady=(12, 8))
-        
-        # ========== PASSO 1: PASTA PAI ==========
-        frame_pasta = ctk.CTkFrame(container)
-        frame_pasta.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(frame_pasta, text="📁 Passo 1: Selecione a pasta PAI com subpastas de empresas",
-                     font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
-        
-        btn_frame = ctk.CTkFrame(frame_pasta, fg_color="transparent")
-        btn_frame.pack(fill="x", padx=10, pady=5)
-        
-        ctk.CTkButton(btn_frame, text="📂 Selecionar Pasta", 
-                      command=self.selecionar_pasta,
-                      fg_color="#3498db", hover_color="#2980b9").pack(side="left", padx=5)
-        
-        self.lbl_pasta = ctk.CTkLabel(btn_frame, text="Nenhuma pasta selecionada", text_color="gray")
-        self.lbl_pasta.pack(side="left", padx=10)
-        
-        # ========== PASSO 2: EMPRESAS ==========
-        frame_empresas = ctk.CTkFrame(container)
-        frame_empresas.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(frame_empresas, text="🏢 Passo 2: Selecione as empresas para auditar",
-                     font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
-        
-        self.scroll_empresas = ctk.CTkScrollableFrame(frame_empresas, height=120)
-        self.scroll_empresas.pack(fill="x", padx=10, pady=5)
-        
-        self.checkboxes_empresas = []
-        
-        # ========== PASSO 3: EXCEL E PERÍODO ==========
-        frame_excel = ctk.CTkFrame(container)
-        frame_excel.pack(fill="x", pady=10)
+        header.pack_propagate(False)
 
-        ctk.CTkLabel(frame_excel, text="📊 Passo 3: Selecione o Excel e o período (opcional para comparar)",
-                     font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=(5, 2))
+        ctk.CTkLabel(
+            header, text="🔍  Auditoria CGR",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=ui.COR_TEXTO_TITULO,
+        ).pack(side="left", padx=ui.ESP_LG, pady=ui.ESP_MD)
 
-        frame_tipo_excel = ctk.CTkFrame(frame_excel, fg_color="transparent")
-        frame_tipo_excel.pack(fill="x", padx=10, pady=(0, 4))
-        ctk.CTkLabel(frame_tipo_excel, text="Tipo:", font=("Roboto", 12)).pack(side="left", padx=(0, 8))
-        ctk.CTkRadioButton(frame_tipo_excel, text="Conta Gráfica", variable=self.tipo_excel_var,
-                           value="conta_grafica", font=("Roboto", 12)).pack(side="left", padx=6)
-        ctk.CTkRadioButton(frame_tipo_excel, text="Outra planilha", variable=self.tipo_excel_var,
-                           value="outra", font=("Roboto", 12)).pack(side="left", padx=6)
-
-        btn_excel_frame = ctk.CTkFrame(frame_excel, fg_color="transparent")
-        btn_excel_frame.pack(fill="x", padx=10, pady=3)
-        ctk.CTkButton(btn_excel_frame, text="📄 Selecionar Excel",
-                      command=self.selecionar_excel,
-                      fg_color="#27ae60", hover_color="#2ecc71").pack(side="left", padx=5)
-        self.lbl_excel = ctk.CTkLabel(btn_excel_frame, text="Nenhum arquivo selecionado", text_color="gray")
-        self.lbl_excel.pack(side="left", padx=10)
-
-        frame_periodo_excel = ctk.CTkFrame(frame_excel, fg_color="transparent")
-        frame_periodo_excel.pack(fill="x", padx=10, pady=(2, 8))
-        ctk.CTkLabel(frame_periodo_excel, text="Mês/Ano:", font=("Roboto", 12)).pack(side="left", padx=(0, 6))
-        self.entry_periodo_comparacao = ctk.CTkEntry(
-            frame_periodo_excel,
-            placeholder_text="jan26  ou  jan/2026",
-            width=190,
-            textvariable=self.periodo_comparacao_var,
+        # badges no header
+        _tess_txt   = "🟢 Tesseract" if OCR_ATIVADO else "🔴 Tesseract"
+        _tess_fg    = "#1a6b3c"      if OCR_ATIVADO else "#7b1a1a"
+        _tess_color = ui.COR_SUCESSO if OCR_ATIVADO else ui.COR_PERIGO
+        self.lbl_tesseract = ctk.CTkLabel(
+            header, text=f"  {_tess_txt}  ", font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="white", fg_color=_tess_fg, corner_radius=6,
         )
-        self.entry_periodo_comparacao.pack(side="left", padx=4)
-        ctk.CTkLabel(frame_periodo_excel, text="(para comparação de notas)",
-                     text_color="gray", font=("Roboto", 11)).pack(side="left", padx=4)
-        
-        # ========== PAINEL: MODO DE LEITURA ==========
-        frame_modo = ctk.CTkFrame(container)
-        frame_modo.pack(fill="x", pady=(5, 0))
+        self.lbl_tesseract.pack(side="right", padx=(0, 14))
+        self.lbl_modo_badge = ctk.CTkLabel(
+            header, text="  XML  ", font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="white", fg_color=ui.COR_PRIMARIA, corner_radius=6,
+        )
+        self.lbl_modo_badge.pack(side="right", padx=(0, 6))
 
-        ctk.CTkLabel(frame_modo, text="📂 Fonte dos dados:",
-                     font=("Roboto", 13, "bold")).pack(side="left", padx=(12, 6), pady=8)
+        # ── Layout: esquerda fixa | direita expansível ────────────────────────
+        corpo = ctk.CTkFrame(self, fg_color="transparent")
+        corpo.pack(fill="both", expand=True)
+        corpo.grid_columnconfigure(0, weight=0, minsize=310)
+        corpo.grid_columnconfigure(1, weight=1)
+        corpo.grid_rowconfigure(0, weight=1)
 
-        rb_xml = ctk.CTkRadioButton(frame_modo, text="XML", variable=self.modo_fonte, value="XML",
-                                    font=("Roboto", 13), command=self._atualizar_badge_modo)
-        rb_xml.pack(side="left", padx=6, pady=8)
+        # ── COLUNA ESQUERDA ───────────────────────────────────────────────────
+        painel_esq = ctk.CTkScrollableFrame(corpo, fg_color=ui.COR_HEADER,
+                                            width=310, corner_radius=0)
+        painel_esq.grid(row=0, column=0, sticky="nsew")
 
-        rb_pdf = ctk.CTkRadioButton(frame_modo, text="PDF (OCR)", variable=self.modo_fonte, value="PDF",
-                                    font=("Roboto", 13), command=self._atualizar_badge_modo,
-                                    state="normal" if PDF_ATIVADO else "disabled")
-        rb_pdf.pack(side="left", padx=6, pady=8)
+        def _bloco(titulo: str, cor: str, icon: str = ""):
+            """Card com header colorido e corpo escuro."""
+            card = ctk.CTkFrame(painel_esq, fg_color=ui.COR_CARD, corner_radius=10)
+            card.pack(fill="x", padx=10, pady=(8, 0))
+            topo = ctk.CTkFrame(card, fg_color=cor, corner_radius=10, height=32)
+            topo.pack(fill="x")
+            topo.pack_propagate(False)
+            ctk.CTkLabel(topo, text=f" {icon}  {titulo}" if icon else f" {titulo}",
+                         font=ctk.CTkFont(size=11, weight="bold"),
+                         text_color="white").pack(side="left", padx=8, pady=6)
+            body = ctk.CTkFrame(card, fg_color="transparent")
+            body.pack(fill="x", padx=8, pady=(6, 10))
+            return body
 
-        _tess_txt   = "🟢 Tesseract ativo"  if OCR_ATIVADO else "🔴 Tesseract inativo"
-        _tess_color = "#27ae60"             if OCR_ATIVADO else "#e74c3c"
-        self.lbl_tesseract = ctk.CTkLabel(frame_modo, text=_tess_txt, font=("Roboto", 12, "bold"), 
-                                          text_color=_tess_color, fg_color="#2c2c2c", corner_radius=8)
-        self.lbl_tesseract.pack(side="right", padx=12, pady=8)
+        # ── Seletor de mês (NOVA SEÇÃO) ───────────────────────────────────────
+        f_mes = _bloco("Mês da Auditoria", ui.COR_PRIMARIA, "📅")
+        self.lbl_mes_selecionado = ctk.CTkLabel(
+            f_mes, text="Nenhum mês selecionado",
+            font=ctk.CTkFont(size=12, weight="bold"), text_color=ui.COR_MUTED,
+        )
+        self.lbl_mes_selecionado.pack(anchor="w", padx=10, pady=(0, 4))
+        self._build_mes_picker(f_mes)
+        # Entry oculto mas mantido para compatibilidade com _periodo_normalizado
+        self.entry_periodo_comparacao = ctk.CTkEntry(
+            f_mes, textvariable=self.periodo_comparacao_var,
+            placeholder_text="ou digitar: jan/2026", height=28,
+            font=ctk.CTkFont(size=11),
+        )
+        self.entry_periodo_comparacao.pack(fill="x", padx=10, pady=(2, 10))
+        # Atualiza label quando período muda
+        self.periodo_comparacao_var.trace_add("write", lambda *_: self._on_periodo_change())
 
-        self.lbl_modo_badge = ctk.CTkLabel(frame_modo, text="Modo: XML", font=("Roboto", 12, "bold"), 
-                                           text_color="#3498db", fg_color="#2c2c2c", corner_radius=8)
-        self.lbl_modo_badge.pack(side="right", padx=6, pady=8)
+        # ── Pasta ─────────────────────────────────────────────────────────────
+        f_pasta = _bloco("Pasta com XML / PDF", ui.COR_NEUTRA, "📁")
+        ctk.CTkButton(f_pasta, text="📂  Selecionar Pasta", command=self.selecionar_pasta,
+                      fg_color=ui.COR_NEUTRA, hover_color=ui.COR_NEUTRA_HOVER, height=32,
+                      ).pack(fill="x", padx=10, pady=(4, 4))
+        self.lbl_pasta = ctk.CTkLabel(f_pasta, text="Nenhuma pasta selecionada",
+                                      text_color=ui.COR_MUTED, font=ctk.CTkFont(size=10),
+                                      wraplength=250, justify="left")
+        self.lbl_pasta.pack(anchor="w", padx=10, pady=(0, 10))
 
-        # ========== ÁREA DE STATUS ==========
-        frame_status = ctk.CTkFrame(container, fg_color="#1a1a1a")
-        frame_status.pack(fill="x", pady=10)
-        
-        self.lbl_status = ctk.CTkLabel(frame_status, text="Aguardando seleções...",
-                                       font=("Roboto", 14), text_color="#f39c12")
-        self.lbl_status.pack(pady=15)
-        self.progress_auditoria = ctk.CTkProgressBar(frame_status, mode="indeterminate")
-        self.progress_auditoria.pack(fill="x", padx=14, pady=(0, 12))
+        # ── Fonte XML / PDF ───────────────────────────────────────────────────
+        f_modo = _bloco("Fonte dos arquivos", ui.COR_NEUTRA, "📂")
+        linha_rb = ctk.CTkFrame(f_modo, fg_color="transparent")
+        linha_rb.pack(fill="x", padx=10, pady=(4, 10))
+        ctk.CTkRadioButton(linha_rb, text="XML", variable=self.modo_fonte, value="XML",
+                           font=ctk.CTkFont(size=12), command=self._atualizar_badge_modo,
+                           ).pack(side="left", padx=(0, 16))
+        ctk.CTkRadioButton(linha_rb, text="PDF (OCR)", variable=self.modo_fonte, value="PDF",
+                           font=ctk.CTkFont(size=12), command=self._atualizar_badge_modo,
+                           state="normal" if PDF_ATIVADO else "disabled",
+                           ).pack(side="left")
+
+        # ── Empresas ──────────────────────────────────────────────────────────
+        f3 = _bloco("Empresas detectadas", ui.COR_SUCESSO, "🏢")
+        self.checkboxes_empresas = []
+        self.scroll_empresas = ctk.CTkScrollableFrame(f3, height=110, fg_color="transparent")
+        self.scroll_empresas.pack(fill="x", padx=6, pady=(4, 10))
+
+        # ── Excel (opcional) ──────────────────────────────────────────────────
+        f4 = _bloco("Excel comparação  (opcional)", ui.COR_AVISO, "📊")
+        linha_tipo = ctk.CTkFrame(f4, fg_color="transparent")
+        linha_tipo.pack(fill="x", padx=10, pady=(4, 4))
+        ctk.CTkRadioButton(linha_tipo, text="Conta Gráfica", variable=self.tipo_excel_var,
+                           value="conta_grafica", font=ctk.CTkFont(size=11),
+                           ).pack(side="left", padx=(0, 8))
+        ctk.CTkRadioButton(linha_tipo, text="Outra planilha", variable=self.tipo_excel_var,
+                           value="outra", font=ctk.CTkFont(size=11),
+                           ).pack(side="left")
+        ctk.CTkButton(f4, text="📄  Selecionar Excel", command=self.selecionar_excel,
+                      fg_color=ui.COR_AVISO, hover_color=ui.COR_AVISO_HOVER, height=32,
+                      text_color="#1a1a1a",
+                      ).pack(fill="x", padx=10, pady=(0, 4))
+        self.lbl_excel = ctk.CTkLabel(f4, text="Nenhum arquivo selecionado",
+                                      text_color=ui.COR_MUTED, font=ctk.CTkFont(size=10),
+                                      wraplength=250, justify="left")
+        self.lbl_excel.pack(anchor="w", padx=10, pady=(0, 10))
+
+        # ── COLUNA DIREITA ────────────────────────────────────────────────────
+        painel_dir = ctk.CTkFrame(corpo, fg_color="transparent")
+        painel_dir.grid(row=0, column=1, sticky="nsew", padx=(8, 12), pady=8)
+        painel_dir.grid_rowconfigure(3, weight=1)
+        painel_dir.grid_columnconfigure(0, weight=1)
+
+        # Status
+        frame_status = ctk.CTkFrame(painel_dir, fg_color=ui.COR_CARD, corner_radius=10)
+        frame_status.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        linha_st = ctk.CTkFrame(frame_status, fg_color="transparent")
+        linha_st.pack(fill="x", padx=14, pady=(10, 4))
+        self.lbl_status = ctk.CTkLabel(
+            linha_st, text="⏳  Aguardando configurações...",
+            font=ctk.CTkFont(size=13), text_color=ui.COR_AVISO, anchor="w",
+        )
+        self.lbl_status.pack(side="left", fill="x", expand=True)
+        self.lbl_periodo_status = ctk.CTkLabel(
+            linha_st, text="", font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="white", fg_color=ui.COR_PRIMARIA, corner_radius=6,
+        )
+        self.lbl_periodo_status.pack(side="right")
+        self.progress_auditoria = ctk.CTkProgressBar(
+            frame_status, mode="indeterminate",
+            progress_color=ui.COR_PRIMARIA, fg_color=ui.COR_INPUT,
+        )
+        self.progress_auditoria.pack(fill="x", padx=14, pady=(0, 10))
         self.progress_auditoria.set(0)
-        
-        # ========== PAINEL CGR ==========
-        frame_cgr = ctk.CTkFrame(container, fg_color="#0d1b2a", corner_radius=10)
-        frame_cgr.pack(fill="x", pady=(8, 2))
 
-        ctk.CTkLabel(frame_cgr, text="CGR APURADO", font=("Roboto", 11, "bold"), text_color="#7fb3d3").pack(side="left", padx=(14, 6), pady=8)
-        self.lbl_cgr_bruto = ctk.CTkLabel(frame_cgr, text="Σ Bruto: —", font=("Consolas", 12), text_color="#aaaaaa")
-        self.lbl_cgr_bruto.pack(side="left", padx=10, pady=8)
-        self.lbl_cgr_icms = ctk.CTkLabel(frame_cgr, text="ICMS: —", font=("Consolas", 12), text_color="#e67e22")
-        self.lbl_cgr_icms.pack(side="left", padx=10, pady=8)
-        self.lbl_cgr_liquido = ctk.CTkLabel(frame_cgr, text="CGR Líquido: —", font=("Roboto", 14, "bold"), text_color="#2ecc71")
-        self.lbl_cgr_liquido.pack(side="right", padx=18, pady=8)
+        # Painel CGR — 3 cards
+        frame_cgr = ctk.CTkFrame(painel_dir, fg_color=ui.COR_CARD, corner_radius=10)
+        frame_cgr.grid(row=1, column=0, sticky="ew", pady=(0, 8))
 
-        # ========== ÁREA DE RESULTADOS ==========
-        frame_resultados = ctk.CTkFrame(container)
-        frame_resultados.pack(fill="both", expand=False, pady=(4, 10), padx=0)
-        
-        ctk.CTkLabel(frame_resultados, text="📋 Resultados da Auditoria", font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
-        self.text_resultados = ctk.CTkTextbox(frame_resultados, height=150, font=("Consolas", 11))
-        self.text_resultados.pack(fill="both", expand=False, padx=10, pady=5)
+        # topo do card CGR
+        topo_cgr = ctk.CTkFrame(frame_cgr, fg_color=ui.COR_PRIMARIA,
+                                 corner_radius=10, height=36)
+        topo_cgr.pack(fill="x")
+        topo_cgr.pack_propagate(False)
+        ctk.CTkLabel(topo_cgr, text="  CGR APURADO",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color="white").pack(side="left", padx=10, pady=8)
+        self.lbl_cgr_periodo_titulo = ctk.CTkLabel(
+            topo_cgr, text="", font=ctk.CTkFont(size=11),
+            text_color="white", fg_color="#1a4a8a", corner_radius=4,
+        )
+        self.lbl_cgr_periodo_titulo.pack(side="right", padx=10)
 
-        # ========== BOTÕES DE AÇÃO (RODAPÉ FIXO) ==========
-        # Ficam fora do container rolável para permanecerem sempre visíveis.
-        rodape_acoes = ctk.CTkFrame(self, fg_color="transparent")
-        rodape_acoes.pack(fill="x", padx=20, pady=(0, 12))
+        linha_cgr = ctk.CTkFrame(frame_cgr, fg_color="transparent")
+        linha_cgr.pack(fill="x", padx=10, pady=10)
+        for col in range(3):
+            linha_cgr.grid_columnconfigure(col, weight=1, uniform="cgr")
 
-        frame_btns = ctk.CTkFrame(rodape_acoes, fg_color="transparent")
-        frame_btns.pack(fill="x", pady=(0, 6))
+        def _cgr_card(parent, col, icon, label, cor_val, cor_fundo):
+            c = ctk.CTkFrame(parent, fg_color=cor_fundo, corner_radius=10)
+            c.grid(row=0, column=col, padx=4, sticky="ew")
+            ctk.CTkLabel(c, text=icon, font=ctk.CTkFont(size=18)).pack(pady=(10, 0))
+            ctk.CTkLabel(c, text=label, font=ctk.CTkFont(size=10),
+                         text_color=ui.COR_MUTED).pack()
+            lbl = ctk.CTkLabel(c, text="—", font=ctk.CTkFont(size=14, weight="bold"),
+                               text_color=cor_val)
+            lbl.pack(pady=(2, 10))
+            return lbl
 
-        self.btn_auditar = ctk.CTkButton(frame_btns, text="📊 EXECUTAR AUDITORIA", command=self.iniciar_auditoria,
-                                         font=("Roboto", 14, "bold"), height=42, fg_color="#1a5276", hover_color="#2e86c1", state="disabled")
-        self.btn_auditar.pack(side="left", expand=True, fill="x", padx=(0, 8))
+        self.lbl_cgr_bruto   = _cgr_card(linha_cgr, 0, "📦", "Bruto total",   ui.COR_TEXTO,  ui.COR_INPUT)
+        self.lbl_cgr_icms    = _cgr_card(linha_cgr, 1, "🏛️", "ICMS deduzido", ui.COR_AVISO,  ui.COR_INPUT)
+        self.lbl_cgr_liquido = _cgr_card(linha_cgr, 2, "✅", "CGR Líquido",   ui.COR_SUCESSO, ui.COR_INPUT)
 
-        self.btn_somatorio = ctk.CTkButton(frame_btns, text="📊 SÓ SOMATÓRIO", command=self.calcular_somatorio,
-                                           font=("Roboto", 13, "bold"), height=42, fg_color="#2980b9", hover_color="#3498db", state="disabled")
-        self.btn_somatorio.pack(side="left", expand=True, fill="x", padx=(8, 0))
+        # ── Painel trimestral ─────────────────────────────────────────────────
+        frame_tri = ctk.CTkFrame(painel_dir, fg_color=ui.COR_CARD, corner_radius=10)
+        frame_tri.grid(row=2, column=0, sticky="ew", pady=(0, 8))
 
-        self.btn_salvar_scg = ctk.CTkButton(rodape_acoes, text="💾 SALVAR RESULTADO NO SCG", command=self._salvar_cgr_scg,
-                                            font=("Roboto", 13, "bold"), height=38, fg_color="#27ae60", hover_color="#1e8449", state="disabled")
-        self.btn_salvar_scg.pack(fill="x", pady=(0, 8))
+        topo_tri = ctk.CTkFrame(frame_tri, fg_color="#8e44ad", corner_radius=10, height=34)
+        topo_tri.pack(fill="x")
+        topo_tri.pack_propagate(False)
+        self.lbl_tri_header = ctk.CTkLabel(
+            topo_tri, text="  📆  Soma Trimestral",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="white")
+        self.lbl_tri_header.pack(side="left", padx=10, pady=8)
+        self.lbl_tri_periodo = ctk.CTkLabel(
+            topo_tri, text="", font=ctk.CTkFont(size=11),
+            text_color="white", fg_color="#5b2c6f", corner_radius=4,
+        )
+        self.lbl_tri_periodo.pack(side="right", padx=10)
+
+        linha_tri = ctk.CTkFrame(frame_tri, fg_color="transparent")
+        linha_tri.pack(fill="x", padx=10, pady=8)
+        for col in range(4):
+            linha_tri.grid_columnconfigure(col, weight=1, uniform="tri")
+
+        self._tri_title_labels: list[ctk.CTkLabel] = []
+        self._tri_labels: list[ctk.CTkLabel] = []
+
+        def _tri_card(parent, col, titulo_fixo, cor_fundo, cor_val):
+            c = ctk.CTkFrame(parent, fg_color=cor_fundo, corner_radius=8)
+            c.grid(row=0, column=col, padx=3, sticky="ew")
+            lbl_titulo = ctk.CTkLabel(c, text=titulo_fixo, font=ctk.CTkFont(size=10),
+                                      text_color=ui.COR_MUTED)
+            lbl_titulo.pack(pady=(8, 0))
+            lbl_val = ctk.CTkLabel(c, text="—", font=ctk.CTkFont(size=13, weight="bold"),
+                                   text_color=cor_val)
+            lbl_val.pack(pady=(2, 8))
+            return lbl_titulo, lbl_val
+
+        for col, (tit, fg, cor) in enumerate([
+            ("—",          ui.COR_INPUT, ui.COR_TEXTO),
+            ("—",          ui.COR_INPUT, ui.COR_TEXTO),
+            ("—",          ui.COR_INPUT, ui.COR_TEXTO),
+            ("∑ Trimestre",ui.COR_INPUT, "#c39bd3"),
+        ]):
+            lt, lv = _tri_card(linha_tri, col, tit, fg, cor)
+            self._tri_title_labels.append(lt)
+            self._tri_labels.append(lv)
+
+        # Resultados
+        frame_res = ctk.CTkFrame(painel_dir, fg_color=ui.COR_CARD, corner_radius=10)
+        frame_res.grid(row=3, column=0, sticky="nsew")
+        frame_res.grid_rowconfigure(1, weight=1)
+        frame_res.grid_columnconfigure(0, weight=1)
+
+        topo_res = ctk.CTkFrame(frame_res, fg_color=ui.COR_NEUTRA, corner_radius=10, height=34)
+        topo_res.grid(row=0, column=0, sticky="ew")
+        topo_res.grid_propagate(False)
+        ctk.CTkLabel(topo_res, text="📋  Resultado detalhado",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color="white").pack(side="left", padx=12, pady=8)
+
+        self.text_resultados = ctk.CTkTextbox(
+            frame_res, font=("Consolas", 11),
+            fg_color=ui.COR_FUNDO, text_color=ui.COR_TEXTO,
+        )
+        self.text_resultados.grid(row=1, column=0, sticky="nsew", padx=6, pady=(4, 6))
+
+        # ── Rodapé fixo ───────────────────────────────────────────────────────
+        rodape = ctk.CTkFrame(self, fg_color=ui.COR_HEADER, corner_radius=0, height=56)
+        rodape.pack(fill="x", side="bottom")
+        rodape.pack_propagate(False)
 
         self.btn_excel_final = ctk.CTkButton(
-            rodape_acoes,
-            text="➕ Adicionar ao Excel Final (Módulo 9)",
+            rodape, text="➕  Excel Final",
             command=self._adicionar_excel_final,
-            font=("Roboto", 13, "bold"),
-            height=38,
-            fg_color="#6c3483",
-            hover_color="#884ea0",
-            state="disabled",
+            font=ctk.CTkFont(size=12, weight="bold"), height=36,
+            fg_color=ui.COR_ROXO, hover_color=ui.COR_ROXO_HOVER, state="disabled",
         )
-        self.btn_excel_final.pack(fill="x", pady=(0, 8))
+        self.btn_excel_final.pack(side="right", padx=(6, 14), pady=10)
+
+        self.btn_salvar_scg = ctk.CTkButton(
+            rodape, text="💾  Salvar no SCG",
+            command=self._salvar_cgr_scg,
+            font=ctk.CTkFont(size=12, weight="bold"), height=36,
+            fg_color=ui.COR_SUCESSO, hover_color=ui.COR_SUCESSO_HOVER, state="disabled",
+        )
+        self.btn_salvar_scg.pack(side="right", padx=6, pady=10)
+
+        self.btn_auditar = ctk.CTkButton(
+            rodape, text="▶  EXECUTAR AUDITORIA",
+            command=self.iniciar_auditoria,
+            font=ctk.CTkFont(size=13, weight="bold"), height=36,
+            fg_color=ui.COR_PRIMARIA, hover_color=ui.COR_PRIMARIA_HOVER, state="disabled",
+        )
+        self.btn_auditar.pack(side="right", padx=6, pady=10)
+
+        # período no canto esquerdo do rodapé
+        self.lbl_rodape_periodo = ctk.CTkLabel(
+            rodape, text="Mês: não selecionado",
+            font=ctk.CTkFont(size=12), text_color=ui.COR_MUTED,
+        )
+        self.lbl_rodape_periodo.pack(side="left", padx=16)
     
     # --- HELPERS ---
+    _MESES_ABREV_MAP = {
+        "Jan":1,"Fev":2,"Mar":3,"Abr":4,"Mai":5,"Jun":6,
+        "Jul":7,"Ago":8,"Set":9,"Out":10,"Nov":11,"Dez":12,
+    }
+    _MESES_IDX_MAP = {v: k for k, v in {"Jan":1,"Fev":2,"Mar":3,"Abr":4,"Mai":5,"Jun":6,
+                                          "Jul":7,"Ago":8,"Set":9,"Out":10,"Nov":11,"Dez":12}.items()}
+
+    def _trimestre_de(self, periodo: str) -> list[str]:
+        """Retorna os 3 períodos do trimestre a que pertence o período dado."""
+        if not periodo or "/" not in periodo:
+            return []
+        mes_ab, ano = periodo.split("/")
+        n = self._MESES_ABREV_MAP.get(mes_ab)
+        if not n:
+            return []
+        # trimestres: 1-3, 4-6, 7-9, 10-12
+        ini = ((n - 1) // 3) * 3 + 1
+        return [f"{self._MESES_IDX_MAP[i]}/{ano}" for i in range(ini, ini + 3)]
+
+    def _atualizar_painel_trimestral(self, periodo: str):
+        """Busca CGR dos 3 meses do trimestre no banco e popula os cards."""
+        def _fmt(v):
+            if v is None:
+                return "—"
+            return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+        meses = self._trimestre_de(periodo)
+        if not meses:
+            for lbl in self._tri_labels:
+                lbl.configure(text="—", text_color=ui.COR_MUTED)
+            self.lbl_tri_periodo.configure(text="")
+            return
+
+        m1, m2, m3 = [m.split("/")[0] for m in meses]
+        self.lbl_tri_header.configure(
+            text=f"  📆  Soma Trimestral  —  {m1} · {m2} · {m3}"
+        )
+        self.lbl_tri_periodo.configure(
+            text=f"  {meses[0]}  ·  {meses[1]}  ·  {meses[2]}  "
+        )
+
+        valores: list[float | None] = []
+        try:
+            with DatabasePMPV() as db:
+                for m in meses:
+                    rows = db.listar_consolidacao_completa(periodo=m)
+                    if rows:
+                        valores.append(float(rows[0].get("cgr") or 0))
+                    else:
+                        valores.append(None)
+        except Exception:
+            valores = [None, None, None]
+
+        soma = sum(v for v in valores if v is not None)
+        n_prec = sum(1 for v in valores if v is None)
+
+        for i, (lbl_t, lbl_v, m, v) in enumerate(
+            zip(self._tri_title_labels[:3], self._tri_labels[:3], meses, valores)
+        ):
+            lbl_t.configure(text=m)
+            if v is None:
+                lbl_v.configure(text="pendente", text_color=ui.COR_MUTED)
+            else:
+                lbl_v.configure(text=_fmt(v), text_color=ui.COR_TEXTO)
+
+        cor_soma = "#c39bd3" if n_prec > 0 else ui.COR_SUCESSO
+        sufixo = f"  ({3 - n_prec}/3)" if n_prec > 0 else ""
+        self._tri_labels[3].configure(text=_fmt(soma) + sufixo, text_color=cor_soma)
+
+    def _on_periodo_change(self):
+        """Sincroniza todos os labels de período quando o usuário seleciona mês."""
+        periodo = self.periodo_comparacao_var.get().strip()
+        if periodo:
+            self.lbl_mes_selecionado.configure(
+                text=f"📅  {periodo}", text_color=ui.COR_PRIMARIA,
+            )
+            self.lbl_periodo_status.configure(text=f"  {periodo}  ")
+            self.lbl_cgr_periodo_titulo.configure(text=f"  {periodo}  ")
+            self.lbl_rodape_periodo.configure(
+                text=f"Mês: {periodo}", text_color=ui.COR_TEXTO,
+            )
+            self._atualizar_painel_trimestral(periodo)
+        else:
+            self.lbl_mes_selecionado.configure(
+                text="Nenhum mês selecionado", text_color=ui.COR_MUTED,
+            )
+            self.lbl_periodo_status.configure(text="")
+            self.lbl_cgr_periodo_titulo.configure(text="")
+            self.lbl_rodape_periodo.configure(
+                text="Mês: não selecionado", text_color=ui.COR_MUTED,
+            )
+            for lbl in self._tri_labels:
+                lbl.configure(text="—", text_color=ui.COR_MUTED)
+            for lbl_t in self._tri_title_labels[:3]:
+                lbl_t.configure(text="—")
+            self.lbl_tri_header.configure(text="  📆  Soma Trimestral")
+            self.lbl_tri_periodo.configure(text="")
+        self._aplicar_sel_mes()
+        self._verificar_habilitacao()
+
     def _atualizar_badge_modo(self):
         modo = self.modo_fonte.get()
         if modo == "XML":
-            self.lbl_modo_badge.configure(text="Modo: XML", text_color="#3498db")
+            self.lbl_modo_badge.configure(text="  XML  ", fg_color=ui.COR_PRIMARIA)
         else:
-            cor = "#27ae60" if OCR_ATIVADO else "#e74c3c"
-            aviso = "" if OCR_ATIVADO else " ⚠️ sem OCR"
-            self.lbl_modo_badge.configure(text=f"Modo: PDF{aviso}", text_color=cor)
+            cor = ui.COR_SUCESSO if OCR_ATIVADO else ui.COR_PERIGO
+            txt = "  PDF  " if OCR_ATIVADO else "  PDF ⚠️  "
+            self.lbl_modo_badge.configure(text=txt, fg_color=cor)
 
     def _atualizar_painel_cgr(self, bruto: float, icms: float, liquido: float):
-        self.lbl_cgr_bruto.configure(text=f"Σ Bruto: R$ {bruto:,.2f}")
-        self.lbl_cgr_icms.configure(text=f"ICMS: R$ {icms:,.2f}")
-        self.lbl_cgr_liquido.configure(text=f"CGR Líquido: R$ {liquido:,.2f}")
+        def _fmt(v): return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+        self.lbl_cgr_bruto.configure(text=_fmt(bruto))
+        self.lbl_cgr_icms.configure(text=_fmt(icms))
+        self.lbl_cgr_liquido.configure(text=_fmt(liquido))
 
     def _periodo_normalizado(self) -> str:
         from Src.common.periodos import normalizar_periodo
@@ -272,8 +556,8 @@ class TelaAuditoria(ctk.CTkFrame):
         pasta = filedialog.askdirectory(title="Selecione a pasta PAI")
         if pasta:
             self.pasta_selecionada = Path(pasta)
-            self.lbl_pasta.configure(text=f"⏳ Lendo pastas em: {pasta}", text_color="#f39c12")
-            self.lbl_status.configure(text="Carregando empresas da pasta selecionada...", text_color="#f39c12")
+            self.lbl_pasta.configure(text=f"⏳ Lendo pastas em: {pasta}", text_color=ui.COR_AVISO)
+            self.lbl_status.configure(text="Carregando empresas da pasta selecionada...", text_color=ui.COR_AVISO)
 
             # Auto-detectar mês/ano pelo nome da pasta
             periodo_detectado = _extrair_periodo_do_caminho(pasta)
@@ -303,8 +587,8 @@ class TelaAuditoria(ctk.CTkFrame):
         if arquivo:
             self.excel_path = arquivo
             self.df_excel = None
-            self.lbl_excel.configure(text=f"⏳ Carregando {Path(arquivo).name}...", text_color="#f39c12")
-            self.lbl_status.configure(text="Lendo arquivo Excel em segundo plano...", text_color="#f39c12")
+            self.lbl_excel.configure(text=f"⏳ Carregando {Path(arquivo).name}...", text_color=ui.COR_AVISO)
+            self.lbl_status.configure(text="Lendo arquivo Excel em segundo plano...", text_color=ui.COR_AVISO)
             self._thread_carregamento = threading.Thread(
                 target=self._worker_carregar_excel,
                 args=(arquivo,),
@@ -351,31 +635,31 @@ class TelaAuditoria(ctk.CTkFrame):
                 _, pasta, empresas = msg
                 self.empresas_disponiveis = empresas
                 if not self.empresas_disponiveis:
-                    self.lbl_pasta.configure(text=f"⚠️ {pasta}", text_color="#f39c12")
-                    self.lbl_status.configure(text="Nenhuma subpasta encontrada.", text_color="#f39c12")
+                    self.lbl_pasta.configure(text=f"⚠️ {pasta}", text_color=ui.COR_AVISO)
+                    self.lbl_status.configure(text="Nenhuma subpasta encontrada.", text_color=ui.COR_AVISO)
                     messagebox.showwarning("Aviso", "Nenhuma subpasta encontrada!")
                 else:
-                    self.lbl_pasta.configure(text=f"✅ {pasta}", text_color="#27ae60")
+                    self.lbl_pasta.configure(text=f"✅ {pasta}", text_color=ui.COR_SUCESSO)
                     self.lbl_status.configure(
                         text=f"{len(self.empresas_disponiveis)} empresa(s) carregadas",
-                        text_color="#27ae60",
+                        text_color=ui.COR_SUCESSO,
                     )
                     self._criar_checkboxes_empresas()
                 self._verificar_habilitacao()
             elif tipo == "empresas_error":
-                self.lbl_status.configure(text="Erro ao ler pasta selecionada", text_color="#e74c3c")
+                self.lbl_status.configure(text="Erro ao ler pasta selecionada", text_color=ui.COR_PERIGO)
                 messagebox.showerror("Erro", f"Falha ao carregar pastas:\n{msg[1]}")
             elif tipo == "excel_ok":
                 _, arquivo, df = msg
                 self.df_excel = df
-                self.lbl_excel.configure(text=f"✅ {Path(arquivo).name}", text_color="#27ae60")
-                self.lbl_status.configure(text=f"Excel: {len(self.df_excel)} linhas", text_color="#27ae60")
+                self.lbl_excel.configure(text=f"✅ {Path(arquivo).name}", text_color=ui.COR_SUCESSO)
+                self.lbl_status.configure(text=f"Excel: {len(self.df_excel)} linhas", text_color=ui.COR_SUCESSO)
                 self._verificar_habilitacao()
             elif tipo == "excel_error":
                 self.excel_path = None
                 self.df_excel = None
                 self.lbl_excel.configure(text="Nenhum arquivo selecionado", text_color="gray")
-                self.lbl_status.configure(text="Erro ao carregar Excel", text_color="#e74c3c")
+                self.lbl_status.configure(text="Erro ao carregar Excel", text_color=ui.COR_PERIGO)
                 messagebox.showerror("Erro", f"Falha ao ler o Excel:\n{msg[1]}")
 
         if self._thread_carregamento and self._thread_carregamento.is_alive():
@@ -384,13 +668,11 @@ class TelaAuditoria(ctk.CTkFrame):
     def _verificar_habilitacao(self):
         if self._processando_auditoria:
             self.btn_auditar.configure(state="disabled")
-            self.btn_somatorio.configure(state="disabled")
             return
 
         empresas_sel = [emp for emp, var, _ in self.checkboxes_empresas if var.get()]
         periodo_ok = bool(self._periodo_normalizado())
         excel_ok = self.df_excel is not None
-        self.btn_somatorio.configure(state="normal" if self.pasta_selecionada else "disabled")
         if self.pasta_selecionada and empresas_sel:
             self.btn_auditar.configure(state="normal")
             if excel_ok and periodo_ok:
@@ -399,7 +681,7 @@ class TelaAuditoria(ctk.CTkFrame):
                         f"Pronto para auditar: {len(empresas_sel)} empresa(s). "
                         "Comparação de divergências habilitada."
                     ),
-                    text_color="#27ae60",
+                    text_color=ui.COR_SUCESSO,
                 )
             elif excel_ok and not periodo_ok:
                 self.lbl_status.configure(
@@ -407,12 +689,12 @@ class TelaAuditoria(ctk.CTkFrame):
                         "Auditoria habilitada. Preencha Mês/Ano válido para incluir "
                         "divergências no Excel."
                     ),
-                    text_color="#f39c12",
+                    text_color=ui.COR_AVISO,
                 )
             else:
                 self.lbl_status.configure(
                     text="Auditoria habilitada (sem comparação com Excel).",
-                    text_color="#f39c12",
+                    text_color=ui.COR_AVISO,
                 )
         else:
             self.btn_auditar.configure(state="disabled")
@@ -432,7 +714,7 @@ class TelaAuditoria(ctk.CTkFrame):
         self._alterar_estado_processamento(True)
         self.text_resultados.delete("1.0", "end")
         self.resultados.clear()
-        self.lbl_status.configure(text="Iniciando auditoria...", text_color="#f39c12")
+        self.lbl_status.configure(text="Iniciando auditoria...", text_color=ui.COR_AVISO)
         self.text_resultados.insert("end", "⏳ Processando em segundo plano...\n")
         self.text_resultados.insert("end", "Isso evita travamentos da interface durante a leitura dos arquivos.\n")
 
@@ -449,7 +731,6 @@ class TelaAuditoria(ctk.CTkFrame):
         self._processando_auditoria = processando
         if processando:
             self.btn_auditar.configure(state="disabled")
-            self.btn_somatorio.configure(state="disabled")
             self.btn_salvar_scg.configure(state="disabled")
             self.progress_auditoria.start()
         else:
@@ -519,98 +800,22 @@ class TelaAuditoria(ctk.CTkFrame):
 
             tipo = msg[0]
             if tipo == "status":
-                self.lbl_status.configure(text=msg[1], text_color="#f39c12")
+                self.lbl_status.configure(text=msg[1], text_color=ui.COR_AVISO)
             elif tipo == "done":
                 _, resultados, total_xmls, total_ocr = msg
                 self.resultados = resultados
                 self._alterar_estado_processamento(False)
-                self.lbl_status.configure(text="✅ Auditoria concluída", text_color="#27ae60")
+                self.lbl_status.configure(text="✅ Auditoria concluída", text_color=ui.COR_SUCESSO)
                 self._processar_totais_e_ui(total_xmls, total_ocr)
                 return
             elif tipo == "error":
                 self._alterar_estado_processamento(False)
-                self.lbl_status.configure(text="❌ Erro na auditoria", text_color="#e74c3c")
+                self.lbl_status.configure(text="❌ Erro na auditoria", text_color=ui.COR_PERIGO)
                 messagebox.showerror("Erro", f"Falha ao processar auditoria:\n{msg[1]}")
                 return
 
         if self._processando_auditoria:
             self.after(120, self._poll_fila_auditoria)
-
-    def calcular_somatorio(self):
-        if not self.pasta_selecionada or self._processando_auditoria:
-            return
-
-        self._alterar_estado_processamento(True)
-        self.resultados.clear()
-        self.text_resultados.configure(state="normal")
-        self.text_resultados.delete("1.0", "end")
-        self.text_resultados.insert("end", "⏳ Calculando somatório em segundo plano...\n")
-        self.text_resultados.configure(state="disabled")
-        self.lbl_status.configure(text="Iniciando somatório...", text_color="#f39c12")
-
-        usar_pdf = self.modo_fonte.get() == "PDF"
-        self._thread_auditoria = threading.Thread(
-            target=self._worker_somatorio,
-            args=(usar_pdf,),
-            daemon=True,
-        )
-        self._thread_auditoria.start()
-        self.after(120, self._poll_fila_auditoria)
-
-    def _worker_somatorio(self, usar_pdf: bool):
-        try:
-            pasta = Path(self.pasta_selecionada)
-            self._fila_auditoria.put(("status", "🔍 Varrendo arquivos..."))
-            xmls = list({p.resolve() for p in pasta.rglob("*.xml")})
-            pdfs = list({p.resolve() for p in pasta.rglob("*.pdf")})
-
-            if not usar_pdf:
-                arquivos_xml = xmls
-                pastas_com_xml = {p.parent for p in xmls}
-                arquivos_pdf = [p for p in pdfs if p.parent not in pastas_com_xml]
-            else:
-                arquivos_xml = []
-                arquivos_pdf = pdfs
-
-            resultados: list[XMLItem] = []
-            total_xmls = 0
-            total_ocr = 0
-
-            for idx, xml_path in enumerate(arquivos_xml, 1):
-                total_xmls += 1
-                # No somatório, manter empresa agregada evita quebrar a deduplicação
-                # quando o arquivo está em subpastas diferentes da mesma empresa.
-                res = self._auditar_xml(xml_path, "Múltiplas")
-                if res:
-                    resultados.append(res)
-                if idx % 30 == 0:
-                    self._fila_auditoria.put(("status", f"📄 XMLs: {idx}/{len(arquivos_xml)}"))
-
-            for idx, pdf_path in enumerate(arquivos_pdf, 1):
-                total_ocr += 1
-                dados = RegrasAuditoria.parse_pdf_ocr(pdf_path)
-                if "erro" not in dados:
-                    resultados.append(
-                        XMLItem(
-                            "Múltiplas",
-                            dados.get("tipo", "NF-e"),
-                            dados.get("numero", "N/A"),
-                            dados.get("valor_total", 0.0),
-                            dados.get("icms", 0.0),
-                            dados.get("icms_taxa", 0.0),
-                            dados.get("pis", 0.0),
-                            dados.get("cofins", 0.0),
-                            dados.get("volume", 0),
-                            "OCR",
-                            dados.get("volume_total", 0.0),
-                        )
-                    )
-                if idx % 10 == 0:
-                    self._fila_auditoria.put(("status", f"📄 PDFs: {idx}/{len(arquivos_pdf)}"))
-
-            self._fila_auditoria.put(("done", resultados, total_xmls, total_ocr))
-        except Exception as e:
-            self._fila_auditoria.put(("error", str(e)))
 
     def _auditar_xml(self, xml_path: Path, empresa: str) -> XMLItem:
         tipo = RegrasAuditoria.detectar_tipo_xml(xml_path)
@@ -654,10 +859,38 @@ class TelaAuditoria(ctk.CTkFrame):
         )
         self._atualizar_painel_cgr(self.valor_total_geral, icms_total_all, self.cgr_liquido)
 
+        def _fmt(v): return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+        def _sep(c="─", n=62): return c * n
+
         self.text_resultados.configure(state="normal")
         self.text_resultados.delete("1.0", "end")
-        self.text_resultados.insert("end", f"Auditoria Concluída: {n_xmls} XMLs, {n_pdfs} PDFs\n\n")
-        self.text_resultados.insert("end", f"CGR Líquido: R$ {self.cgr_liquido:,.2f}\n")
+
+        self.text_resultados.insert("end", f"{'▐ AUDITORIA CGR CONCLUÍDA':^62}\n")
+        self.text_resultados.insert("end", f"{_sep('═')}\n")
+        self.text_resultados.insert("end", f"  Arquivos lidos : {n_xmls} XML  |  {n_pdfs} PDF\n")
+        self.text_resultados.insert("end", f"  Notas únicas   : {len(self.resultados)}\n")
+        self.text_resultados.insert("end", f"  CGR Líquido    : {_fmt(self.cgr_liquido)}\n")
+        self.text_resultados.insert("end", f"{_sep('═')}\n\n")
+
+        # ── Por empresa ──────────────────────────────────────────────────────
+        from collections import defaultdict
+        por_empresa: dict[str, list] = defaultdict(list)
+        for r in self.resultados:
+            por_empresa[r.empresa].append(r)
+
+        for emp, itens in sorted(por_empresa.items()):
+            nfes_e = [i for i in itens if i.tipo == "NF-e"]
+            ctes_e = [i for i in itens if i.tipo == "CT-e"]
+            val_e  = sum(i.valor_total for i in itens)
+            cgr_e  = sum(RegrasAuditoria.calcular_s_tributos(i.valor_total, i.icms_taxa) for i in itens)
+            self.text_resultados.insert("end", f"┌─ {emp}\n")
+            self.text_resultados.insert("end", f"│  NF-e: {len(nfes_e):>4} notas"
+                                               f"   CT-e: {len(ctes_e):>3} notas"
+                                               f"   Total: {_fmt(val_e)}\n")
+            self.text_resultados.insert("end", f"│  CGR líquido: {_fmt(cgr_e)}\n")
+            self.text_resultados.insert("end", f"└{_sep()}\n\n")
+
+        self.text_resultados.insert("end", f"\n")
         comparou = self._comparar_com_conta_grafica()
         if comparou and self.comparacao_notas:
             comp = self.comparacao_notas
@@ -755,17 +988,17 @@ class TelaAuditoria(ctk.CTkFrame):
             if not abas_match and abas_todas:
                 self.lbl_status.configure(
                     text=f"⚠️ Aba '{periodo}' NÃO encontrada na planilha | abas: {', '.join(abas_todas[:4])}",
-                    text_color="#e67e22",
+                    text_color=ui.COR_AVISO,
                 )
             else:
                 self.lbl_status.configure(
                     text=f"✅ {tipo_label} ({comp.periodo}) | confirmadas: {comp.qtd_em_ambas} | divergências: {n_div}",
-                    text_color="#27ae60" if comp.qtd_em_ambas > 0 else "#e67e22",
+                    text_color=ui.COR_SUCESSO if comp.qtd_em_ambas > 0 else "#e67e22",
                 )
             return True
         except Exception as e:
             self.comparacao_notas = None
-            self.lbl_status.configure(text="⚠️ Falha ao comparar notas com o Excel", text_color="#f39c12")
+            self.lbl_status.configure(text="⚠️ Falha ao comparar notas com o Excel", text_color=ui.COR_AVISO)
             messagebox.showwarning(
                 "Comparação indisponível",
                 f"Não foi possível comparar com a planilha selecionada:\n{e}",
@@ -787,7 +1020,7 @@ class TelaAuditoria(ctk.CTkFrame):
             )
             self.lbl_status.configure(
                 text=f"✅ Excel salvo: Auditoria_{timestamp}.xlsx",
-                text_color="#27ae60",
+                text_color=ui.COR_SUCESSO,
             )
         except Exception as e:
             messagebox.showerror("Erro ao Exportar", f"Falha ao gerar o Excel:\n{e}")

@@ -3,21 +3,23 @@ from __future__ import annotations
 import customtkinter as ctk
 from tkinter import messagebox
 
+from Src.config import ui_theme as ui
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
-BG     = "#0f172a"
-CARD   = "#1e293b"
-INP    = "#334155"
-VERDE  = "#10b981"
-VERM   = "#ef4444"
-AMAR   = "#f59e0b"
-AZUL   = "#3b82f6"
-TEXTO  = "#f8fafc"
-MUTED  = "#94a3b8"
-ROXO   = "#8b5cf6"
-HEADER = "#0e7490"
+# Paleta (aliases do design system central — ver Src/config/ui_theme.py)
+BG     = ui.COR_FUNDO
+CARD   = ui.COR_CARD
+INP    = ui.COR_INPUT
+VERDE  = ui.COR_SUCESSO
+VERM   = ui.COR_PERIGO
+AMAR   = ui.COR_DESTAQUE
+AZUL   = ui.COR_PRIMARIA
+TEXTO  = ui.COR_TEXTO
+MUTED  = ui.COR_MUTED
+ROXO   = ui.COR_ROXO
+HEADER = ui.COR_HEADER
 
 
 def _pf(val: str) -> float:
@@ -230,7 +232,7 @@ class TelaSR(ctk.CTkFrame):
         self._aplicar_trimestre()
 
         # RESULTADO TOTAL
-        res = ctk.CTkFrame(self, fg_color="#1e1b4b", corner_radius=12)
+        res = ctk.CTkFrame(self, fg_color=ui.COR_REALCE, corner_radius=12)
         res.pack(fill="x", padx=20, pady=(0, 4))
 
         rrow = ctk.CTkFrame(res, fg_color="transparent")

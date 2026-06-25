@@ -29,6 +29,12 @@ _MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
                 "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
 
+def _split_path_parts(caminho: str) -> list[str]:
+    """Quebra o caminho em partes usando tanto os separadores do SO atual quanto '\\'."""
+    partes = re.split(r'[\\/]', caminho)
+    return [p for p in partes if p]
+
+
 def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
     """
     Varre as partes do caminho em busca do nome de um mês (PT-BR).
@@ -36,22 +42,42 @@ def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
     Prioriza a parte mais próxima do arquivo (subpasta imediata > pastas superiores).
     """
     from datetime import date
-    partes = Path(caminho).parts
-    # Inclui todas as partes (inclusive o nome do arquivo) em ordem reversa
-    # para dar prioridade à subpasta/arquivo mais específico.
+    partes = _split_path_parts(caminho)
+    # Usa apenas as pastas (não o nome do arquivo) para determinar competência.
+    partes_pastas = partes[:-1] if len(partes) > 1 else partes
+    # Quebra também na fronteira letra→dígito (ex: "fev26" → "FEV", "26"),
+    # padrão comum nos nomes de subpastas mensais (ex: "EAT fev26").
     mes_num = 0
-    for parte in reversed(partes):
-        tokens = re.split(r'[\s\-_\.]+', parte.upper())
-        for token in tokens:
+    ano_2dig = 0
+    for parte in reversed(partes_pastas):
+        tokens = re.split(r'[\s\-_\.]+|(?<=[A-ZÀ-Ü])(?=\d)', parte.upper())
+        for i, token in enumerate(tokens):
             if token in _MESES_PATH:
                 mes_num = _MESES_PATH[token]
+                if i + 1 < len(tokens) and re.fullmatch(r'\d{2}', tokens[i + 1]):
+                    ano_2dig = int(tokens[i + 1])
                 break
         if mes_num:
             break
 
+    # Fallback: padrão numérico "MM-AAAA"/"MM-AA" (ex: "total mensal 01-2026")
+    if not mes_num:
+        m = re.search(r'\b(0[1-9]|1[0-2])[\-_/](\d{4}|\d{2})\b', caminho)
+        if m:
+            mes_num = int(m.group(1))
+            ano_str = m.group(2)
+            ano_2dig = int(ano_str) if len(ano_str) == 2 else 0
+            if len(ano_str) == 4:
+                return mes_num, int(ano_str)
+
     # Procura ano de 4 dígitos no caminho completo (ex: "2026")
     anos = re.findall(r'\b(20\d{2}|19\d{2})\b', caminho)
-    ano = int(anos[0]) if anos else date.today().year
+    if anos:
+        ano = int(anos[0])
+    elif ano_2dig:
+        ano = 2000 + ano_2dig
+    else:
+        ano = date.today().year
 
     return mes_num, ano
 
@@ -59,7 +85,8 @@ def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
 class RegrasRET:
     @staticmethod
     def identificar_tipo(caminho):
-        partes = [p.upper() for p in Path(caminho).parts[:-1]]
+        partes_raw = _split_path_parts(caminho)
+        partes = [p.upper() for p in partes_raw[:-1]]
         for p in reversed(partes):
             if 'EAT' in p: return 'EAT'
             if p == 'EC' or p.startswith('EC ') or p.startswith('EC_'): return 'EC'
