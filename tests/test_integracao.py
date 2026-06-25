@@ -61,6 +61,7 @@ class TestIntegracaoDatabaseExcel:
             },
             'resultado': {
                 'volume_total': 90000,
+                'vp_mensal': 90000,
                 'custo_total': 180000,
                 'pmpv': 2.0000,
                 'conta_grafica': -0.0210,
