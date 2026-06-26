@@ -322,6 +322,15 @@ class TelaPV(ctk.CTkFrame):
         else:
             self.lbl_pv.configure(text_color=AMARELO)
 
+        # Auto-save silencioso
+        periodo = self.combo_periodo.get()
+        if periodo and (pmpv != 0 or pr != 0):
+            try:
+                self.servicos.salvar_valores(periodo, pmpv, pr)
+                self._atualizar_historico()
+            except Exception:
+                pass
+
     def _salvar_pv(self):
         periodo = self.combo_periodo.get()
         if not periodo:

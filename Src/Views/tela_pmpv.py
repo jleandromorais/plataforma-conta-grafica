@@ -366,6 +366,9 @@ class TelaPMPV(ctk.CTkFrame):
                 + "\n".join(self.res_final['avisos'])
             )
 
+        # Auto-save silencioso após calcular
+        self._auto_salvar_pmpv()
+
 
 
     def _importar_memoria_calculo(self):
@@ -619,6 +622,19 @@ class TelaPMPV(ctk.CTkFrame):
                     })
             export[real_name] = linhas
         return export
+
+    def _auto_salvar_pmpv(self):
+        """Salva sessão PMPV silenciosamente após calcular."""
+        if not hasattr(self, 'res_final'):
+            return
+        try:
+            tri = self.combo_trimestre.get().replace(" ", "_").replace("-", "_")
+            ano = self.entry_ano.get()
+            nome = f"PMPV_{tri}_{ano}"
+            dados = self._get_data_dict()
+            self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
+        except Exception:
+            pass
 
     def salvar(self):
         if not hasattr(self, 'res_final'):

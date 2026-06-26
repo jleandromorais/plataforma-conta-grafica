@@ -244,6 +244,20 @@ class TelaPR(ctk.CTkFrame):
                       fg_color=INPUT_BG, hover_color=AZUL,
                       command=self._atualizar_historico).pack(side="left")
 
+        # ── DETALHAMENTO TRIMESTRAL (SCG + SR por mês / VP) ──────────────────
+        det_card = ctk.CTkFrame(scroll, fg_color=CARD, corner_radius=12)
+        det_card.pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(det_card,
+                     text="📊  Decomposição Trimestral  —  PR = Σ (SCG_m + SR_m) / VP_m",
+                     font=("Roboto", 12, "bold"), text_color=AZUL).pack(
+            anchor="w", padx=16, pady=(10, 4))
+
+        self.det_box = ctk.CTkTextbox(det_card, font=("Consolas", 11),
+                                       fg_color=BG, text_color=TEXTO, height=110)
+        self.det_box.pack(fill="x", padx=14, pady=(0, 10))
+        self.det_box.configure(state="disabled")
+
         # ── HISTÓRICO ────────────────────────────────────────────────────────
         hist = ctk.CTkFrame(scroll, fg_color=CARD, corner_radius=12)
         hist.pack(fill="x", pady=(0, 20))
@@ -306,6 +320,29 @@ class TelaPR(ctk.CTkFrame):
             self.lbl_pr.configure(text_color=VERMELHO)
             self.lbl_aviso.configure(text="▼ Resultado negativo", text_color=VERMELHO)
 
+    def _atualizar_det_box(self, meses: list[dict], pr_final: float):
+        """Preenche o textbox de decomposição trimestral."""
+        linhas = [
+            f"{'Período':<14} {'SCG (R$)':>18} {'SR (R$)':>18} {'VP (m³)':>14} {'Parcela PR':>14}",
+            "─" * 82,
+        ]
+        for m in meses:
+            parcela = m["parcela_pr"]
+            linhas.append(
+                f"{m['periodo']:<14} "
+                f"{ServicosPR.formatar_brl(m['scg']):>18} "
+                f"{ServicosPR.formatar_brl(m['sr']):>18} "
+                f"{ServicosPR.formatar_volume(m['vp']):>14} "
+                f"{ServicosPR.formatar_pr(parcela):>14}"
+            )
+        linhas.append("─" * 82)
+        linhas.append(f"{'PR TRIMESTRAL':>64}  {ServicosPR.formatar_pr(pr_final):>14}")
+
+        self.det_box.configure(state="normal")
+        self.det_box.delete("1.0", "end")
+        self.det_box.insert("end", "\n".join(linhas))
+        self.det_box.configure(state="disabled")
+
     def _carregar_trimestre(self):
         m1 = self.combo_m1.get().strip()
         m2 = self.combo_m2.get().strip()
@@ -315,22 +352,22 @@ class TelaPR(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Selecione ao menos um mês.")
             return
 
+        # PR = Σ (SCG_m + SR_m) / VP_m  (fórmula normalizada por mês)
         dados = self.servicos.buscar_dados_trimestral(periodos)
 
-        # SCG e VP do banco
+        # Preenche campos com os totais
         self.entry_scg.delete(0, "end")
         self.entry_scg.insert(0, _fmt2(dados["scg"]))
         self.entry_vp.delete(0, "end")
         self.entry_vp.insert(0, _fmt2(dados["vp"]))
 
-        # SR atual = soma dos SRs dos 3 meses do trimestre
+        # SR atual = soma dos SRs dos meses do trimestre
         self.entry_sr_atual.set(dados["sr"])
 
         # Tenta preencher SRs anteriores do banco (trimestres passados)
         db = DatabasePMPV()
         try:
             sr_anteriores = db.listar_sr()
-            # Filtra os que NÃO são do trimestre atual
             sr_anteriores = [
                 r for r in sr_anteriores
                 if r.get("periodo") not in periodos
@@ -344,12 +381,35 @@ class TelaPR(ctk.CTkFrame):
             else:
                 e.set(0.0)
 
-        self._recalcular()
+        # Mostra decomposição mês a mês e atualiza PR com valor normalizado
+        self._atualizar_det_box(dados.get("meses", []), dados["pr"])
+
+        # Exibe o PR já calculado pela fórmula normalizada
+        self.lbl_pr.configure(
+            text=ServicosPR.formatar_pr(dados["pr"]),
+            text_color=VERDE if dados["pr"] > 0 else (VERMELHO if dados["pr"] < 0 else AMARELO))
+        saldo = dados["scg"] + dados["sr"] + sum(e.get() for e in self._sr_entries)
+        self.lbl_saldo_total.configure(
+            text=f"Saldo Total a Recuperar:  {ServicosPR.formatar_brl(saldo)}",
+            text_color=VERDE if saldo >= 0 else VERMELHO)
+        self.lbl_aviso.configure(
+            text=f"Trimestre: {self._gerar_nome_trimestre()}",
+            text_color=AZUL)
 
         if dados["scg"] == 0 and dados["sr"] == 0 and dados["vp"] == 0:
             messagebox.showinfo("Sem dados",
                                 "Nenhum valor encontrado no banco para os meses selecionados.\n"
                                 "Execute SCG e SR e salve no banco primeiro.")
+            return
+
+        # Auto-save silencioso: persiste o PR trimestral calculado
+        nome_tri = self._gerar_nome_trimestre()
+        if nome_tri:
+            try:
+                self.servicos.salvar_valores(nome_tri, dados["scg"], dados["sr"], dados["vp"])
+                self._atualizar_historico()
+            except Exception:
+                pass
 
     def _limpar_campos(self):
         self.entry_scg.delete(0, "end")

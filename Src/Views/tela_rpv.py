@@ -212,6 +212,14 @@ class TelaRPV(ctk.CTkFrame):
             self.lbl_rpv.configure(text_color=AMARELO)
             self.lbl_sinal.configure(text="= Equilíbrio", text_color=AMARELO)
 
+        # Auto-save silencioso
+        periodo = self.combo_periodo.get()
+        if periodo and (cgr != 0 or cgf != 0):
+            try:
+                self.servicos.salvar_valores(periodo, cgr, cgf)
+            except Exception:
+                pass
+
     def _salvar_rpv(self):
         periodo = self.combo_periodo.get()
         if not periodo:

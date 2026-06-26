@@ -348,8 +348,23 @@ class TelaSR(ctk.CTkFrame):
                 vf = float(resumo["volume_final"]) if resumo and resumo.get(
                     "volume_final") is not None else 0.0
 
+                # PR — busca o PR salvo para este mês; se não houver, calcula
+                # usando SCG e SR do banco dividido pelo VP mensal
+                pr_row = db.buscar_sr(meses_tri[i])
+                pr_salvo = float((pr_row or {}).get("pr") or 0.0)
+                if pr_salvo == 0.0 and vp > 0:
+                    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+                    dados_cons = ServicosConsolidacao().buscar_consolidacao(meses_tri[i])
+                    scg_m = float((dados_cons or {}).get("scg") or 0.0)
+                    sr_m  = float((pr_row or {}).get("sr") or 0.0)
+                    pr_salvo = (scg_m + sr_m) / vp if vp else 0.0
+
                 linha.set_vp(vp)
                 linha.set_vf(vf)
+
+                # Preenche PR no campo correspondente
+                linha.e_pr.delete(0, "end")
+                linha.e_pr.insert(0, f"{pr_salvo:.4f}".replace(".", ","))
         finally:
             db.fechar()
 
@@ -385,6 +400,22 @@ class TelaSR(ctk.CTkFrame):
         cor = VERDE if total > 0 else (VERM if total < 0 else AMAR)
         self.lbl_total.configure(text=_fb(total), text_color=cor)
         self.lbl_detalhe.configure(text="   |   ".join(detalhes))
+
+        # Auto-save silencioso: persiste SR e VP por mês no banco
+        if any(r["vp"] > 0 or r["vf"] > 0 for r in resultados):
+            try:
+                db = DatabasePMPV()
+                labels = self._get_trimestre_labels()
+                try:
+                    for i, r in enumerate(resultados):
+                        per_mes = labels[i] if i < len(labels) else r["mes"]
+                        db.salvar_sr(per_mes, r["vp"], r["vf"], r["pr"], r["sr_selic"])
+                    db.salvar_sr_trimestre(self._trimestre_label(), resultados)
+                finally:
+                    db.fechar()
+            except Exception:
+                pass
+
         return resultados
 
     def _trimestre_label(self) -> str:
@@ -408,11 +439,20 @@ class TelaSR(ctk.CTkFrame):
 
         db = DatabasePMPV()
         try:
-            # Salva resumo na tabela antiga (compatibilidade com o resto)
             vp_tot = sum(r["vp"] for r in resultados)
             vf_tot = sum(r["vf"] for r in resultados)
+            # Salva resumo do trimestre completo com o período informado pelo usuário
             db.salvar_sr(periodo, vp_tot, vf_tot, 0.0, total)
-            # Salva detalhe mensal
+            # Salva cada mês individualmente para que o PR possa buscar por período
+            labels = self._get_trimestre_labels()
+            for i, r in enumerate(resultados):
+                per_mes = labels[i] if i < len(labels) else r["mes"]
+                sr_m = r["sr_selic"]
+                vp_m = r["vp"]
+                vf_m = r["vf"]
+                pr_m = r["pr"]
+                db.salvar_sr(per_mes, vp_m, vf_m, pr_m, sr_m)
+            # Salva detalhe mensal da sessão
             db.salvar_sr_trimestre(self._trimestre_label(), resultados)
         finally:
             db.fechar()

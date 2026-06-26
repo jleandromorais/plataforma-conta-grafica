@@ -568,6 +568,8 @@ class TelaCGF(ctk.CTkFrame):
             self._carregar_pmpv_banco(silencioso=True)
         self.tabview.set("Resumo")
         self._log("Processamento concluído.")
+        # Auto-save: persiste CGF no banco imediatamente após calcular
+        self._auto_salvar_cgf()
 
     def _carregar_pmpv_banco(self, silencioso: bool = False):
         periodo = self.entry_periodo.get()
@@ -606,6 +608,30 @@ class TelaCGF(ctk.CTkFrame):
             else:
                 self.lbl_vp_mensal.configure(text="Mensal: sem dados")
                 self.lbl_vp_trimestral.configure(text="Trimestral: sem dados")
+        except Exception:
+            pass
+
+    def _auto_salvar_cgf(self):
+        """Salva CGF automaticamente após calcular, sem diálogos."""
+        periodo = self.entry_periodo.get()
+        if not periodo or self.volume_final_cgf == 0.0:
+            return
+        try:
+            valor_salvar = self.cgf_rs if self.cgf_rs > 0 else self.volume_final_cgf
+            self.servicos.salvar_cgf(periodo, valor_salvar)
+            resumo = self._ultimo_resultado_cgf or {}
+            db = DatabasePMPV()
+            try:
+                db.salvar_cgf_resumo(
+                    periodo,
+                    resumo.get("volume_faturado", 0.0),
+                    resumo.get("volume_canceladas", 0.0),
+                    resumo.get("volume_devolucoes", 0.0),
+                    resumo.get("volume_consumo_proprio", 0.0),
+                    resumo.get("volume_final", self.volume_final_cgf),
+                )
+            finally:
+                db.fechar()
         except Exception:
             pass
 
