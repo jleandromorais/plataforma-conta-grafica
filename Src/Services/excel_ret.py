@@ -5,15 +5,12 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
 from datetime import datetime
 
-_MESES_BR = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-             "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+from Src.common.periodos import TRIMESTRES_FISCAIS, MESES_ABREVS as _MESES_BR
 
-# Trimestres na mesma ordem que o PMPV usa
+# Converte TRIMESTRES_FISCAIS (índices 0-based) para números de mês 1-based
 _TRIMESTRES: list[tuple[str, list[int]]] = [
-    ("Nov - Jan", [11, 12, 1]),
-    ("Fev - Abr", [2,  3,  4]),
-    ("Mai - Jul", [5,  6,  7]),
-    ("Ago - Out", [8,  9, 10]),
+    (nome, [(idx % 12) + 1 for idx in indices])
+    for nome, indices in TRIMESTRES_FISCAIS.items()
 ]
 
 

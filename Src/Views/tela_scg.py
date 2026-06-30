@@ -5,6 +5,8 @@ from tkinter import messagebox, simpledialog
 from Src.config import ui_theme as ui
 from Src.Services.servicos_scg import ServicosSCG
 from Src.Database.database import DatabasePMPV
+from Src.common.formatting import format_brl_plain
+from Src.common.periodos import TRIMESTRES_CIVIS, MESES_ABREVS as MESES_ANO
 from Src.common.excel_final_destino import registrar_execucao_excel_final, remover_excel_final_ativo
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -20,12 +22,8 @@ COR_ROXO     = ui.COR_ROXO
 COR_TEXTO    = ui.COR_TEXTO
 COR_MUTED    = ui.COR_MUTED
 
-MESES_ANO = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-             "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
-
-def _fmt(v: float) -> str:
-    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+from Src.common.formatting import format_brl as _fmt
 
 
 class LinhaValor(ctk.CTkFrame):
@@ -77,7 +75,7 @@ class LinhaValor(ctk.CTkFrame):
 
     def set_entry_value(self, valor: float):
         self.entry.delete(0, "end")
-        self.entry.insert(0, f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        self.entry.insert(0, format_brl_plain(valor))
 
     def mostrar_modo_auto(self):
         self.entry.pack_forget()
@@ -98,12 +96,7 @@ class TelaSCG(ctk.CTkFrame):
         ("rp",  "🔄", "RP   (Conciliação)",       COR_AZUL,    True),
     ]
 
-    TRIMESTRES = {
-        "Jan - Mar": ["Jan", "Fev", "Mar"],
-        "Abr - Jun": ["Abr", "Mai", "Jun"],
-        "Jul - Set": ["Jul", "Ago", "Set"],
-        "Out - Dez": ["Out", "Nov", "Dez"],
-    }
+    TRIMESTRES = TRIMESTRES_CIVIS
 
     def __init__(self, parent=None):
         super().__init__(parent, fg_color=COR_FUNDO)
@@ -119,6 +112,8 @@ class TelaSCG(ctk.CTkFrame):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
+        import datetime as _dt
+
         # HEADER
         hdr = ctk.CTkFrame(self, fg_color=COR_CARD, corner_radius=0, height=64)
         hdr.pack(fill="x")
@@ -177,7 +172,6 @@ class TelaSCG(ctk.CTkFrame):
         row_tri = ctk.CTkFrame(self.frame_tri, fg_color="transparent")
         row_tri.pack(fill="x", padx=16, pady=(0, 4))
 
-        import datetime as _dt
         ctk.CTkLabel(row_tri, text="Trimestre:", font=("Roboto", 11),
                      text_color=COR_MUTED).pack(side="left")
         self.combo_trimestre_scg = ctk.CTkComboBox(
@@ -345,11 +339,8 @@ class TelaSCG(ctk.CTkFrame):
         return [f"{m}/{ano}" for m in meses_abrev]
 
     def _usar_trimestre_ativo(self):
-        db = DatabasePMPV()
-        try:
+        with DatabasePMPV() as db:
             meses = db.buscar_trimestre_ativo()
-        finally:
-            db.fechar()
         if not meses or len(meses) < 3:
             messagebox.showwarning("Aviso", "Nenhum trimestre ativo salvo.\nSalve primeiro pelo módulo PMPV.")
             return
@@ -436,23 +427,14 @@ class TelaSCG(ctk.CTkFrame):
 
     @staticmethod
     def _buscar_dados_fontes(periodo: str) -> dict:
-        db = DatabasePMPV()
-        try:
-            # CGR: soma cgr_liquido dos XMLs de auditoria
+        with DatabasePMPV() as db:
             cgr = sum(float(i.get("cgr_liquido") or 0)
                       for i in (db.listar_auditoria_itens(periodo) or []))
-
-            # CGF e RET: valores já calculados e salvos na consolidacao pelos módulos
-            # (CGF = volume × PMPV; RET = EAT × (1 - PIS/COFINS) + EC)
             cons = db.buscar_consolidacao(periodo) or {}
             cgf = float(cons.get("cgf") or 0)
             ret = float(cons.get("ret") or 0)
-
-            # RP: soma dos valores de conciliação
             rp = sum(float(i.get("valor") or 0)
                      for i in (db.listar_concilia_itens(periodo) or []))
-        finally:
-            db.fechar()
         rpv = cgr - cgf
         scg = rpv + ret + rp
         return {"cgr": cgr, "cgf": cgf, "rpv": rpv, "ret": ret, "rp": rp, "scg": scg}

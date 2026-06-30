@@ -6,7 +6,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from Src.Database.database import DatabasePMPV
-from Src.common.periodos import normalizar_periodo
+from Src.common.periodos import normalizar_periodo, MESES_ABREVS as _MESES_ABREVS_SET
 
 # Arquivo Excel único e fixo — sempre salvo na pasta Downloads do utilizador
 EXCEL_FIXO_NOME = "Excel_Final_ContaGrafica"
@@ -28,8 +28,7 @@ def obter_periodos_trimestre(periodo_atual: str | None = None) -> list[str]:
     - Só reconstrói via ret_itens quando o trimestre está vazio ou tem < 2 meses válidos.
     - Nunca sobrescreve um trimestre válido existente.
     """
-    _ABREVS = {"Jan","Fev","Mar","Abr","Mai","Jun",
-               "Jul","Ago","Set","Out","Nov","Dez"}
+    _ABREVS = set(_MESES_ABREVS_SET)
 
     def _valido(p: str) -> bool:
         parts = (p or "").strip().split("/")
@@ -49,27 +48,22 @@ def obter_periodos_trimestre(periodo_atual: str | None = None) -> list[str]:
             an = "20" + an
         return f"{ab}/{an}".lower()
 
-    db = DatabasePMPV()
-    try:
+    with DatabasePMPV() as db:
         meses_raw = db.buscar_trimestre_ativo()
         meses = [m for m in meses_raw if _valido(m)]
 
-        # Se temos período atual, verifica se ele pertence ao trimestre ativo
         if periodo_atual and len(meses) >= 2:
             norm = normalizar_periodo(periodo_atual) or periodo_atual
             if _normalizar_abrev(norm) in {_normalizar_abrev(m) for m in meses}:
                 return meses
-            # Período não pertence ao trimestre ativo — reconstrói pelo período atual
             periodos_ret = db.buscar_periodos_ret_para_trimestre(norm)
             if periodos_ret:
                 return periodos_ret
             return [norm]
 
-        # Trimestre com >= 2 meses válidos e sem período para conferir: confia nele
         if len(meses) >= 2:
             return meses
 
-        # Trimestre vazio ou incompleto: tenta reconstruir via ret_itens
         if periodo_atual:
             norm = normalizar_periodo(periodo_atual) or periodo_atual
             periodos_ret = db.buscar_periodos_ret_para_trimestre(norm)
@@ -78,10 +72,7 @@ def obter_periodos_trimestre(periodo_atual: str | None = None) -> list[str]:
                 return periodos_ret
             return [norm]
 
-        # Sem período de referência e trimestre incompleto: devolve o que há
         return meses
-    finally:
-        db.fechar()
 
 
 def solicitar_periodo_excel_final(
@@ -152,8 +143,7 @@ def registrar_execucao_excel_final(
     etapa_norm = (etapa or "").strip() or "ETAPA"
 
     # Garante que a sessão fixa está ativa no banco
-    db = DatabasePMPV()
-    try:
+    with DatabasePMPV() as db:
         db.salvar_sessao_excel_final(EXCEL_FIXO_NOME, EXCEL_FIXO_PATH)
         execucao = db.registrar_execucao_excel_final(
             nome_sessao=EXCEL_FIXO_NOME,
@@ -162,8 +152,6 @@ def registrar_execucao_excel_final(
             caminho_arquivo=EXCEL_FIXO_PATH,
         )
         return EXCEL_FIXO_PATH, EXCEL_FIXO_NOME, periodo_norm, execucao
-    finally:
-        db.fechar()
 
 
 def novo_excel_final(parent=None) -> bool:
@@ -177,11 +165,8 @@ def novo_excel_final(parent=None) -> bool:
     if not messagebox.askyesno("Zerar Excel Final", msg, parent=parent):
         return False
 
-    db = DatabasePMPV()
-    try:
+    with DatabasePMPV() as db:
         db.zerar_sessao_excel_final(EXCEL_FIXO_NOME, EXCEL_FIXO_PATH)
-    finally:
-        db.fechar()
 
     if Path(EXCEL_FIXO_PATH).exists():
         try:
@@ -199,8 +184,7 @@ def novo_excel_final(parent=None) -> bool:
 
 def remover_excel_final_ativo(parent=None) -> tuple[bool, str]:
     """Desativa a sessão ativa do Excel final e opcionalmente exclui o arquivo físico."""
-    db = DatabasePMPV()
-    try:
+    with DatabasePMPV() as db:
         sessao_ativa = db.buscar_sessao_excel_final_ativa()
         if not sessao_ativa:
             return False, "Nenhuma sessão ativa do Excel final foi encontrada."
@@ -223,5 +207,3 @@ def remover_excel_final_ativo(parent=None) -> tuple[bool, str]:
 
         db.desativar_sessao_excel_final_ativa()
         return True, f"Sessão '{nome}' removida do fluxo do Módulo 9.{erro_arquivo}"
-    finally:
-        db.fechar()

@@ -197,25 +197,16 @@ class ServicosCGF:
 
     # Interações com Banco de Dados
     def obter_periodos(self):
-        repo = SqlitePMPVRepository()
-        try:
+        with SqlitePMPVRepository() as repo:
             periodos_cons = {r["periodo"] for r in repo.listar_periodos()}
             periodos_pmpv = {r["periodo"] for r in repo.listar_pmpv_mensal()}
             return sorted(list(periodos_cons | periodos_pmpv), reverse=True)
-        finally:
-            repo.fechar()
 
     def buscar_pmpv(self, periodo: str):
-        repo = SqlitePMPVRepository()
-        try:
+        with SqlitePMPVRepository() as repo:
             return repo.buscar_pmpv_mensal(periodo)
-        finally:
-            repo.fechar()
 
     def salvar_cgf(self, periodo: str, valor: float):
-        consolidacao = ServicosConsolidacao()
-        try:
+        with ServicosConsolidacao() as consolidacao:
             dados = consolidacao.salvar_cgf(periodo, valor)
             return dados["rpv"]
-        finally:
-            consolidacao.fechar()

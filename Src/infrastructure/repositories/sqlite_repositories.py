@@ -13,6 +13,13 @@ class SqliteConsolidacaoRepository(ConsolidacaoRepository):
     def __init__(self, db: DatabasePMPV | None = None):
         self.db = db or DatabasePMPV()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.db.__exit__(exc_type, exc_val, exc_tb)
+        return False
+
     def listar_periodos(self):
         return self.db.listar_periodos()
 
@@ -54,6 +61,13 @@ class SqlitePMPVRepository(PMPVRepository):
     def __init__(self, db: DatabasePMPV | None = None):
         self.db = db or DatabasePMPV()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.db.__exit__(exc_type, exc_val, exc_tb)
+        return False
+
     def criar_sessao(self, nome: str, observacoes: str = "") -> int:
         return self.db.criar_sessao(nome, observacoes)
 
@@ -83,6 +97,13 @@ class SqliteSRRepository(SRRepository):
     def __init__(self, db: DatabasePMPV | None = None):
         self.db = db or DatabasePMPV()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.db.__exit__(exc_type, exc_val, exc_tb)
+        return False
+
     def listar_sessoes_com_volumes(self):
         return self.db.listar_sessoes_com_volumes()
 
@@ -93,6 +114,13 @@ class SqliteSRRepository(SRRepository):
 class SqlitePRRepository(PRRepository):
     def __init__(self, db: DatabasePMPV | None = None):
         self.db = db or DatabasePMPV()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.db.__exit__(exc_type, exc_val, exc_tb)
+        return False
 
     # PR
     def listar_sr(self):

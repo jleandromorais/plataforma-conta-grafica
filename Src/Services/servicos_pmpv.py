@@ -1,5 +1,25 @@
 import pandas as pd
 
+from Src.common.periodos import _MESES, _EN_TO_PT
+
+# Extensão do mapa PT com variantes EN e acentos ausentes em _MESES
+_MAPA_MES = {
+    **{k: v.lower() for k, v in _MESES.items()},
+    "feb": "fev", "apr": "abr", "may": "mai",
+    "aug": "ago", "sep": "set", "oct": "out", "dec": "dez",
+    "março": "mar",
+}
+
+
+def _abrev_ano_curto(mes_raw: str, ano_raw: str) -> str:
+    """Retorna 'mes_norm/aa' com ano de 2 dígitos a partir de strings brutas."""
+    mes_norm = _MAPA_MES.get(mes_raw, mes_raw[:3])
+    ano = "".join(c for c in ano_raw if c.isdigit())
+    if len(ano) >= 4:
+        ano = ano[-2:]
+    return f"{mes_norm}/{ano}" if ano else mes_norm
+
+
 # ==========================================
 # 1. SERVIÇO DE EXCEL (O "Fornecedor")
 # ==========================================
@@ -15,50 +35,17 @@ class ExcelPMPV:
         txt = txt.replace(".", "").replace("-", "/")
         txt = " ".join(txt.split())
 
-        mapa = {
-            "janeiro": "jan", "jan": "jan",
-            "fevereiro": "fev", "fev": "fev", "feb": "fev",
-            "marco": "mar", "março": "mar", "mar": "mar",
-            "abril": "abr", "abr": "abr", "apr": "abr",
-            "maio": "mai", "mai": "mai", "may": "mai",
-            "junho": "jun", "jun": "jun",
-            "julho": "jul", "jul": "jul",
-            "agosto": "ago", "ago": "ago", "aug": "ago",
-            "setembro": "set", "set": "set", "sep": "set",
-            "outubro": "out", "out": "out", "oct": "out",
-            "novembro": "nov", "nov": "nov",
-            "dezembro": "dez", "dez": "dez", "dec": "dez",
-        }
-
         if "/" in txt:
             partes = [p.strip() for p in txt.split("/") if p.strip()]
             if len(partes) >= 2:
-                mes_raw = partes[0]
-                ano_raw = partes[1]
-                mes_norm = mapa.get(mes_raw, mes_raw[:3])
-
-                ano = "".join(c for c in ano_raw if c.isdigit())
-                if len(ano) == 4:
-                    ano = ano[-2:]
-                elif len(ano) > 2:
-                    ano = ano[-2:]
-
-                return f"{mes_norm}/{ano}" if ano else mes_norm
+                return _abrev_ano_curto(partes[0], partes[1])
 
         if " " in txt:
             partes = [p for p in txt.split(" ") if p]
             if len(partes) >= 2:
-                mes_raw = partes[0]
-                ano_raw = partes[1]
-                mes_norm = mapa.get(mes_raw, mes_raw[:3])
-                ano = "".join(c for c in ano_raw if c.isdigit())
-                if len(ano) == 4:
-                    ano = ano[-2:]
-                elif len(ano) > 2:
-                    ano = ano[-2:]
-                return f"{mes_norm}/{ano}" if ano else mes_norm
+                return _abrev_ano_curto(partes[0], partes[1])
 
-        return mapa.get(txt, txt[:3])
+        return _MAPA_MES.get(txt, txt[:3])
     
     @staticmethod
     def ler_dados_memoria_calculo(caminho_arquivo, mes_escolhido):
@@ -76,9 +63,6 @@ class ExcelPMPV:
         except Exception as exc:
             raise ValueError(f"Não foi possível ler o arquivo:\n{exc}")
 
-        _PT = {"Jan": "Jan", "Feb": "Fev", "Mar": "Mar", "Apr": "Abr", "May": "Mai", "Jun": "Jun", 
-               "Jul": "Jul", "Aug": "Ago", "Sep": "Set", "Oct": "Out", "Nov": "Nov", "Dec": "Dez"}
-
         meses_cols = {}
         first_header_row = None
 
@@ -92,7 +76,7 @@ class ExcelPMPV:
                         if pd.notna(c2) and hasattr(c2, "strftime"):
                             eng = c2.strftime("%b/%y")
                             p = eng.split("/")
-                            lbl = _PT.get(p[0], p[0]) + "/" + p[1]
+                            lbl = en_para_pt(p[0]) + "/" + p[1]
                             meses_cols[ci2] = lbl
                     break
             if first_header_row is not None:

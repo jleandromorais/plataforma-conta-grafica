@@ -1,8 +1,11 @@
 import re
+import logging
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from pathlib import Path
 from datetime import datetime, date
+
+logger = logging.getLogger(__name__)
 
 from Src.config import ui_theme as ui
 from Src.Services.servicos_cgf import ServicosCGF
@@ -477,7 +480,7 @@ class TelaCGF(ctk.CTkFrame):
             self._atualizar_visual_meses()
             self._log(f"[AUTO] Período detectado: {periodo_det}")
         except Exception:
-            pass
+            logger.debug("Auto-detecção de período CGF falhou para '%s'", caminho, exc_info=True)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Ações
@@ -592,11 +595,8 @@ class TelaCGF(ctk.CTkFrame):
 
     def _carregar_vp_banco(self, periodo: str, silencioso: bool = True):
         try:
-            db = DatabasePMPV()
-            try:
+            with DatabasePMPV() as db:
                 sr_row = db.buscar_sr(periodo)
-            finally:
-                db.fechar()
             vp_mensal = float(sr_row["vp"]) if sr_row and sr_row.get("vp") else None
             if vp_mensal is not None:
                 self.lbl_vp_mensal.configure(
@@ -609,7 +609,7 @@ class TelaCGF(ctk.CTkFrame):
                 self.lbl_vp_mensal.configure(text="Mensal: sem dados")
                 self.lbl_vp_trimestral.configure(text="Trimestral: sem dados")
         except Exception:
-            pass
+            logger.debug("Falha ao atualizar label VP na CGF", exc_info=True)
 
     def _auto_salvar_cgf(self):
         """Salva CGF automaticamente após calcular, sem diálogos."""
@@ -620,8 +620,7 @@ class TelaCGF(ctk.CTkFrame):
             valor_salvar = self.cgf_rs if self.cgf_rs > 0 else self.volume_final_cgf
             self.servicos.salvar_cgf(periodo, valor_salvar)
             resumo = self._ultimo_resultado_cgf or {}
-            db = DatabasePMPV()
-            try:
+            with DatabasePMPV() as db:
                 db.salvar_cgf_resumo(
                     periodo,
                     resumo.get("volume_faturado", 0.0),
@@ -630,10 +629,8 @@ class TelaCGF(ctk.CTkFrame):
                     resumo.get("volume_consumo_proprio", 0.0),
                     resumo.get("volume_final", self.volume_final_cgf),
                 )
-            finally:
-                db.fechar()
         except Exception:
-            pass
+            logger.exception("Auto-save CGF resumo falhou para o período %s", periodo)
 
     def _salvar_cgf_scg(self):
         if self.volume_final_cgf == 0.0:
@@ -667,8 +664,7 @@ class TelaCGF(ctk.CTkFrame):
         try:
             rpv = self.servicos.salvar_cgf(periodo, valor_salvar)
             resumo = self._ultimo_resultado_cgf
-            db = DatabasePMPV()
-            try:
+            with DatabasePMPV() as db:
                 db.salvar_cgf_resumo(
                     periodo,
                     resumo.get("volume_faturado", 0.0),
@@ -677,8 +673,6 @@ class TelaCGF(ctk.CTkFrame):
                     resumo.get("volume_consumo_proprio", 0.0),
                     resumo.get("volume_final", self.volume_final_cgf),
                 )
-            finally:
-                db.fechar()
             tipo = "R$ (Volume × PMPV)" if self.cgf_rs > 0 else "volume bruto (sem PMPV)"
             messagebox.showinfo(
                 "CGF Salvo ✅",
@@ -710,8 +704,7 @@ class TelaCGF(ctk.CTkFrame):
         try:
             self.servicos.salvar_cgf(periodo, valor_salvar)
             resumo = self._ultimo_resultado_cgf
-            db = DatabasePMPV()
-            try:
+            with DatabasePMPV() as db:
                 db.salvar_cgf_resumo(
                     periodo,
                     resumo.get("volume_faturado", 0.0),
@@ -720,8 +713,6 @@ class TelaCGF(ctk.CTkFrame):
                     resumo.get("volume_consumo_proprio", 0.0),
                     resumo.get("volume_final", self.volume_final_cgf),
                 )
-            finally:
-                db.fechar()
 
             meta_execucao = registrar_execucao_excel_final(
                 etapa="CGF", periodo=periodo, parent=self

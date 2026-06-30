@@ -59,6 +59,13 @@ class ServicosConsolidacao:
         })
         return normalizado
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.repo.db.__exit__(exc_type, exc_val, exc_tb)
+        return False
+
     def fechar(self):
         self.repo.fechar()
 

@@ -9,11 +9,11 @@ import logging
 
 from Src.config import ui_theme as ui
 from Src.Services.servicos_pmpv import ExcelPMPV
-# Casos de uso da aplicação (desacoplados da infraestrutura)
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 from Src.common.excel_final_destino import registrar_execucao_excel_final, novo_excel_final
-from Src.Database.database import DatabasePMPV
+from Src.common.formatting import format_brl4, format_vol_m3
+from Src.common.periodos import TRIMESTRES_FISCAIS, MESES_ABREVS
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,7 @@ class TelaPMPV(ctk.CTkFrame):
 
     @staticmethod
     def _fmt_volume(valor: float) -> str:
-        texto = f"{valor:,.2f}"
-        inteiro, decimal = texto.split(".")
-        inteiro = inteiro.replace(",", ".")
-        decimal = decimal.rstrip("0")
-        return f"{inteiro},{decimal}" if decimal else inteiro
+        return format_vol_m3(valor)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,13 +38,8 @@ class TelaPMPV(ctk.CTkFrame):
             "Setembro": 30, "Outubro": 31, "Novembro": 30, "Dezembro": 31
         }
         self.lista_meses = list(self.mapa_dias.keys())
-        self._abrevs_meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-        self.trimestres = {
-            "Nov - Jan": (10, 11, 0),
-            "Fev - Abr": (1, 2, 3),
-            "Mai - Jul": (4, 5, 6),
-            "Ago - Out": (7, 8, 9),
-        }
+        self._abrevs_meses = MESES_ABREVS
+        self.trimestres = TRIMESTRES_FISCAIS
         self.dias_config = {"Mês 1": 30, "Mês 2": 30, "Mês 3": 30}
         self.dados_meses  = {}
         self.scroll_frames = {}
@@ -196,8 +187,10 @@ class TelaPMPV(ctk.CTkFrame):
             d['vol_calc'].configure(text="—")
 
     def _val(self, e):
-        try: return float(e.get().replace(',', '.'))
-        except: return 0.0
+        try:
+            return float(e.get().replace(',', '.'))
+        except (ValueError, AttributeError):
+            return 0.0
 
     @staticmethod
     def _limpar_str_volume(val: str) -> str:
@@ -351,11 +344,10 @@ class TelaPMPV(ctk.CTkFrame):
         except ValueError as e:
             return messagebox.showwarning("Erro", str(e))
 
-        def _brl4(v): return f"R$ {v:,.4f}".replace(",","X").replace(".",",").replace("X",".")
         periodos = self._get_periodos_trimestre()
         tri_label = "  ·  ".join(periodos) if periodos else self.combo_trimestre.get()
         tri_curto = self.combo_trimestre.get()
-        self.lbl_pmpv.configure(text=f"PMPV ({tri_curto})   {_brl4(self.res_final['pmpv'])}")
+        self.lbl_pmpv.configure(text=f"PMPV ({tri_curto})   {format_brl4(self.res_final['pmpv'])}")
         self.lbl_vp.configure(text=f"Volume Prospectivo Total ({tri_curto}):  {self._fmt_volume(self.res_final['vp_mensal'])} m³")
 
         if self.res_final['avisos']:
@@ -467,7 +459,7 @@ class TelaPMPV(ctk.CTkFrame):
             "mai": 4, "jun": 5, "jul": 6, "ago": 7,
             "set": 8, "out": 9, "nov": 10, "dez": 11,
         }
-        lista_abrev = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        lista_abrev = MESES_ABREVS
 
         for tab_origem, periodo_origem in self.periodos_importados.items():
             if not periodo_origem:
@@ -511,31 +503,6 @@ class TelaPMPV(ctk.CTkFrame):
             if self.lista_meses[mes_idx] == mes_nome and i < len(periodos):
                 return periodos[i]
         return ""
-
-    def _buscar_vf_do_cgf(self) -> tuple[dict[str, float], float]:
-        """Busca VF real de cada mês no cgf_resumo (calculado pelo módulo CGF)."""
-        vf_por_mes = {}
-        total = 0.0
-        db = DatabasePMPV()
-        try:
-            for mes_nome in (self.res_final or {}).get("vp_por_mes", {}).keys():
-                periodo = self._periodo_do_mes(mes_nome)
-                if not periodo:
-                    continue
-                periodo_norm = ExcelPMPV._normalizar_mes(periodo)
-                resumo = db.buscar_cgf_resumo(periodo)
-                if not resumo:
-                    for item in db.listar_cgf_resumos():
-                        if ExcelPMPV._normalizar_mes(str(item.get("periodo", ""))) == periodo_norm:
-                            resumo = item
-                            break
-                if resumo and resumo.get("volume_final") is not None:
-                    valor = float(resumo["volume_final"])
-                    vf_por_mes[mes_nome] = valor
-                    total += valor
-        finally:
-            db.fechar()
-        return vf_por_mes, total
 
     def _popup_vp(self):
         vp_por_mes = (self.res_final or {}).get('vp_por_mes', {})
@@ -633,8 +600,21 @@ class TelaPMPV(ctk.CTkFrame):
             nome = f"PMPV_{tri}_{ano}"
             dados = self._get_data_dict()
             self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
+            self._salvar_pmpv_mensal()
         except Exception:
-            pass
+            logger.exception("Auto-save PMPV falhou — dados podem não ter sido gravados no banco")
+
+    def _salvar_pmpv_mensal(self):
+        """Grava o PMPV calculado em pmpv_mensal para cada mês do trimestre."""
+        if not hasattr(self, 'res_final'):
+            return
+        pmpv = self.res_final.get("pmpv", 0.0)
+        periodos = self._get_periodos_trimestre()
+        for periodo in periodos:
+            try:
+                self.use_cases.salvar_pmpv_mensal(periodo, pmpv)
+            except Exception:
+                logger.exception("Falha ao gravar pmpv_mensal para o período %s", periodo)
 
     def salvar(self):
         if not hasattr(self, 'res_final'):
@@ -645,6 +625,7 @@ class TelaPMPV(ctk.CTkFrame):
         dados = self._get_data_dict()
         try:
             self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
+            self._salvar_pmpv_mensal()
             pmpv  = self.res_final.get("pmpv", 0)
             preco = self.res_final.get("preco_final", 0)
             messagebox.showinfo(
