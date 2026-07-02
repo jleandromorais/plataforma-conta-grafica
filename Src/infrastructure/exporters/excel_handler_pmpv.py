@@ -3,11 +3,13 @@ from datetime import datetime
 from typing import Dict, Any
 
 import openpyxl
-from openpyxl.styles import (
-    Alignment, Border, Font, GradientFill, PatternFill, Side,
-)
+from openpyxl.styles import GradientFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
+from Src.infrastructure.exporters.excel_styles import (
+    fill as _fill, font as _font, border as _border,
+    border_bottom as _border_bottom, align as _align, to_float as _to_float,
+)
 
 
 # ── Paleta ARPE ───────────────────────────────────────────────────────────────
@@ -30,34 +32,6 @@ _GRAY_LIGHT  = "F2F3F4"
 _ROW_ALT     = "EBF5FB"   # linha alternada
 
 
-# ── Helpers de estilo ─────────────────────────────────────────────────────────
-
-def _fill(hex_color: str) -> PatternFill:
-    return PatternFill("solid", fgColor=hex_color)
-
-
-def _font(bold=False, size=11, color="000000", italic=False, name="Calibri") -> Font:
-    return Font(bold=bold, size=size, color=color, italic=italic, name=name)
-
-
-def _border(style="thin", color="B0B0B0") -> Border:
-    s = Side(style=style, color=color)
-    return Border(left=s, right=s, top=s, bottom=s)
-
-
-def _border_bottom(color="CCCCCC") -> Border:
-    return Border(bottom=Side(style="thin", color=color))
-
-
-def _align(h="left", v="center", wrap=False) -> Alignment:
-    return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
-
-
-def _to_float(val: Any, default=0.0) -> float:
-    try:
-        return float(val) if val is not None else default
-    except (TypeError, ValueError):
-        return default
 
 
 def _merge(ws, r, c1, c2, value, bg, fnt, align_h="center", fmt="@", row_h=None):

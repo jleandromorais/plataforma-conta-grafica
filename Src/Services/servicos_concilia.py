@@ -103,7 +103,7 @@ class RegrasConcilia:
                         # Aceita: 0.01 até 999.999.999
                         if 0.01 < f < 999_999_999:
                             lista_floats.append(f)
-                    except:
+                    except (ValueError, AttributeError):
                         pass
         
         # ============================================================================
@@ -121,7 +121,7 @@ class RegrasConcilia:
                     # ✅ Mesmo filtro: Remove apenas valores inválidos
                     if 0.01 < f < 999_999_999:
                         lista_floats.append(f)
-                except:
+                except (ValueError, AttributeError):
                     pass
         
         # ============================================================================

@@ -1,4 +1,5 @@
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.common.formatting import format_brl, parse_brl as _parse_brl
 
 class ServicosRPV:
     """Especialista em regras de negócio e formatação para o módulo RPV."""
@@ -8,21 +9,11 @@ class ServicosRPV:
 
     @staticmethod
     def formatar_brl(valor: float) -> str:
-        """Formata número em moeda brasileira: R$ 1.234,56"""
-        return f"R$ {(valor or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return format_brl(valor)
 
     @staticmethod
     def parse_brl(texto: str) -> float:
-        """Converte texto 'R$ 1.234,56' ou '1234,56' para float (matemática)."""
-        txt = texto.strip().replace("R$", "").replace(" ", "")
-        if "," in txt and "." in txt:
-            txt = txt.replace(".", "").replace(",", ".")
-        elif "," in txt:
-            txt = txt.replace(",", ".")
-        try:
-            return float(txt)
-        except ValueError:
-            return 0.0
+        return _parse_brl(texto)
 
     def obter_periodos(self) -> list:
         return self.consolidacao.obter_periodos()

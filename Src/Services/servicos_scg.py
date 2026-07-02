@@ -1,4 +1,5 @@
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.common.formatting import format_brl
 
 class ServicosSCG:
     """Especialista na gestão de dados e formatação da Consolidação SCG."""
@@ -8,8 +9,7 @@ class ServicosSCG:
 
     @staticmethod
     def formatar_brl(valor: float) -> str:
-        """Formata um valor para Reais (ex: R$ 1.500,00)."""
-        return f"R$ {(valor or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return format_brl(valor)
 
     def obter_periodos(self) -> list:
         return self.consolidacao.obter_periodos()
