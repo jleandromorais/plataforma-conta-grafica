@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import logging
 import customtkinter as ctk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox
+from datetime import datetime as _dt
+
+logger = logging.getLogger(__name__)
 
 from Src.config import ui_theme as ui
 from Src.Services.servicos_pr import ServicosPR
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final
+from Src.common.formatting import format_brl_plain, parse_brl
+from Src.common.periodos import TRIMESTRES_FISCAIS
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # ── Paleta (aliases do design system central — ver Src/config/ui_theme.py) ─────
@@ -22,24 +28,11 @@ TEXTO    = ui.COR_TEXTO
 MUTED    = ui.COR_MUTED
 LARANJA  = "#f97316"
 
-MESES_ANO = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-             "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+from Src.common.periodos import MESES_ABREVS as MESES_ANO
 
 
-def _fmt2(v: float) -> str:
-    return f"{(v or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def _parse(txt: str) -> float:
-    t = txt.strip().replace("R$", "").replace(" ", "").replace("m³", "")
-    if "," in t and "." in t:
-        t = t.replace(".", "").replace(",", ".")
-    elif "," in t:
-        t = t.replace(",", ".")
-    try:
-        return float(t)
-    except ValueError:
-        return 0.0
+_fmt2 = format_brl_plain
+_parse = parse_brl
 
 
 class _EntradaSR(ctk.CTkFrame):
@@ -78,12 +71,14 @@ class TelaPR(ctk.CTkFrame):
     # Número de linhas de SR anteriores oferecidas ao usuário
     _N_SR_ANT = 4
 
+    _TRIMESTRES = TRIMESTRES_FISCAIS
+    _ABREVS = MESES_ANO
+
     def __init__(self, parent=None):
         super().__init__(parent, fg_color=BG)
         self.servicos = ServicosPR()
         self._sr_entries: list[_EntradaSR] = []
         self._build_ui()
-        self._carregar_periodos()
 
     # ── CONSTRUÇÃO DA UI ──────────────────────────────────────────────────────
 
@@ -107,16 +102,26 @@ class TelaPR(ctk.CTkFrame):
         row1.pack(fill="x", padx=20, pady=(10, 4))
 
         ctk.CTkLabel(row1, text="Trimestre:", font=("Roboto", 12, "bold"),
-                     text_color=MUTED).pack(side="left", padx=(0, 16))
+                     text_color=TEXTO).pack(side="left", padx=(0, 8))
 
-        self.combo_m1 = ctk.CTkComboBox(row1, width=150, font=("Roboto", 11))
-        self.combo_m2 = ctk.CTkComboBox(row1, width=150, font=("Roboto", 11))
-        self.combo_m3 = ctk.CTkComboBox(row1, width=150, font=("Roboto", 11))
-        for label, combo in [("Mês 1:", self.combo_m1), ("Mês 2:", self.combo_m2),
-                              ("Mês 3:", self.combo_m3)]:
-            ctk.CTkLabel(row1, text=label, font=("Roboto", 11),
-                         text_color=MUTED).pack(side="left", padx=(8, 4))
-            combo.pack(side="left", padx=(0, 4))
+        _mes_idx = _dt.now().month - 1
+        _tri_padrao = next(
+            (k for k, v in self._TRIMESTRES.items() if _mes_idx in v),
+            "Fev - Abr"
+        )
+        self.combo_trimestre = ctk.CTkComboBox(
+            row1, values=list(self._TRIMESTRES.keys()),
+            width=130, font=("Roboto", 11), state="readonly",
+            command=lambda _: None)
+        self.combo_trimestre.set(_tri_padrao)
+        self.combo_trimestre.pack(side="left", padx=(0, 12))
+
+        ctk.CTkLabel(row1, text="Ano:", font=("Roboto", 12),
+                     text_color=MUTED).pack(side="left", padx=(0, 4))
+        self.entry_ano = ctk.CTkEntry(row1, width=70, justify="center",
+                                       font=("Roboto", 11))
+        self.entry_ano.insert(0, str(_dt.now().year))
+        self.entry_ano.pack(side="left", padx=(0, 12))
 
         row2 = ctk.CTkFrame(trim_frame, fg_color="transparent")
         row2.pack(fill="x", padx=20, pady=(0, 10))
@@ -244,6 +249,20 @@ class TelaPR(ctk.CTkFrame):
                       fg_color=INPUT_BG, hover_color=AZUL,
                       command=self._atualizar_historico).pack(side="left")
 
+        # ── DETALHAMENTO TRIMESTRAL (SCG + SR por mês / VP) ──────────────────
+        det_card = ctk.CTkFrame(scroll, fg_color=CARD, corner_radius=12)
+        det_card.pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(det_card,
+                     text="📊  Decomposição Trimestral  —  PR = Σ (SCG_m + SR_m) / VP_m",
+                     font=("Roboto", 12, "bold"), text_color=AZUL).pack(
+            anchor="w", padx=16, pady=(10, 4))
+
+        self.det_box = ctk.CTkTextbox(det_card, font=("Consolas", 11),
+                                       fg_color=BG, text_color=TEXTO, height=110)
+        self.det_box.pack(fill="x", padx=14, pady=(0, 10))
+        self.det_box.configure(state="disabled")
+
         # ── HISTÓRICO ────────────────────────────────────────────────────────
         hist = ctk.CTkFrame(scroll, fg_color=CARD, corner_radius=12)
         hist.pack(fill="x", pady=(0, 20))
@@ -257,26 +276,32 @@ class TelaPR(ctk.CTkFrame):
 
     # ── LÓGICA ────────────────────────────────────────────────────────────────
 
-    def _carregar_periodos(self):
-        periodos = self.servicos.obter_todos_periodos()
-        valores = periodos if periodos else [""]
-        for combo in (self.combo_m1, self.combo_m2, self.combo_m3):
-            combo.configure(values=valores)
-        if len(periodos) >= 3:
-            self.combo_m1.set(periodos[0])
-            self.combo_m2.set(periodos[1])
-            self.combo_m3.set(periodos[2])
-        elif periodos:
-            for combo in (self.combo_m1, self.combo_m2, self.combo_m3):
-                combo.set(periodos[0])
-        self._atualizar_historico()
+    def _get_periodos_trimestre(self) -> list[str]:
+        """Retorna os 3 períodos (ex: ['Fev/2026','Mar/2026','Abr/2026']) do trimestre selecionado."""
+        tri = self.combo_trimestre.get()
+        indices = self._TRIMESTRES.get(tri, (1, 2, 3))
+        try:
+            ano = int(self.entry_ano.get().strip())
+        except ValueError:
+            ano = _dt.now().year
+        periodos = []
+        for idx in indices:
+            mes_abrev = self._ABREVS[idx]
+            # Nov e Dez pertencem ao ano anterior do trimestre fiscal
+            ano_mes = (ano - 1) if idx in (10, 11) else ano
+            periodos.append(f"{mes_abrev}/{ano_mes}")
+        return periodos
 
     def _gerar_nome_trimestre(self) -> str:
-        m1 = self.combo_m1.get().strip()
-        m3 = self.combo_m3.get().strip()
-        if m1 and m3 and m1 != m3:
-            return f"{m1} – {m3}"
-        return m1 or m3 or ""
+        tri = self.combo_trimestre.get()
+        try:
+            ano = int(self.entry_ano.get().strip())
+        except ValueError:
+            ano = _dt.now().year
+        return f"{tri}/{ano}"
+
+    def _carregar_periodos(self):
+        self._atualizar_historico()
 
     def _soma_sr(self) -> float:
         total = self.entry_sr_atual.get()
@@ -306,37 +331,54 @@ class TelaPR(ctk.CTkFrame):
             self.lbl_pr.configure(text_color=VERMELHO)
             self.lbl_aviso.configure(text="▼ Resultado negativo", text_color=VERMELHO)
 
+    def _atualizar_det_box(self, meses: list[dict], pr_final: float):
+        """Preenche o textbox de decomposição trimestral."""
+        linhas = [
+            f"{'Período':<14} {'SCG (R$)':>18} {'SR (R$)':>18} {'VP (m³)':>14} {'Parcela PR':>14}",
+            "─" * 82,
+        ]
+        for m in meses:
+            parcela = m["parcela_pr"]
+            linhas.append(
+                f"{m['periodo']:<14} "
+                f"{ServicosPR.formatar_brl(m['scg']):>18} "
+                f"{ServicosPR.formatar_brl(m['sr']):>18} "
+                f"{ServicosPR.formatar_volume(m['vp']):>14} "
+                f"{ServicosPR.formatar_pr(parcela):>14}"
+            )
+        linhas.append("─" * 82)
+        linhas.append(f"{'PR TRIMESTRAL':>64}  {ServicosPR.formatar_pr(pr_final):>14}")
+
+        self.det_box.configure(state="normal")
+        self.det_box.delete("1.0", "end")
+        self.det_box.insert("end", "\n".join(linhas))
+        self.det_box.configure(state="disabled")
+
     def _carregar_trimestre(self):
-        m1 = self.combo_m1.get().strip()
-        m2 = self.combo_m2.get().strip()
-        m3 = self.combo_m3.get().strip()
-        periodos = [p for p in (m1, m2, m3) if p]
+        periodos = self._get_periodos_trimestre()
         if not periodos:
             messagebox.showwarning("Aviso", "Selecione ao menos um mês.")
             return
 
+        # PR = Σ (SCG_m + SR_m) / VP_m  (fórmula normalizada por mês)
         dados = self.servicos.buscar_dados_trimestral(periodos)
 
-        # SCG e VP do banco
+        # Preenche campos com os totais
         self.entry_scg.delete(0, "end")
         self.entry_scg.insert(0, _fmt2(dados["scg"]))
         self.entry_vp.delete(0, "end")
         self.entry_vp.insert(0, _fmt2(dados["vp"]))
 
-        # SR atual = soma dos SRs dos 3 meses do trimestre
+        # SR atual = soma dos SRs dos meses do trimestre
         self.entry_sr_atual.set(dados["sr"])
 
         # Tenta preencher SRs anteriores do banco (trimestres passados)
-        db = DatabasePMPV()
-        try:
+        with DatabasePMPV() as db:
             sr_anteriores = db.listar_sr()
-            # Filtra os que NÃO são do trimestre atual
-            sr_anteriores = [
-                r for r in sr_anteriores
-                if r.get("periodo") not in periodos
-            ]
-        finally:
-            db.fechar()
+        sr_anteriores = [
+            r for r in sr_anteriores
+            if r.get("periodo") not in periodos
+        ]
 
         for i, e in enumerate(self._sr_entries):
             if i < len(sr_anteriores):
@@ -344,12 +386,47 @@ class TelaPR(ctk.CTkFrame):
             else:
                 e.set(0.0)
 
-        self._recalcular()
+        # Mostra decomposição mês a mês e atualiza PR com valor normalizado
+        self._atualizar_det_box(dados.get("meses", []), dados["pr"])
+
+        # Exibe o PR já calculado pela fórmula normalizada
+        self.lbl_pr.configure(
+            text=ServicosPR.formatar_pr(dados["pr"]),
+            text_color=VERDE if dados["pr"] > 0 else (VERMELHO if dados["pr"] < 0 else AMARELO))
+        saldo = dados["scg"] + dados["sr"] + sum(e.get() for e in self._sr_entries)
+        self.lbl_saldo_total.configure(
+            text=f"Saldo Total a Recuperar:  {ServicosPR.formatar_brl(saldo)}",
+            text_color=VERDE if saldo >= 0 else VERMELHO)
+        self.lbl_aviso.configure(
+            text=f"Trimestre: {self._gerar_nome_trimestre()}",
+            text_color=AZUL)
 
         if dados["scg"] == 0 and dados["sr"] == 0 and dados["vp"] == 0:
             messagebox.showinfo("Sem dados",
                                 "Nenhum valor encontrado no banco para os meses selecionados.\n"
                                 "Execute SCG e SR e salve no banco primeiro.")
+            return
+
+        meses_sem_vp = dados.get("meses_sem_vp", [])
+        if meses_sem_vp:
+            vp_fmt = f"{dados['vp']:,.0f}".replace(",", ".")
+            messagebox.showwarning(
+                "VP ausente",
+                f"Os meses a seguir não têm VP cadastrado:\n"
+                f"  {', '.join(meses_sem_vp)}\n\n"
+                f"A parcela desses meses foi calculada usando o VP total do trimestre "
+                f"({vp_fmt} m³) como fallback.\n"
+                f"Cadastre o VP correto em SR para resultado mais preciso."
+            )
+
+        # Auto-save silencioso: persiste o PR trimestral calculado
+        nome_tri = self._gerar_nome_trimestre()
+        if nome_tri:
+            try:
+                self.servicos.salvar_valores(nome_tri, dados["scg"], dados["sr"], dados["vp"])
+                self._atualizar_historico()
+            except Exception:
+                logger.exception("Auto-save PR falhou para o trimestre %s", nome_tri)
 
     def _limpar_campos(self):
         self.entry_scg.delete(0, "end")
@@ -371,15 +448,7 @@ class TelaPR(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Preencha ao menos um dos valores.")
             return
 
-        nome_sugerido = self._gerar_nome_trimestre()
-        periodo = simpledialog.askstring(
-            "Nome do trimestre",
-            "Nome para salvar este trimestre\n(ex: T1/2026  ou  Nov/2025 – Jan/2026):",
-            initialvalue=nome_sugerido, parent=self)
-        if not periodo or not periodo.strip():
-            return
-
-        periodo = periodo.strip()
+        periodo = self._gerar_nome_trimestre()
         pr = self.servicos.salvar_valores(periodo, scg, sr_tot, vp)
 
         self._recalcular()
@@ -411,15 +480,7 @@ class TelaPR(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Carregue o trimestre antes de adicionar ao Excel final.")
             return
 
-        nome_sugerido = self._gerar_nome_trimestre()
-        periodo = simpledialog.askstring(
-            "Nome do trimestre",
-            "Nome do trimestre para o Excel final:",
-            initialvalue=nome_sugerido, parent=self)
-        if not periodo or not periodo.strip():
-            return
-        periodo = periodo.strip()
-
+        periodo = self._gerar_nome_trimestre()
         self.servicos.salvar_valores(periodo, scg, sr_tot, vp)
         meta = registrar_execucao_excel_final(etapa="PR", periodo=periodo, parent=self)
         if not meta:

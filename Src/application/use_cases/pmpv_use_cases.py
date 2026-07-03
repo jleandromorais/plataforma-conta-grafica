@@ -95,5 +95,12 @@ class PMPVUseCases:
     def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
         self.repo.salvar_pmpv_mensal(periodo, pmpv)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.repo.__exit__(exc_type, exc_val, exc_tb)
+        return False
+
     def fechar(self):
         self.repo.fechar()

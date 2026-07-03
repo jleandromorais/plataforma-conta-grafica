@@ -7,6 +7,7 @@ import customtkinter as ctk
 
 from Src.config import ui_theme as ui
 from Src.Database.database import DatabasePMPV
+from Src.common.formatting import format_brl, format_brl4, format_brl_compacto
 
 try:
     import matplotlib
@@ -57,22 +58,9 @@ def _chave(p: str) -> tuple[int, int]:
     return (int(ano), _MESES_ORDEM[mes])
 
 
-def _brl(v: float) -> str:
-    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def _brl_compacto(v: float) -> str:
-    sinal = "-" if v < 0 else ""
-    av = abs(v)
-    if av >= 1_000_000:
-        return f"{sinal}R$ {av/1_000_000:,.2f} Mi".replace(",", "X").replace(".", ",").replace("X", ".")
-    if av >= 1_000:
-        return f"{sinal}R$ {av/1_000:,.1f} mil".replace(",", "X").replace(".", ",").replace("X", ".")
-    return _brl(v)
-
-
-def _pmpv_fmt(v: float) -> str:
-    return f"R$ {v:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+_brl = format_brl
+_brl_compacto = format_brl_compacto
+_pmpv_fmt = format_brl4
 
 
 def _pct(v: float) -> str:
@@ -119,6 +107,11 @@ class PainelResumo(ctk.CTkFrame):
         )
         self.combo_ano.set(TODOS_OS_ANOS)
         self.combo_ano.pack(side="right")
+        ctk.CTkButton(
+            topo, text="🔄", width=36, height=28,
+            font=ctk.CTkFont(size=14), fg_color=_INPUT,
+            hover_color=_AZUL, command=self._recarregar,
+        ).pack(side="right", padx=(0, 8))
 
         self.lbl_periodo = ctk.CTkLabel(
             self, text="", font=ctk.CTkFont(size=12), text_color=_MUTED,
@@ -227,6 +220,10 @@ class PainelResumo(ctk.CTkFrame):
         self.combo_ano.configure(values=vals)
         if self.combo_ano.get() not in vals:
             self.combo_ano.set(TODOS_OS_ANOS)
+
+    def _recarregar(self):
+        self._carregar_banco()
+        self._atualizar()
 
     def _filtrar(self, itens: list[dict]) -> list[dict]:
         ano = self.combo_ano.get()

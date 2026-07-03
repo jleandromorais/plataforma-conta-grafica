@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import Dict, List
 
 from Src.common.app_paths import raiz_aplicacao
-from Src.common.periodos import normalizar_periodo, variantes_periodo
+from Src.common.periodos import (
+    normalizar_periodo, variantes_periodo, periodo_sort_key, is_periodo_valido,
+    MESES_ABREVS as _MESES_ABREVS, abrev_para_numero,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +299,22 @@ class DatabasePMPV:
                 data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Índices para consultas frequentes por período e empresa
+        _indexes = [
+            ("idx_dados_mes_sessao",     "dados_mes",        "sessao_id"),
+            ("idx_auditoria_periodo",    "auditoria_itens",  "periodo"),
+            ("idx_auditoria_empresa",    "auditoria_itens",  "empresa"),
+            ("idx_ret_periodo",          "ret_itens",        "periodo"),
+            ("idx_ret_empresa",          "ret_itens",        "empresa"),
+            ("idx_concilia_periodo",     "concilia_itens",   "periodo"),
+            ("idx_consolidacao_periodo", "consolidacao",     "periodo"),
+            ("idx_sr_trimestre_tri",     "sr_trimestre",     "trimestre"),
+            ("idx_excel_exec_sessao",    "excel_final_execucoes", "nome_sessao"),
+        ]
+        for idx_name, tabela, coluna in _indexes:
+            self.cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {idx_name} ON {tabela}({coluna})"
+            )
         self.conn.commit()
 
     def salvar_trimestre_ativo(self, meses: list[str]) -> None:
@@ -326,19 +345,14 @@ class DatabasePMPV:
         Ordena cronologicamente (ano × 12 + mes) para evitar ordem alfabética
         errada (Fev < Jan na ordem de letras).
         """
-        _MESES = {"Jan":1,"Fev":2,"Mar":3,"Abr":4,"Mai":5,"Jun":6,
-                  "Jul":7,"Ago":8,"Set":9,"Out":10,"Nov":11,"Dez":12}
+        _ABREVS = set(_MESES_ABREVS)
 
         def _para_int(p: str) -> int:
-            """'Jan/2026' → 2026*12+1 para comparação cronológica."""
             try:
                 abrev, ano = p.strip().split("/")
-                return int(ano) * 12 + _MESES.get(abrev.strip().capitalize(), 0)
+                return int(ano) * 12 + abrev_para_numero(abrev.strip().capitalize()[:3])
             except Exception:
                 return 0
-
-        _ABREVS = {"Jan","Fev","Mar","Abr","Mai","Jun",
-                   "Jul","Ago","Set","Out","Nov","Dez"}
 
         def _valido(p: str) -> bool:
             parts = (p or "").strip().split("/")
@@ -605,7 +619,7 @@ class DatabasePMPV:
         return self._merge_registros_periodo(registros, periodo, ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
     
     def listar_periodos(self) -> List:
-        """Lista todos os períodos conhecidos em qualquer tabela do banco."""
+        """Lista todos os períodos válidos (Mês/Ano), ordenados do mais recente ao mais antigo."""
         self.cursor.execute("""
             SELECT periodo FROM consolidacao
             UNION
@@ -624,10 +638,15 @@ class DatabasePMPV:
             SELECT periodo FROM pr_resultados
             UNION
             SELECT periodo FROM pv_resultados
-            ORDER BY periodo DESC
         """)
-        raw = [{"periodo": row[0]} for row in self.cursor.fetchall() if row[0]]
-        return self._deduplicar_periodos(raw, ())
+        raw = [
+            {"periodo": row[0]}
+            for row in self.cursor.fetchall()
+            if row[0] and is_periodo_valido(str(row[0]))
+        ]
+        dedup = self._deduplicar_periodos(raw, ())
+        dedup.sort(key=lambda r: periodo_sort_key(r["periodo"]), reverse=True)
+        return dedup
 
     def listar_consolidacao_completa(self, periodo: str | None = None) -> List[Dict]:
         if periodo:
@@ -1232,6 +1251,38 @@ class DatabasePMPV:
         except OSError:
             logger.exception("Falha ao criar backup do banco")
             return None
+
+    def listar_periodos_distintos(self, tabela: str, col_periodo: str = "periodo") -> list[str]:
+        """Retorna todos os valores distintos de uma coluna de período em uma tabela.
+
+        Equivalente a SELECT DISTINCT {col_periodo} FROM {tabela}, mas sem
+        expor o cursor publicamente.
+        """
+        tabela = self._validar_tabela(tabela)
+        col_periodo = self._validar_identificador(col_periodo)
+        self.cursor.execute(f"SELECT DISTINCT {col_periodo} FROM {tabela} WHERE {col_periodo} IS NOT NULL")
+        return [r[0] for r in self.cursor.fetchall() if r[0]]
+
+    def buscar_resultado_sessao(self, sessao_id: int) -> dict | None:
+        """Retorna o resultado mais recente (linha com maior id) de uma sessão PMPV."""
+        self.cursor.execute(
+            "SELECT * FROM resultados WHERE sessao_id = ? ORDER BY id DESC LIMIT 1",
+            (sessao_id,)
+        )
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+
+    def buscar_pmpv_por_periodo(self, periodo: str) -> float:
+        """Retorna o valor de PMPV da tabela pmpv_mensal para um período, ou 0.0."""
+        try:
+            self.cursor.execute(
+                "SELECT pmpv FROM pmpv_mensal WHERE periodo = ? LIMIT 1",
+                (periodo,)
+            )
+            row = self.cursor.fetchone()
+            return float(row[0]) if row else 0.0
+        except Exception:
+            return 0.0
 
     def fechar(self):
         if self.conn:

@@ -14,6 +14,7 @@ from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
+from Src.common.formatting import format_brl as _fmt_brl
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
@@ -452,9 +453,7 @@ class TelaAuditoria(ctk.CTkFrame):
     def _atualizar_painel_trimestral(self, periodo: str):
         """Busca CGR dos 3 meses do trimestre no banco e popula os cards."""
         def _fmt(v):
-            if v is None:
-                return "—"
-            return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+            return "—" if v is None else _fmt_brl(v)
 
         meses = self._trimestre_de(periodo)
         if not meses:
@@ -540,7 +539,7 @@ class TelaAuditoria(ctk.CTkFrame):
             self.lbl_modo_badge.configure(text=txt, fg_color=cor)
 
     def _atualizar_painel_cgr(self, bruto: float, icms: float, liquido: float):
-        def _fmt(v): return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+        _fmt = _fmt_brl
         self.lbl_cgr_bruto.configure(text=_fmt(bruto))
         self.lbl_cgr_icms.configure(text=_fmt(icms))
         self.lbl_cgr_liquido.configure(text=_fmt(liquido))
@@ -859,7 +858,7 @@ class TelaAuditoria(ctk.CTkFrame):
         )
         self._atualizar_painel_cgr(self.valor_total_geral, icms_total_all, self.cgr_liquido)
 
-        def _fmt(v): return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+        _fmt = _fmt_brl
         def _sep(c="─", n=62): return c * n
 
         self.text_resultados.configure(state="normal")
@@ -1062,9 +1061,8 @@ class TelaAuditoria(ctk.CTkFrame):
                 for r in self.resultados
             ]
             try:
-                db = DatabasePMPV()
-                db.salvar_auditoria_itens(periodo, itens_dict)
-                db.fechar()
+                with DatabasePMPV() as db:
+                    db.salvar_auditoria_itens(periodo, itens_dict)
             except Exception as e:
                 messagebox.showwarning("Aviso BD", f"CGR salvo no SCG, mas erro ao salvar itens:\n{e}")
 
@@ -1077,64 +1075,73 @@ class TelaAuditoria(ctk.CTkFrame):
         )
 
     def _adicionar_excel_final(self):
-        cgr = getattr(self, 'cgr_liquido', 0.0)
-        if cgr == 0.0 and not self.resultados:
-            messagebox.showwarning("Aviso", "Execute a auditoria antes de adicionar ao Excel final.")
+        if not self.resultados:
+            messagebox.showwarning("Aviso", "Execute a auditoria antes de exportar o Excel final.")
             return
 
         periodo_salvar = self._periodo_normalizado()
         if not periodo_salvar:
-            meses_auto = obter_periodos_trimestre()
-            periodo_salvar = meses_auto[-1] if meses_auto else ""
-        if not periodo_salvar:
             messagebox.showwarning(
-                "Período não encontrado",
-                "Não foi possível determinar o período automaticamente.\n"
-                "Selecione o período de comparação na tela antes de adicionar ao Excel Final.",
+                "Período não selecionado",
+                "Selecione o mês/ano antes de exportar o Excel Final.",
+                parent=self,
+            )
+            return
+
+        # Precisa de Excel de comparação carregado
+        if self.df_excel is None:
+            messagebox.showwarning(
+                "Excel de comparação não selecionado",
+                "Selecione o Excel da Conta Gráfica antes de exportar.\n"
+                "Use o campo 'Excel comparação (opcional)' no painel esquerdo.",
                 parent=self,
             )
             return
 
         try:
             periodo_salvar = periodo_salvar.strip()
-            self.consolidacao.salvar_cgr(periodo_salvar, cgr)
 
-            if self.resultados:
-                itens_dict = [
-                    {
-                        "empresa": r.empresa,
-                        "tipo": r.tipo,
-                        "numero": r.numero,
-                        "valor_total": r.valor_total,
-                        "icms": r.icms,
-                        "pis": r.pis,
-                        "cofins": r.cofins,
-                        "volume_total": r.volume_total,
-                        "cgr_liquido": RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa),
-                    }
-                    for r in self.resultados
-                ]
-                db = DatabasePMPV()
-                try:
-                    db.salvar_auditoria_itens(periodo_salvar, itens_dict)
-                finally:
-                    db.fechar()
+            # Executa (ou re-executa) a comparação agora, para garantir dados frescos
+            self.lbl_status.configure(text="Comparando notas com o Excel...", text_color=ui.COR_AVISO)
+            self.update_idletasks()
 
-            meta_execucao = registrar_execucao_excel_final(etapa="Auditoria XML", periodo=periodo_salvar, parent=self)
-            if not meta_execucao:
-                return
-            destino, nome_sessao, periodo_norm, execucao = meta_execucao
-            meses_tri = obter_periodos_trimestre(periodo_norm)
-            arquivo = ExcelConsolidado.exportar(
-                periodo=periodo_norm,
-                nome_arquivo=destino,
-                periodos_trimestre=meses_tri,
+            from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
+            comparacao = ComparadorContaGrafica.comparar(
+                resultados=self.resultados,
+                df_excel=self.df_excel,
+                periodo=periodo_salvar,
             )
-            meses_txt = " | ".join(meses_tri) if meses_tri else periodo_norm
-            messagebox.showinfo("Excel final gerado ✅",
-                f"Arquivo: {arquivo}\n"
-                f"Trimestre: {meses_txt}\n"
-                f"Execução #{execucao}")
+            self.comparacao_notas = comparacao
+
+            # Pede ao usuário onde salvar
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nome_sugerido = f"Auditoria_Comparacao_{periodo_salvar.replace('/', '-')}_{timestamp}.xlsx"
+            destino = filedialog.asksaveasfilename(
+                title="Salvar Excel de Auditoria com Divergências",
+                initialfile=nome_sugerido,
+                defaultextension=".xlsx",
+                filetypes=[("Excel", "*.xlsx")],
+                parent=self,
+            )
+            if not destino:
+                return
+
+            cgr = getattr(self, 'cgr_liquido', 0.0)
+            ExcelAuditoria.gerar_relatorio_auditoria(
+                self.resultados,
+                destino,
+                cgr_total=cgr,
+                comparacao=comparacao,
+            )
+
+            n_div = len(comparacao.notas_apenas_nossa) + len(comparacao.notas_apenas_conta_grafica)
+            self.lbl_status.configure(
+                text=f"✅ Excel salvo com comparação | {comparacao.qtd_em_ambas} confirmadas | {n_div} divergências",
+                text_color=ui.COR_SUCESSO,
+            )
+
+            import os, subprocess
+            os.startfile(destino)
 
         except Exception as e:
-            messagebox.showerror("Erro — Módulo 9", f"Falha ao adicionar ao Excel Final:\n\n{e}")
+            messagebox.showerror("Erro ao exportar", f"Falha ao gerar o Excel:\n\n{e}")

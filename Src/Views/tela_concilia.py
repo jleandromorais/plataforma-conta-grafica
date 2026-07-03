@@ -297,9 +297,8 @@ class TelaConciliador(ctk.CTkFrame):
                 for it in itens
             ]
             try:
-                db = DatabasePMPV()
-                db.salvar_concilia_itens(periodo, itens_dict)
-                db.fechar()
+                with DatabasePMPV() as db:
+                    db.salvar_concilia_itens(periodo, itens_dict)
             except Exception as e:
                 messagebox.showwarning("Aviso BD", f"RP salvo no SCG, mas erro ao salvar itens:\n{e}")
 
@@ -322,7 +321,10 @@ class TelaConciliador(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Processe a Conciliação antes de adicionar ao Excel final.")
             return
 
-        periodo_salvar = self.entry_periodo.get().strip() or "Geral"
+        periodo_salvar = self.entry_periodo.get().strip()
+        if not periodo_salvar:
+            messagebox.showwarning("Aviso", "Informe o período antes de adicionar ao Excel final (ex: Dez/2025).")
+            return
 
         try:
             self.consolidacao.salvar_rp(periodo_salvar, saldo)
@@ -337,11 +339,8 @@ class TelaConciliador(ctk.CTkFrame):
                     }
                     for it in itens
                 ]
-                db = DatabasePMPV()
-                try:
+                with DatabasePMPV() as db:
                     db.salvar_concilia_itens(periodo_salvar, itens_dict)
-                finally:
-                    db.fechar()
 
             meta_execucao = registrar_execucao_excel_final(etapa="Conciliação RP", periodo=periodo_salvar, parent=self)
             if not meta_execucao:

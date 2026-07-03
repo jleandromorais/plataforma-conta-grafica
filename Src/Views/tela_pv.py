@@ -271,13 +271,11 @@ class TelaPV(ctk.CTkFrame):
             self._preencher_campos(dados["pmpv"], dados["pr"])
 
     def _preencher_campos(self, pmpv: float, pr: float):
-        def _fmt(v: float) -> str:
-            return f"{(v or 0):,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
+        from Src.common.formatting import format_brl4_plain
         self.entry_pmpv.delete(0, "end")
-        self.entry_pmpv.insert(0, _fmt(pmpv))
+        self.entry_pmpv.insert(0, format_brl4_plain(pmpv))
         self.entry_pr.delete(0, "end")
-        self.entry_pr.insert(0, _fmt(pr))
+        self.entry_pr.insert(0, format_brl4_plain(pr))
         self._recalcular()
 
     def _carregar_do_banco(self):
@@ -321,6 +319,15 @@ class TelaPV(ctk.CTkFrame):
             self.lbl_pv.configure(text_color=VERMELHO)
         else:
             self.lbl_pv.configure(text_color=AMARELO)
+
+        # Auto-save silencioso
+        periodo = self.combo_periodo.get()
+        if periodo and (pmpv != 0 or pr != 0):
+            try:
+                self.servicos.salvar_valores(periodo, pmpv, pr)
+                self._atualizar_historico()
+            except Exception:
+                pass
 
     def _salvar_pv(self):
         periodo = self.combo_periodo.get()

@@ -1,8 +1,9 @@
 import customtkinter as ctk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox
 from Src.config import ui_theme as ui
 from Src.Services.servicos_rpv import ServicosRPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final
+from Src.common.formatting import format_brl_plain
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # ── Paleta (aliases do design system central — ver Src/config/ui_theme.py) ─────
@@ -46,11 +47,21 @@ class TelaRPV(ctk.CTkFrame):
 
         ctk.CTkLabel(bar, text="Período:", font=("Roboto", 12), text_color=MUTED).pack(side="left", padx=(20, 6), pady=12)
 
-        self.combo_periodo = ctk.CTkComboBox(bar, width=180, font=("Roboto", 12), command=self._ao_mudar_periodo)
-        self.combo_periodo.pack(side="left", pady=12)
+        _MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+        from datetime import datetime as _dt
+        self.combo_mes = ctk.CTkComboBox(bar, values=_MESES, width=80, font=("Roboto", 12), state="readonly")
+        self.combo_mes.set(_MESES[_dt.now().month - 1])
+        self.combo_mes.pack(side="left", pady=12, padx=(0, 4))
 
-        ctk.CTkButton(bar, text="➕ Novo período", width=120, height=30, fg_color=AZUL, font=("Roboto", 11, "bold"),
-                      command=self._criar_periodo).pack(side="left", padx=10)
+        self.entry_ano = ctk.CTkEntry(bar, width=70, justify="center", font=("Roboto", 12))
+        self.entry_ano.insert(0, str(_dt.now().year))
+        self.entry_ano.pack(side="left", pady=12, padx=(0, 8))
+
+        ctk.CTkButton(bar, text="✔ Aplicar", width=90, height=30, fg_color=AZUL, font=("Roboto", 11, "bold"),
+                      command=self._aplicar_periodo).pack(side="left", padx=(0, 10))
+
+        self.lbl_periodo_atual = ctk.CTkLabel(bar, text="", font=("Roboto", 11, "bold"), text_color=AMARELO)
+        self.lbl_periodo_atual.pack(side="left", padx=(0, 20))
 
         # ── FONTE DOS VALORES
         fonte_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -144,22 +155,26 @@ class TelaRPV(ctk.CTkFrame):
         self.hist_box.pack(fill="both", expand=True, padx=14, pady=(0, 14))
 
     # ── EVENTOS E LÓGICA ──────────────────────────────────────────────────────
-    def _carregar_periodos(self):
-        periodos = self.servicos.obter_periodos()
-        nomes = [p["periodo"] for p in periodos]
-        self.combo_periodo.configure(values=nomes if nomes else [""])
-        if nomes:
-            self.combo_periodo.set(nomes[0])
-            self._ao_mudar_periodo(nomes[0])
+    def _get_periodo(self) -> str:
+        mes = self.combo_mes.get()
+        ano = self.entry_ano.get().strip()
+        return f"{mes}/{ano}" if mes and ano else ""
+
+    def _aplicar_periodo(self):
+        periodo = self._get_periodo()
+        if not periodo:
+            return
+        self.servicos.criar_periodo(periodo)
+        self.lbl_periodo_atual.configure(text=f"📅 {periodo}")
+        dados = self.servicos.buscar_dados_periodo(periodo)
+        if dados:
+            self._preencher_campos(dados["cgr"], dados["cgf"])
+        else:
+            self._limpar_campos()
         self._atualizar_historico()
 
-    def _criar_periodo(self):
-        nome = simpledialog.askstring("Novo Período", "Nome do período (ex: Dez/2025 ou Jan/2026):", initialvalue="")
-        if nome and nome.strip():
-            self.servicos.criar_periodo(nome)
-            self._carregar_periodos()
-            self.combo_periodo.set(nome.strip())
-            self._ao_mudar_periodo(nome.strip())
+    def _carregar_periodos(self):
+        self._atualizar_historico()
 
     def _ao_mudar_periodo(self, periodo: str):
         dados = self.servicos.buscar_dados_periodo(periodo)
@@ -168,15 +183,15 @@ class TelaRPV(ctk.CTkFrame):
 
     def _preencher_campos(self, cgr: float, cgf: float):
         self.entry_cgr.delete(0, "end")
-        self.entry_cgr.insert(0, f"{cgr:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        self.entry_cgr.insert(0, format_brl_plain(cgr))
 
         self.entry_cgf.delete(0, "end")
-        self.entry_cgf.insert(0, f"{cgf:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        self.entry_cgf.insert(0, format_brl_plain(cgf))
 
         self._recalcular()
 
     def _carregar_do_banco(self):
-        periodo = self.combo_periodo.get()
+        periodo = self._get_periodo()
         if not periodo:
             messagebox.showwarning("Aviso", "Selecione um período primeiro.")
             return
@@ -212,8 +227,16 @@ class TelaRPV(ctk.CTkFrame):
             self.lbl_rpv.configure(text_color=AMARELO)
             self.lbl_sinal.configure(text="= Equilíbrio", text_color=AMARELO)
 
+        # Auto-save silencioso
+        periodo = self._get_periodo()
+        if periodo and (cgr != 0 or cgf != 0):
+            try:
+                self.servicos.salvar_valores(periodo, cgr, cgf)
+            except Exception:
+                pass
+
     def _salvar_rpv(self):
-        periodo = self.combo_periodo.get()
+        periodo = self._get_periodo()
         if not periodo:
             messagebox.showwarning("Aviso", "Selecione ou crie um período.")
             return
@@ -242,7 +265,7 @@ class TelaRPV(ctk.CTkFrame):
         self.hist_box.configure(state="disabled")
 
     def _adicionar_excel_final(self):
-        periodo = self.combo_periodo.get()
+        periodo = self._get_periodo()
         if not periodo:
             messagebox.showwarning("Aviso", "Selecione ou crie um período para adicionar ao Excel final.")
             return

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import customtkinter as ctk
 from tkinter import messagebox
+
+logger = logging.getLogger(__name__)
 
 from Src.config import ui_theme as ui
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final, solicitar_periodo_excel_final
+from Src.common.formatting import format_brl
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 # Paleta (aliases do design system central — ver Src/config/ui_theme.py)
@@ -50,12 +54,10 @@ def _fv(v: float) -> str:
     return f"{i.replace(',','.')},{d.rstrip('0') or '00'}"
 
 
-def _fb(v: float) -> str:
-    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+_fb = format_brl
 
 
-MESES_ANO = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-             "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+from Src.common.periodos import MESES_ABREVS as MESES_ANO
 
 
 class _LinhasMes(ctk.CTkFrame):
@@ -275,14 +277,20 @@ class TelaSR(ctk.CTkFrame):
     # ── LÓGICA ───────────────────────────────────────────────────────────────
 
     def _get_trimestre_labels(self) -> list[str]:
-        ano = self.entry_ano.get().strip() or "2026"
-        if len(ano) == 2:
-            ano = "20" + ano
-        return [
-            f"{self.combo_m1.get()}/{ano}",
-            f"{self.combo_m2.get()}/{ano}",
-            f"{self.combo_m3.get()}/{ano}",
-        ]
+        ano = int(self.entry_ano.get().strip() or "2026")
+        if ano < 100:
+            ano += 2000
+        meses = [self.combo_m1.get(), self.combo_m2.get(), self.combo_m3.get()]
+        resultado = []
+        ano_atual = ano
+        for i, mes in enumerate(meses):
+            idx = MESES_ANO.index(mes) if mes in MESES_ANO else i
+            if i > 0:
+                idx_ant = MESES_ANO.index(meses[i - 1]) if meses[i - 1] in MESES_ANO else i - 1
+                if idx < idx_ant:
+                    ano_atual += 1
+            resultado.append(f"{mes}/{ano_atual}")
+        return resultado
 
     def _aplicar_trimestre(self):
         """Reconstrói as linhas de mês conforme o trimestre selecionado."""
@@ -300,11 +308,8 @@ class TelaSR(ctk.CTkFrame):
             self._linhas.append(linha)
 
     def _carregar_sessoes(self):
-        db = DatabasePMPV()
-        try:
+        with DatabasePMPV() as db:
             self._sessoes = db.listar_sessoes_com_volumes() or []
-        finally:
-            db.fechar()
 
         if not self._sessoes:
             self.combo_sessao.configure(values=["(nenhuma sessão)"])
@@ -336,22 +341,28 @@ class TelaSR(ctk.CTkFrame):
 
         meses_tri = self._get_trimestre_labels()
 
-        db = DatabasePMPV()
-        try:
+        with DatabasePMPV() as db:
             for i, linha in enumerate(self._linhas):
-                # VP — soma volumes da sessão PMPV para o mês i+1
                 dados_mes = db.carregar_dados_mes(sid, i + 1) or []
                 vp = sum(float(l.get("volume", 0) or 0) for l in dados_mes)
 
-                # VF — volume_final do CGF para o mês correspondente
                 resumo = db.buscar_cgf_resumo(meses_tri[i])
                 vf = float(resumo["volume_final"]) if resumo and resumo.get(
                     "volume_final") is not None else 0.0
 
+                pr_row = db.buscar_sr(meses_tri[i])
+                pr_salvo = float((pr_row or {}).get("pr") or 0.0)
+                if pr_salvo == 0.0 and vp > 0:
+                    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+                    dados_cons = ServicosConsolidacao().buscar_consolidacao(meses_tri[i])
+                    scg_m = float((dados_cons or {}).get("scg") or 0.0)
+                    sr_m  = float((pr_row or {}).get("sr") or 0.0)
+                    pr_salvo = (scg_m + sr_m) / vp if vp else 0.0
+
                 linha.set_vp(vp)
                 linha.set_vf(vf)
-        finally:
-            db.fechar()
+                linha.e_pr.delete(0, "end")
+                linha.e_pr.insert(0, f"{pr_salvo:.4f}".replace(".", ","))
 
         self._calcular()
 
@@ -385,6 +396,19 @@ class TelaSR(ctk.CTkFrame):
         cor = VERDE if total > 0 else (VERM if total < 0 else AMAR)
         self.lbl_total.configure(text=_fb(total), text_color=cor)
         self.lbl_detalhe.configure(text="   |   ".join(detalhes))
+
+        # Auto-save silencioso: persiste SR e VP por mês no banco
+        if any(r["vp"] > 0 or r["vf"] > 0 for r in resultados):
+            try:
+                labels = self._get_trimestre_labels()
+                with DatabasePMPV() as db:
+                    for i, r in enumerate(resultados):
+                        per_mes = labels[i] if i < len(labels) else r["mes"]
+                        db.salvar_sr(per_mes, r["vp"], r["vf"], r["pr"], r["sr_selic"])
+                    db.salvar_sr_trimestre(self._trimestre_label(), resultados)
+            except Exception:
+                logger.exception("Auto-save SR falhou")
+
         return resultados
 
     def _trimestre_label(self) -> str:
@@ -406,16 +430,15 @@ class TelaSR(ctk.CTkFrame):
         if not periodo:
             return
 
-        db = DatabasePMPV()
-        try:
-            # Salva resumo na tabela antiga (compatibilidade com o resto)
-            vp_tot = sum(r["vp"] for r in resultados)
-            vf_tot = sum(r["vf"] for r in resultados)
+        vp_tot = sum(r["vp"] for r in resultados)
+        vf_tot = sum(r["vf"] for r in resultados)
+        labels = self._get_trimestre_labels()
+        with DatabasePMPV() as db:
             db.salvar_sr(periodo, vp_tot, vf_tot, 0.0, total)
-            # Salva detalhe mensal
+            for i, r in enumerate(resultados):
+                per_mes = labels[i] if i < len(labels) else r["mes"]
+                db.salvar_sr(per_mes, r["vp"], r["vf"], r["pr"], r["sr_selic"])
             db.salvar_sr_trimestre(self._trimestre_label(), resultados)
-        finally:
-            db.fechar()
 
         messagebox.showinfo("Salvo ✅",
                             f"SR trimestral salvo.\nTotal = {_fb(total)}")
@@ -445,12 +468,9 @@ class TelaSR(ctk.CTkFrame):
         vp_tot = sum(r["vp"] for r in resultados)
         vf_tot = sum(r["vf"] for r in resultados)
 
-        db = DatabasePMPV()
-        try:
+        with DatabasePMPV() as db:
             db.salvar_sr(periodo, vp_tot, vf_tot, 0.0, total)
             db.salvar_sr_trimestre(self._trimestre_label(), resultados)
-        finally:
-            db.fechar()
 
         meta = registrar_execucao_excel_final(etapa="SR", periodo=periodo, parent=self)
         if not meta:

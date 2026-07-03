@@ -63,6 +63,41 @@ _ABREV_TO_FULL = {
 }
 
 
+# Lista ordenada das 12 abreviações (usada em combos, validações, etc.)
+MESES_ABREVS: list[str] = [
+    "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+    "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+]
+
+# Mapeamento EN abrev → PT abrev (para Excel com cabeçalhos em inglês)
+_EN_TO_PT: dict[str, str] = {
+    "Jan": "Jan", "Feb": "Fev", "Mar": "Mar", "Apr": "Abr",
+    "May": "Mai", "Jun": "Jun", "Jul": "Jul", "Aug": "Ago",
+    "Sep": "Set", "Oct": "Out", "Nov": "Nov", "Dec": "Dez",
+}
+
+
+def numero_para_abrev(numero: int) -> str:
+    """Converte número de mês (1–12) para abreviação PT. Lança ValueError se inválido."""
+    abrev = _MES_NUMERO.get(numero)
+    if abrev is None:
+        raise ValueError(f"Número de mês inválido: {numero!r}")
+    return abrev
+
+
+def abrev_para_numero(abrev: str) -> int:
+    """Converte abreviação PT (ex: 'Jan') para número de mês (1–12). Lança ValueError se inválido."""
+    try:
+        return MESES_ABREVS.index(abrev.capitalize()[:3]) + 1
+    except ValueError:
+        raise ValueError(f"Abreviação de mês inválida: {abrev!r}")
+
+
+def en_para_pt(abrev_en: str) -> str:
+    """Converte abreviação inglesa (ex: 'Feb') para PT (ex: 'Fev'). Retorna original se não encontrado."""
+    return _EN_TO_PT.get(abrev_en.capitalize()[:3], abrev_en)
+
+
 def _limpar_texto(valor: str | None) -> str:
     texto = "" if valor is None else str(valor).strip()
     texto = re.sub(r"\s+", " ", texto)
@@ -74,10 +109,16 @@ def _normalizar_token(texto: str) -> str:
     return re.sub(r"[^a-z0-9]", "", token.lower())
 
 
+_ANO_MIN = 2000
+_ANO_MAX = 2099
+
+
 def _normalizar_ano(ano: str) -> str:
     ano_limpo = str(ano).strip()
     if len(ano_limpo) == 2 and ano_limpo.isdigit():
-        return f"20{ano_limpo}"
+        ano_limpo = f"20{ano_limpo}"
+    if ano_limpo.isdigit() and not (_ANO_MIN <= int(ano_limpo) <= _ANO_MAX):
+        raise ValueError(f"Ano fora do intervalo permitido ({_ANO_MIN}–{_ANO_MAX}): {ano!r}")
     return ano_limpo
 
 
@@ -142,3 +183,50 @@ def variantes_periodo(periodo: str | None) -> tuple[str, ...]:
             variantes.append(curto)
 
     return tuple(variantes)
+
+
+_MES_ORDEM = {v.lower(): k for k, v in _MES_NUMERO.items()}
+
+
+def periodo_sort_key(periodo: str) -> tuple[int, int]:
+    """Retorna (ano, mes) para ordenação cronológica. Períodos inválidos vão para o final."""
+    canonico = normalizar_periodo(periodo)
+    m = re.fullmatch(r"([A-Za-z]+)/(\d{4})", canonico)
+    if m:
+        mes_str, ano_str = m.groups()
+        mes_num = _MES_ORDEM.get(mes_str.lower(), 0)
+        return (int(ano_str), mes_num)
+    return (0, 0)
+
+
+def is_periodo_valido(periodo: str) -> bool:
+    """Retorna True se o período é um Mês/Ano válido (ex: Jan/2026)."""
+    canonico = normalizar_periodo(periodo)
+    return bool(re.fullmatch(r"[A-Za-z]{3}/\d{4}", canonico))
+
+
+# ── Trimestres fiscais (PR / PV / PMPV) ──────────────────────────────────────
+# Fonte única de verdade. Índices 0-based onde 0=Jan … 11=Dez.
+# Nov (10) e Dez (11) pertencem ao ano anterior do trimestre fiscal.
+TRIMESTRES_FISCAIS: dict[str, tuple[int, int, int]] = {
+    "Nov - Jan": (10, 11, 0),
+    "Fev - Abr": (1,  2,  3),
+    "Mai - Jul": (4,  5,  6),
+    "Ago - Out": (7,  8,  9),
+}
+
+# Lista ordenada de abreviaturas por trimestre fiscal (para Excel e agrupamentos)
+TRIMESTRES_FISCAIS_ABREVS: list[tuple[str, list[str]]] = [
+    ("Nov - Jan", ["Nov", "Dez", "Jan"]),
+    ("Fev - Abr", ["Fev", "Mar", "Abr"]),
+    ("Mai - Jul", ["Mai", "Jun", "Jul"]),
+    ("Ago - Out", ["Ago", "Set", "Out"]),
+]
+
+# Trimestres civis (SCG / CGR / CGF / RET / RP / SR)
+TRIMESTRES_CIVIS: dict[str, list[str]] = {
+    "Jan - Mar": ["Jan", "Fev", "Mar"],
+    "Abr - Jun": ["Abr", "Mai", "Jun"],
+    "Jul - Set": ["Jul", "Ago", "Set"],
+    "Out - Dez": ["Out", "Nov", "Dez"],
+}

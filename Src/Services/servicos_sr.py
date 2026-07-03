@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from Src.domain.ports.repositories import SRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
+from Src.common.formatting import format_brl_plain
 
 
 class ServicosSR:
@@ -42,8 +43,9 @@ class ServicosSR:
 
     @staticmethod
     def formatar_volume(valor: float) -> str:
-        return f"{valor:,.2f} m³".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"{format_brl_plain(valor)} m³"
 
     @staticmethod
     def formatar_brl(valor: float) -> str:
-        return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        from Src.common.formatting import format_brl
+        return format_brl(valor)

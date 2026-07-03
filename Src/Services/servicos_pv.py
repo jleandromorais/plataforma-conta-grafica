@@ -21,19 +21,13 @@ class ServicosPV:
 
     @staticmethod
     def formatar_brl(valor: float) -> str:
-        return f"R$ {(valor or 0):,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        from Src.common.formatting import format_brl4
+        return format_brl4(valor)
 
     @staticmethod
     def parse_brl(texto: str) -> float:
-        txt = texto.strip().replace("R$", "").replace(" ", "")
-        if "," in txt and "." in txt:
-            txt = txt.replace(".", "").replace(",", ".")
-        elif "," in txt:
-            txt = txt.replace(",", ".")
-        try:
-            return float(txt)
-        except ValueError:
-            return 0.0
+        from Src.common.formatting import parse_brl
+        return parse_brl(texto)
 
     def obter_periodos(self) -> list[dict]:
         from Src.Services.servicos_consolidacao import ServicosConsolidacao

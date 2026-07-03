@@ -28,29 +28,24 @@ class ServicosPR:
 
     @staticmethod
     def formatar_brl(valor: float) -> str:
-        return f"R$ {(valor or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        from Src.common.formatting import format_brl
+        return format_brl(valor)
 
     @staticmethod
     def formatar_pr(valor: float) -> str:
         """Formata o PR com 4 casas decimais (R$/m³)."""
-        return f"R$ {(valor or 0):,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        from Src.common.formatting import format_brl4
+        return format_brl4(valor)
 
     @staticmethod
     def formatar_volume(valor: float) -> str:
-        return f"{(valor or 0):,.2f} m³".replace(",", "X").replace(".", ",").replace("X", ".")
+        from Src.common.formatting import format_brl_plain
+        return f"{format_brl_plain(valor)} m³"
 
     @staticmethod
     def parse_brl(texto: str) -> float:
-        """Converte 'R$ 1.234,56' ou '1234,56' para float."""
-        txt = texto.strip().replace("R$", "").replace(" ", "").replace("m³", "")
-        if "," in txt and "." in txt:
-            txt = txt.replace(".", "").replace(",", ".")
-        elif "," in txt:
-            txt = txt.replace(",", ".")
-        try:
-            return float(txt)
-        except ValueError:
-            return 0.0
+        from Src.common.formatting import parse_brl
+        return parse_brl(texto)
 
     def obter_periodos(self) -> list[dict]:
         """Retorna períodos cadastrados na consolidação (fonte do SCG/SGR)."""
@@ -96,23 +91,66 @@ class ServicosPR:
 
         return {"scg": scg, "sr": sr, "vp": vp, "pr": pr}
 
-    def buscar_dados_trimestral(self, periodos: list[str]) -> dict[str, float]:
-        """Soma SGR/SCG, SR e VP dos períodos do trimestre e retorna o PR resultante."""
+    def buscar_dados_trimestral(self, periodos: list[str]) -> dict:
+        """
+        Calcula o PR trimestral pela fórmula normalizada por VP mensal:
+            PR = Σ(SCG_m / VP_m) + Σ(SR_m / VP_m)
+
+        Retorna totais + detalhamento por mês + PR final.
+        """
         from Src.Services.servicos_consolidacao import ServicosConsolidacao
         servicos_cons = ServicosConsolidacao()
-        scg_total = 0.0
-        sr_total = 0.0
-        vp_total = 0.0
+
+        # Primeira passagem: coleta dados de todos os meses
+        meses_raw = []
+        scg_total = sr_total = vp_total = 0.0
+
         for periodo in periodos:
             if not periodo:
                 continue
             dados_cons = servicos_cons.buscar_consolidacao(periodo)
-            scg_total += float((dados_cons or {}).get("scg") or 0.0)
+            scg_m = float((dados_cons or {}).get("scg") or 0.0)
             sr_row = self._repo.buscar_sr(periodo)
-            sr_total += float((sr_row or {}).get("sr") or 0.0)
-            vp_total += float((sr_row or {}).get("vp") or 0.0)
-        pr = self.calcular_pr(scg_total, sr_total, vp_total)
-        return {"scg": scg_total, "sr": sr_total, "vp": vp_total, "pr": pr}
+            sr_m  = float((sr_row or {}).get("sr") or 0.0)
+            vp_m  = float((sr_row or {}).get("vp") or 0.0)
+
+            scg_total += scg_m
+            sr_total  += sr_m
+            vp_total  += vp_m
+
+            meses_raw.append({
+                "periodo": periodo,
+                "scg": scg_m,
+                "sr":  sr_m,
+                "vp":  vp_m,
+            })
+
+        # Segunda passagem: calcula parcelas usando VP do mês.
+        # Meses com VP=0 usam VP total do trimestre como fallback para não
+        # distorcer o PR — se nem o VP total existir, a parcela fica em zero
+        # e o mês é marcado para aviso.
+        meses = []
+        pr_acumulado = 0.0
+        meses_sem_vp = []
+
+        for m in meses_raw:
+            vp_ref = m["vp"] if m["vp"] else vp_total
+            if vp_ref:
+                parcela = (m["scg"] + m["sr"]) / vp_ref
+            else:
+                parcela = 0.0
+                meses_sem_vp.append(m["periodo"])
+            pr_acumulado += parcela
+            meses.append({**m, "parcela_pr": parcela, "vp_sem_dado": not m["vp"]})
+
+        return {
+            "scg": scg_total,
+            "sr":  sr_total,
+            "vp":  vp_total,
+            "pr":  pr_acumulado,
+            "meses": meses,
+            "meses_sem_vp": meses_sem_vp,  # lista de períodos sem VP para aviso na UI
+        }
 
     def salvar_valores(self, periodo: str, scg: float, sr: float, vp: float) -> float:
         """Calcula e persiste o PR final para o período."""

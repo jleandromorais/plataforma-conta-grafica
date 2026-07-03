@@ -11,10 +11,11 @@ from Src.common import excel_final_destino as efd
 
 @pytest.fixture
 def mock_db():
-    """Mocka DatabasePMPV usado dentro do módulo."""
+    """Mocka DatabasePMPV usado dentro do módulo (context manager)."""
     with patch("Src.common.excel_final_destino.DatabasePMPV") as mock_cls:
         instance = MagicMock()
-        mock_cls.return_value = instance
+        mock_cls.return_value.__enter__ = MagicMock(return_value=instance)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
         yield instance
 
 
@@ -38,7 +39,6 @@ class TestObterPeriodosTrimestre:
         mock_db.buscar_trimestre_ativo.return_value = ["Jan/2026", "Fev/2026", "Mar/2026"]
         resultado = efd.obter_periodos_trimestre()
         assert resultado == ["Jan/2026", "Fev/2026", "Mar/2026"]
-        mock_db.fechar.assert_called_once()
 
     def test_filtra_entradas_invalidas(self, mock_db):
         mock_db.buscar_trimestre_ativo.return_value = ["Jan/2026", "RET/25", "Q1/2026", "Fev/2026"]
@@ -96,7 +96,6 @@ class TestRegistrarExecucao:
             etapa="ETAPA1",
             caminho_arquivo=efd.EXCEL_FIXO_PATH,
         )
-        mock_db.fechar.assert_called_once()
 
     def test_etapa_vazia_vira_padrao(self, mock_db):
         mock_db.registrar_execucao_excel_final.return_value = 1
@@ -113,7 +112,6 @@ class TestRegistrarExecucao:
         mock_db.registrar_execucao_excel_final.side_effect = RuntimeError("falha")
         with pytest.raises(RuntimeError):
             efd.registrar_execucao_excel_final("X", "jan/26")
-        mock_db.fechar.assert_called_once()
 
 
 class TestNovoExcelFinal:
@@ -136,7 +134,6 @@ class TestNovoExcelFinal:
         assert resultado is True
         mock_db.zerar_sessao_excel_final.assert_called_once()
         mock_remove.assert_called_once_with(str(arquivo_fake))
-        mock_db.fechar.assert_called_once()
 
     def test_zera_quando_arquivo_nao_existe(self, mock_db, tmp_path):
         caminho_inexistente = str(tmp_path / "nao_existe.xlsx")

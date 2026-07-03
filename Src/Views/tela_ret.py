@@ -10,6 +10,7 @@ from Src.Services.servicos_ret import RegrasRET
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.Database.database import DatabasePMPV
+from Src.common.formatting import format_brl
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
 _APP_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
@@ -403,7 +404,7 @@ class TelaRET(ctk.CTkFrame):
         calc = RegrasRET.calcular_ret(self.dados_processados)
         com_valores = len([d for d in self.dados_processados if d['valor_total'] > 0])
 
-        ret_fmt2 = f"R$ {calc['ret']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        ret_fmt2 = format_brl(calc['ret'])
         self.lbl_total.configure(text=ret_fmt2)
 
         resumo_tipos = {}
@@ -417,7 +418,7 @@ class TelaRET(ctk.CTkFrame):
         for widget in self.frame_resumo.winfo_children():
             widget.destroy()
 
-        eat_bruto_fmt = f"R$ {calc['eat_bruto']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        eat_bruto_fmt = format_brl(calc['eat_bruto'])
         stats_text = f"""
 ESTATÍSTICAS DO PROCESSAMENTO
 
@@ -429,7 +430,7 @@ EC = RET (líquido): {ret_fmt2}
 RESUMO POR TIPO:
 """
         for tipo, stats in resumo_tipos.items():
-            total_tipo_fmt = f"R$ {stats['total']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            total_tipo_fmt = format_brl(stats['total'])
             stats_text += f"\n{tipo}:\n"
             stats_text += f"  - Arquivos: {stats['count']}\n"
             stats_text += f"  - Total: {total_tipo_fmt}\n"
@@ -561,7 +562,7 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
         total_geral = calc['ret']
         periodo = self.entry_periodo.get()
 
-        total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        total_fmt = format_brl(total_geral)
         if not messagebox.askyesno("Confirmar salvamento",
                                    f"Salvar RET no banco de dados?\n\n"
                                    f"Período: {periodo}\n"
@@ -573,13 +574,12 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
 
         # Salva os itens detalhados no banco principal
         try:
-            db = DatabasePMPV()
-            db.salvar_ret_itens(periodo, self.dados_processados)
-            db.fechar()
+            with DatabasePMPV() as db:
+                db.salvar_ret_itens(periodo, self.dados_processados)
         except Exception as e:
             messagebox.showwarning("Aviso BD", f"RET salvo no SCG, mas erro ao salvar itens:\n{e}")
 
-        total_fmt = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        total_fmt = format_brl(total_geral)
         messagebox.showinfo(
             "RET Salvo ✅",
             f"Período: {periodo}\n"
@@ -609,11 +609,8 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             # (idempotente: DELETE+INSERT — não duplica se já foi salvo)
             calc = RegrasRET.calcular_ret(self.dados_processados)
             self.consolidacao.salvar_ret(periodo_salvar, calc['ret'])
-            db_save = DatabasePMPV()
-            try:
+            with DatabasePMPV() as db_save:
                 db_save.salvar_ret_itens(periodo_salvar, self.dados_processados)
-            finally:
-                db_save.fechar()
 
             meta_execucao = registrar_execucao_excel_final(etapa="RET", periodo=periodo_salvar, parent=self)
             if not meta_execucao:

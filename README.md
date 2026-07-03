@@ -16,9 +16,9 @@
     <img src="https://img.shields.io/badge/UI-CustomTkinter-2B2B2B?style=for-the-badge&logo=python&logoColor=white" alt="CustomTkinter"/>
     <img src="https://img.shields.io/badge/SQLite-Local-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite"/>
     <img src="https://img.shields.io/badge/PostgreSQL-DataWarehouse-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
-    <img src="https://img.shields.io/badge/Airflow-2.9.0-017CEE?style=for-the-badge&logo=apacheairflow&logoColor=white" alt="Airflow"/>
+    <img src="https://img.shields.io/badge/Airflow-descontinuado-inactive?style=for-the-badge&logo=apacheairflow&logoColor=white" alt="Airflow"/>
     <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/>
-    <img src="https://img.shields.io/badge/pytest-11_arquivos-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest"/>
+    <img src="https://img.shields.io/badge/pytest-29_arquivos-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest"/>
   </p>
 
   <br/>
@@ -38,17 +38,17 @@
 
 ## 📋 Visão Geral
 
-Aplicação **desktop Windows** para apuração completa de Conta Gráfica do mercado regulado de gás, composta por **8 módulos especializados** que calculam e consolidam os componentes financeiros — PMPV, CGR, CGF, RET, RPV, SR e SCG — em um único relatório Excel unificado.
+Aplicação **desktop Windows** para apuração completa de Conta Gráfica do mercado regulado de gás, composta por **11 telas especializadas** que calculam e consolidam os componentes financeiros — PMPV, CGR, CGF, RET, RP, RPV, SR, PR, PV e SCG — em um único relatório Excel unificado.
 
-O repositório também inclui uma **stack de backend** com Apache Airflow e PostgreSQL para automação de ETL, validação de qualidade de dados e geração de relatórios agendados.
+`Src/Services/*` é a **fonte única de verdade dos cálculos**. A antiga stack de backend (Apache Airflow + PostgreSQL) foi **descontinuada e arquivada** em `_arquivado/backend/` por duplicar — e divergir de — esses cálculos; ver seção [Backend](#-backend).
 
 <br/>
 
 <div align="center">
 
-| 📁 Arquivos Python | 🖥️ Módulos UI | ⚙️ Serviços | 🗄️ Tabelas | 🧪 Testes | 🔄 DAGs | 📦 Componentes ETL |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **84+** | **8** | **12** | **12** | **11** | **6** | **10** |
+| 📁 Arquivos Python (Src) | 🖥️ Telas UI | ⚙️ Serviços | 🗄️ Tabelas | 🧪 Arquivos de teste |
+|:-:|:-:|:-:|:-:|:-:|
+| **49** | **11** | **15** | **16** | **29** |
 
 </div>
 
@@ -56,7 +56,7 @@ O repositório também inclui uma **stack de backend** com Apache Airflow e Post
 
 ## 🧩 Módulos
 
-A aplicação é composta por 9 módulos que operam em sequência até a geração do relatório final:
+A aplicação é composta por 11 telas que operam em sequência até a geração do relatório final:
 
 <br/>
 
@@ -129,6 +129,20 @@ A aplicação é composta por 9 módulos que operam em sequência até a geraç�
     </tr>
     <tr>
       <td align="center"><strong>9</strong></td>
+      <td>💰 <strong>PR</strong></td>
+      <td><code>PR = (SGR + SR) / VP</code></td>
+      <td>SCG (SGR) e SR</td>
+      <td>Preço regulatório (R$/m³)</td>
+    </tr>
+    <tr>
+      <td align="center"><strong>10</strong></td>
+      <td>🧾 <strong>PV</strong></td>
+      <td><code>PV = PMPV + PR</code></td>
+      <td>PMPV e PR</td>
+      <td>Preço de venda final (R$/m³)</td>
+    </tr>
+    <tr>
+      <td align="center"><strong>11</strong></td>
       <td>📤 <strong>Excel Final</strong></td>
       <td>Consolidação de todas as etapas</td>
       <td>Banco de dados</td>
@@ -136,6 +150,8 @@ A aplicação é composta por 9 módulos que operam em sequência até a geraç�
     </tr>
   </tbody>
 </table>
+
+> **Dashboard Resumo** (`Src/Views/dashboard_resumo.py`) é uma tela adicional que apresenta uma visão consolidada dos resultados por período, sem participar do fluxo de cálculo.
 
 ### Fluxo de operação
 
@@ -159,12 +175,18 @@ A aplicação é composta por 9 módulos que operam em sequência até a geraç�
         └──────────────────────┼────────────────────────┘
                                │
                       ┌────────▼────────┐
+                      │  PR (SGR+SR)/VP │
+                      │  PV = PMPV + PR │
+                      └────────┬────────┘
+                               │
+                      ┌────────▼────────┐
                       │   Excel Final   │
-                      │   (Módulo 9)    │
                       └─────────────────┘
 ```
 
-> **Passo a passo:** abra o app → processe cada módulo para o período desejado (ex: `Dez/2025`) → clique em **"Adicionar ao Excel Final (Módulo 9)"** em cada tela → gere o relatório consolidado no Módulo 9.
+> **Passo a passo:** abra o app → processe cada módulo para o período desejado (ex: `Dez/2025`) → clique em **"Adicionar ao Excel Final"** em cada tela → gere o relatório consolidado na tela Excel Final.
+>
+> ⚠️ **Duas grades de trimestre distintas coexistem no sistema:** SCG/CGR/CGF/RET/RP/SR usam o trimestre civil (Jan–Mar, Abr–Jun, Jul–Set, Out–Dez); PMPV/PR/PV usam o trimestre fiscal do setor (Nov–Jan, Fev–Abr, Mai–Jul, Ago–Out). Não confundir as duas ao processar períodos.
 
 ---
 
@@ -206,8 +228,8 @@ plataforma-conta-grafica/
 │
 ├── Src/                             # Aplicação desktop
 │   ├── main_dashboard.py            # Janela principal (PlataformaFinanceira)
-│   ├── Views/                       # 8 telas CustomTkinter
-│   ├── Services/                    # Regras de negócio por módulo
+│   ├── Views/                       # 11 telas CustomTkinter
+│   ├── Services/                    # Regras de negócio por módulo (fonte única de cálculo)
 │   ├── Database/                    # Persistência SQLite (DatabasePMPV)
 │   ├── application/                 # Casos de uso (Clean Architecture)
 │   ├── domain/                      # Contratos e interfaces (ports)
@@ -216,16 +238,11 @@ plataforma-conta-grafica/
 │   ├── config/                      # Tema e configurações visuais
 │   └── assets/                      # Ícones da aplicação
 │
-├── backend/                         # Stack de dados empresarial
-│   ├── airflow/                     # Dockerfile + 6 DAGs de orquestração
-│   ├── etl/                         # Extractors, Transformers, Loaders
-│   ├── data_quality/                # Validações SQL + config YAML
-│   ├── monitoring/                  # Detector de anomalias + alertas por e-mail
-│   ├── reporting/                   # Geração agendada de relatórios Excel
-│   ├── warehouse/                   # Setup do data warehouse PostgreSQL
-│   └── migrations/                  # Migração SQLite → PostgreSQL
+├── pipeline.py                      # Automação suportada (Windows Task Scheduler)
 │
-└── tests/                           # Suite de testes automatizados (pytest)
+├── _arquivado/backend/              # Stack Airflow + PostgreSQL DESCONTINUADA (ver seção Backend)
+│
+└── tests/                           # Suite de testes automatizados (pytest, 29 arquivos)
 ```
 
 <details>
@@ -237,13 +254,16 @@ plataforma-conta-grafica/
 │   ├── main_dashboard.py
 │   ├── Views/
 │   │   ├── tela_pmpv.py
-│   │   ├── tela_concilia.py
+│   │   ├── tela_concilia.py         # RP (Recuperação/Conciliação)
 │   │   ├── tela_ret.py
 │   │   ├── tela_auditoria.py
 │   │   ├── tela_cgf.py
 │   │   ├── tela_rpv.py
 │   │   ├── tela_sr.py
-│   │   └── tela_scg.py
+│   │   ├── tela_scg.py
+│   │   ├── tela_pr.py
+│   │   ├── tela_pv.py
+│   │   └── dashboard_resumo.py      # Visão consolidada por período
 │   ├── Services/
 │   │   ├── servicos_pmpv.py
 │   │   ├── servicos_concilia.py
@@ -253,20 +273,25 @@ plataforma-conta-grafica/
 │   │   ├── servicos_rpv.py
 │   │   ├── servicos_sr.py
 │   │   ├── servicos_scg.py
+│   │   ├── servicos_pr.py           # PR = (SGR + SR) / VP
+│   │   ├── servicos_pv.py           # PV = PMPV + PR
 │   │   ├── servicos_consolidacao.py
+│   │   ├── comparador_conta_grafica.py
 │   │   ├── excel_concilia.py
 │   │   ├── excel_auditoria.py
 │   │   └── excel_ret.py
 │   ├── Database/
-│   │   └── database.py              # DatabasePMPV — 12 tabelas, 908 linhas
+│   │   └── database.py              # DatabasePMPV — 12 tabelas
 │   ├── application/use_cases/
 │   │   └── pmpv_use_cases.py
 │   ├── domain/ports/
-│   │   └── repositories.py          # Interfaces (ConsolidacaoRepository)
+│   │   └── repositories.py          # Interfaces (ConsolidacaoRepository, PRRepository...)
 │   ├── infrastructure/
 │   │   ├── exporters/
-│   │   │   ├── excel_consolidado.py # ExcelConsolidado (Módulo 9)
-│   │   │   └── excel_handler_pmpv.py
+│   │   │   ├── excel_consolidado.py # ExcelConsolidado (tela Excel Final)
+│   │   │   ├── excel_handler_pmpv.py
+│   │   │   ├── excel_styles.py
+│   │   │   └── excel_sheets/        # sheet_sr, sheet_pr, sheet_pv, sheet_progresso, sheet_dashboard
 │   │   ├── ocr/
 │   │   │   ├── ocr_pdf.py           # OCR com Tesseract
 │   │   │   └── gemini_pdf.py        # OCR com Google Gemini
@@ -275,52 +300,54 @@ plataforma-conta-grafica/
 │   ├── common/
 │   │   ├── periodos.py              # Normalização de períodos
 │   │   ├── excel_final_destino.py   # Modal de destino Excel
-│   │   └── formatting.py           # Formatação BRL
+│   │   ├── formatting.py            # Formatação BRL
+│   │   └── app_paths.py
 │   ├── config/
-│   │   └── ui_theme.py
+│   │   ├── ui_theme.py
+│   │   └── logging_config.py
 │   └── assets/
 │       ├── icone.ico
 │       └── icons8-cash-94.png
 │
-├── backend/
-│   ├── airflow/
-│   │   ├── Dockerfile
-│   │   └── dags/
-│   │       ├── dag_auditoria.py
-│   │       ├── dag_ret.py
-│   │       ├── dag_consolidacao.py
-│   │       ├── dag_data_quality.py
-│   │       ├── dag_monitoramento_alertas.py
-│   │       └── dag_export_excel.py
-│   ├── etl/
-│   │   ├── pipeline.py
-│   │   ├── extractors/              # excel_extractor, pdf_extractor, xml_extractor
-│   │   ├── transformers/            # pmpv, auditoria, cgf, concilia, ret
-│   │   └── loaders/                 # postgres_loader, sqlite_loader
-│   ├── data_quality/
-│   │   ├── checks.py
-│   │   ├── dq_config.yaml
-│   │   └── run_checks.py
-│   ├── monitoring/
-│   │   ├── anomaly_detector.py
-│   │   ├── alerter.py
-│   │   └── email_template.html
-│   ├── reporting/
-│   │   └── export_excel.py
-│   ├── warehouse/
-│   │   └── setup_warehouse.py
-│   └── migrations/
-│       └── migrate_sqlite_to_pg.py
+├── pipeline.py                      # Automação suportada (substitui o backend Airflow)
 │
-└── tests/
+├── _arquivado/backend/              # Stack Airflow + PostgreSQL DESCONTINUADA (referência histórica)
+│   ├── airflow/dags/                # dag_auditoria, dag_ret, dag_consolidacao, dag_data_quality...
+│   ├── etl/                         # extractors, transformers, loaders
+│   ├── data_quality/
+│   ├── monitoring/
+│   ├── reporting/
+│   ├── warehouse/
+│   └── migrations/
+│
+└── tests/                           # 29 arquivos
     ├── test_database.py
     ├── test_servicos_consolidacao.py
     ├── test_servicos_cgf.py
+    ├── test_servicos_pr.py
+    ├── test_servicos_pv.py
+    ├── test_servicos_rpv.py
+    ├── test_servicos_scg.py
+    ├── test_servicos_auditoria.py
+    ├── test_servicos_concilia.py
+    ├── test_servicos_ret.py
+    ├── test_servicos_sr.py
     ├── test_pmpv_use_cases.py
     ├── test_regras_pmpv.py
+    ├── test_comparador_conta_grafica.py
     ├── test_excel_handler.py
     ├── test_excel_final_flow.py
     ├── test_excel_consolidado_none.py
+    ├── test_excel_concilia.py
+    ├── test_excel_ret.py
+    ├── test_excel_auditoria.py
+    ├── test_common_periodos.py
+    ├── test_common_formatting.py
+    ├── test_common_excel_final_destino.py
+    ├── test_sqlite_repositories.py
+    ├── test_gemini_pdf.py
+    ├── test_ocr_pdf.py
+    ├── test_dashboard_resumo.py
     ├── test_integracao.py
     └── test_dq_staging.py
 ```
@@ -380,7 +407,7 @@ docker-compose up -d
 
 ## 🗄️ Banco de Dados
 
-A persistência local usa **SQLite** (`pmpv_data.db`) com **12 tabelas**:
+A persistência local usa **SQLite** (`pmpv_data.db`) com as seguintes tabelas principais:
 
 | Tabela | Descrição |
 |--------|-----------|
@@ -390,12 +417,16 @@ A persistência local usa **SQLite** (`pmpv_data.db`) com **12 tabelas**:
 | `pmpv_mensal` | PMPV R$/m³ por período |
 | `auditoria_itens` | Itens de auditoria NF-e/CT-e (valor, ICMS, PIS, COFINS, CGR) |
 | `ret_itens` | Encargos de transporte (tipo, empresa, valor, moeda) |
-| `concilia_itens` | Itens de conciliação receita/despesa |
+| `concilia_itens` | Itens de conciliação receita/despesa (RP) |
 | `cgf_resumo` | Resumo de volumes faturados por período |
 | `sr_resultados` | Resultados SR por período |
+| `sr_trimestre` | Resultados SR agregados por trimestre fiscal |
+| `pr_resultados` | Resultados PR — `PR = (SGR + SR) / VP` |
+| `pv_resultados` | Resultados PV — `PV = PMPV + PR` |
 | `consolidacao` | Consolidação final (CGR, CGF, RPV, RET, RP, SCG) |
 | `excel_final_sessoes` | Sessões de exportação Excel |
 | `excel_final_execucoes` | Log de execuções de exportação |
+| `config` | Configurações gerais da aplicação |
 
 #### Normalização automática de períodos
 
@@ -495,11 +526,30 @@ python -m pytest -m integration
 | `test_database.py` | Persistência SQLite, normalização de períodos, exclusão em cascata |
 | `test_servicos_consolidacao.py` | Regras de consolidação SCG |
 | `test_servicos_cgf.py` | Cálculos de volume CGF |
+| `test_servicos_pr.py` | Regras de negócio PR (`PR = (SGR + SR) / VP`) |
+| `test_servicos_pv.py` | Regras de negócio PV (`PV = PMPV + PR`) |
+| `test_servicos_rpv.py` | Cálculo de RPV (`RPV = CGR − CGF`) |
+| `test_servicos_scg.py` | Cálculo de SCG (`SCG = RPV + RET + RP`) |
+| `test_servicos_auditoria.py` | Regras de auditoria XML (CGR) |
+| `test_servicos_concilia.py` | Regras de conciliação RP |
+| `test_servicos_ret.py` | Classificação e cálculo de RET |
+| `test_servicos_sr.py` | Cálculo de SR (`SR = (VP − VF) × PR`) |
 | `test_pmpv_use_cases.py` | Casos de uso PMPV |
 | `test_regras_pmpv.py` | Regras de negócio PMPV |
+| `test_comparador_conta_grafica.py` | Comparação/matching de períodos e itens de conta gráfica |
 | `test_excel_handler.py` | Leitura e escrita de Excel |
-| `test_excel_final_flow.py` | Fluxo completo do Módulo 9 |
+| `test_excel_final_flow.py` | Fluxo completo da tela Excel Final |
 | `test_excel_consolidado_none.py` | Edge cases de exportação |
+| `test_excel_concilia.py` | Exportação Excel do módulo RP |
+| `test_excel_ret.py` | Exportação Excel do módulo RET |
+| `test_excel_auditoria.py` | Exportação Excel do módulo Auditoria |
+| `test_common_periodos.py` | Normalização e variantes de período |
+| `test_common_formatting.py` | Formatação BRL |
+| `test_common_excel_final_destino.py` | Modal de destino do Excel Final |
+| `test_sqlite_repositories.py` | Repositórios SQLite (ports/adapters) |
+| `test_gemini_pdf.py` | OCR via Google Gemini |
+| `test_ocr_pdf.py` | OCR via Tesseract |
+| `test_dashboard_resumo.py` | Tela de dashboard consolidado |
 | `test_integracao.py` | Integração entre módulos |
 | `test_dq_staging.py` | Validações de qualidade de dados |
 
@@ -530,7 +580,7 @@ python -m pytest -m integration
 <summary><strong>RET não aparece no consolidado</strong></summary>
 
 1. Confirme que o RET foi processado e salvo para o período correto
-2. Verifique se o botão **"Adicionar ao Excel Final (Módulo 9)"** foi utilizado no módulo RET
+2. Verifique se o botão **"Adicionar ao Excel Final"** foi utilizado na tela RET
 3. Consulte a tabela `ret_itens` no banco para confirmar a persistência
 
 </details>
