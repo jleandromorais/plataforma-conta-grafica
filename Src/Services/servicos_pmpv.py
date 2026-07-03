@@ -1,6 +1,6 @@
 import pandas as pd
 
-from Src.common.periodos import _MESES, _EN_TO_PT
+from Src.common.periodos import _MESES, _EN_TO_PT, en_para_pt
 
 # Extensão do mapa PT com variantes EN e acentos ausentes em _MESES
 _MAPA_MES = {
