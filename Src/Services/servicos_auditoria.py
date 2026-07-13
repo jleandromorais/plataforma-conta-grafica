@@ -341,6 +341,12 @@ class RegrasAuditoria:
         if not texto.strip():
             return {'erro': 'Não foi possível extrair texto do PDF'}
 
+        # Alguns DANFEs (ex: Petrobras) renderizam siglas com pontos entre
+        # as letras ("I.C.M.S", "I.P.I", "C.N.P.J") — normaliza para o
+        # formato sem pontos ("ICMS", "IPI") usado nos regex abaixo, senão
+        # o valor do ICMS nunca é encontrado e icms_taxa fica zerado.
+        texto = re.sub(r'(?:[A-Z]\.){2,}', lambda m: m.group(0).replace('.', ''), texto)
+
         txt_up = texto.upper()
         linhas  = texto.split('\n')
 
