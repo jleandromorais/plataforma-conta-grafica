@@ -25,6 +25,7 @@
 
   <p>
     <a href="#-visão-geral">Visão Geral</a> &nbsp;•&nbsp;
+    <a href="#️-screenshots">Screenshots</a> &nbsp;•&nbsp;
     <a href="#-módulos">Módulos</a> &nbsp;•&nbsp;
     <a href="#-arquitetura">Arquitetura</a> &nbsp;•&nbsp;
     <a href="#-instalação">Instalação</a> &nbsp;•&nbsp;
@@ -49,6 +50,33 @@ Aplicação **desktop Windows** para apuração completa de Conta Gráfica do me
 | 📁 Arquivos Python (Src) | 🖥️ Telas UI | ⚙️ Serviços | 🗄️ Tabelas | 🧪 Arquivos de teste |
 |:-:|:-:|:-:|:-:|:-:|
 | **49** | **11** | **15** | **16** | **29** |
+
+</div>
+
+---
+
+## 🖼️ Screenshots
+
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/Dashboard.png" alt="Dashboard inicial com evolução histórica" width="100%"/>
+      <br/><sub><strong>Dashboard</strong> — visão consolidada e evolução histórica (PMPV, SCG, CGR vs CGF)</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/image.png" alt="Calculadora PMPV Master" width="100%"/>
+      <br/><sub><strong>Módulo PMPV</strong> — calculadora de Preço Médio Ponderado por Volume</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%" colspan="2">
+      <img src="docs/screenshots/CGR.png" alt="Tela de Auditoria CGR" width="60%"/>
+      <br/><sub><strong>Auditoria CGR</strong> — apuração via XML/PDF com soma trimestral</sub>
+    </td>
+  </tr>
+</table>
 
 </div>
 

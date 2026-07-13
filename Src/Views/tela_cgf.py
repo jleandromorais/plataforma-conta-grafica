@@ -152,7 +152,7 @@ class TelaCGF(ctk.CTkFrame):
         self._build_aba_logs()
 
         # RODAPÉ
-        footer = ctk.CTkFrame(self, height=100, corner_radius=15, fg_color="#1a1a2e")
+        footer = ctk.CTkFrame(self, height=120, corner_radius=15, fg_color="#1a1a2e")
         footer.pack(fill="x", padx=20, pady=(0, 20))
         footer.pack_propagate(False)
 
@@ -169,6 +169,13 @@ class TelaCGF(ctk.CTkFrame):
             font=("Roboto", 28, "bold"), text_color="#00d9ff"
         )
         self.result_label.pack(anchor="w")
+
+        ctk.CTkLabel(
+            result_frame,
+            text="⚠️ Valores podem ter pequenas diferenças de arredondamento — confira contra a planilha oficial.",
+            font=("Roboto", 10), text_color=ui.COR_MUTED,
+            wraplength=420, justify="left",
+        ).pack(anchor="w", pady=(4, 0))
 
         btn_frame = ctk.CTkFrame(footer, fg_color="transparent")
         btn_frame.pack(side="right", padx=30, pady=20)

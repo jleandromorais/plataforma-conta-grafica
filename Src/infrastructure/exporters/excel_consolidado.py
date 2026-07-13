@@ -2,7 +2,7 @@
 Exportador do Relatório Consolidado da Conta Gráfica.
 
 Gera um único arquivo .xlsx com todas as etapas do processo:
-  📋 Resumo Executivo  |  📊 PMPV  |  🔍 Auditoria XML
+  📋 Resumo Executivo  |  📊 PMPV  |  🔍 Auditoria CGR
   ⚡ RET               |  📄 Conciliação RP  |  📋 CGF
   🧾 RPV               |  🧾 SCG Final
 """
@@ -23,7 +23,7 @@ from openpyxl.chart.series import DataPoint
 
 from Src.Database.database import DatabasePMPV
 from Src.common.formatting import format_brl, format_brl4, format_brl_plain
-from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS
+from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, TRIMESTRES_CIVIS
 from Src.infrastructure.exporters.excel_styles import (
     fill as _fill, font as _font, border as _border,
     align as _align, to_float as _to_float,
@@ -147,11 +147,47 @@ def _nome_mes_completo(periodo: str) -> str:
     nome = _MESES_FULL.get(ab, ab)
     return f"{nome}/{ano}" if ano else nome
 
-def _agrupar_em_trimestres(meses: list[str]) -> list[list[str]]:
-    """Divide uma lista de meses ordenados em grupos de 3 (trimestres).
-    Ex: ['Jan/26','Fev/26','Mar/26','Abr/26'] → [['Jan/26','Fev/26','Mar/26'],['Abr/26']]
+def _chave_trimestre_civil(periodo: str) -> tuple[str, int] | None:
+    """Dado 'Mmm/YYYY', retorna (ano, índice do bloco civil 0-3) — ex: 'Jan/2026' → ('2026', 0).
+    Usada para agrupar meses no bloco civil correto (Jan-Mar, Abr-Jun, Jul-Set, Out-Dez),
+    nunca misturando meses de anos ou trimestres civis diferentes no mesmo banner.
     """
-    return [meses[i:i+3] for i in range(0, len(meses), 3)]
+    if not periodo or "/" not in periodo:
+        return None
+    abrev, ano = _abrev_de_periodo(periodo), periodo.split("/")[1]
+    for idx, meses_abrev in enumerate(TRIMESTRES_CIVIS.values()):
+        if abrev in meses_abrev:
+            return (ano, idx)
+    return None
+
+def _agrupar_em_trimestres(meses: list[str]) -> list[list[str]]:
+    """Agrupa meses ordenados em blocos de trimestre civil (Jan-Mar, Abr-Jun,
+    Jul-Set, Out-Dez), nunca misturando meses de anos ou blocos diferentes no
+    mesmo grupo — mesmo que a lista de entrada não venha em múltiplos de 3.
+    Ex: ['Dez/25','Jan/26','Fev/26','Mar/26'] →
+        [['Dez/25'], ['Jan/26','Fev/26','Mar/26']]
+    """
+    grupos: list[list[str]] = []
+    chave_atual = None
+    for m in meses:
+        chave = _chave_trimestre_civil(m)
+        if chave != chave_atual or not grupos:
+            grupos.append([])
+            chave_atual = chave
+        grupos[-1].append(m)
+    return grupos
+
+def _trimestre_civil_de(periodo: str | None) -> list[str]:
+    """Dado um período 'Mmm/YYYY', retorna os 3 meses do trimestre civil fixo
+    a que ele pertence (Jan-Mar, Abr-Jun, Jul-Set ou Out-Dez do mesmo ano).
+    """
+    if not periodo or "/" not in periodo:
+        return []
+    abrev, ano = _abrev_de_periodo(periodo), periodo.split("/")[1]
+    for meses_abrev in TRIMESTRES_CIVIS.values():
+        if abrev in meses_abrev:
+            return [f"{m}/{ano}" for m in meses_abrev]
+    return []
 
 _NUM = '#,##0'
 
@@ -267,11 +303,16 @@ class ExcelConsolidado:
             tabela: str,
             col_periodo: str = "periodo",
             filtro_modulo: set[str] | None = None,
+            filtro_periodos: list[str] | None = None,
         ) -> list[str]:
             """Retorna períodos Mmm/YYYY distintos da tabela.
 
             filtro_modulo: conjunto de abreviaturas permitidas (ex: _MESES_RET).
-            Se None, não aplica filtro de módulo — usa apenas o trimestre ativo.
+            filtro_periodos: lista exata de períodos do trimestre civil
+                (ex: ['Jan/2026','Fev/2026','Mar/2026']) — usada por módulos
+                que devem seguir a grade civil fixa. `None` = sem filtro;
+                lista vazia = filtro ativo que não casa com nada (retorna []).
+            Se nenhum filtro for informado, retorna todos os meses válidos do banco.
             """
             try:
                 rows = [r for r in db.listar_periodos_distintos(tabela, col_periodo) if _mes_valido(r)]
@@ -281,15 +322,20 @@ class ExcelConsolidado:
                 # Módulo com janela fixa (RET=Jan-Mar, PMPV=Fev-Abr):
                 # filtra só pelas abreviaturas permitidas.
                 rows = [r for r in rows if _abrev_de_periodo(r) in filtro_modulo]
-            # Auditoria, CGF, Conciliação: sem filtro — todos os meses válidos do banco,
-            # ordenados cronologicamente do mais antigo para o mais recente.
+            if filtro_periodos is not None:
+                # Segue a grade civil fixa (Jan-Mar, Abr-Jun, Jul-Set, Out-Dez).
+                rows = [r for r in rows if r in filtro_periodos]
             return sorted(rows, key=_ord)
 
         # Cada módulo usa apenas os meses da sua janela de negócio:
-        # RET  = Janeiro–Março  |  PMPV = Fevereiro–Abril  |  RPV/CGF/Auditoria = sem restrição
+        # RET  = Janeiro–Março (fixo)  |  PMPV = Fevereiro–Abril (fixo)
+        # Auditoria (CGR) e CGF: mostram TODOS os meses disponíveis no banco
+        # (todos os anos/trimestres); o agrupamento em banners dentro da aba
+        # respeita a grade civil (Jan-Mar, Abr-Jun, Jul-Set, Out-Dez) via
+        # _agrupar_em_trimestres, nunca misturando meses de blocos diferentes.
         meses_ret   = _periodos_tabela("ret_itens",       filtro_modulo=_MESES_RET)
-        meses_audit = _periodos_tabela("auditoria_itens")           # RPV/CGR — sem restrição
-        meses_cgf   = _periodos_tabela("cgf_resumo")                # RPV/CGF — sem restrição
+        meses_audit = _periodos_tabela("auditoria_itens")   # Auditoria/CGR — sem restrição
+        meses_cgf   = _periodos_tabela("cgf_resumo")        # CGF — sem restrição
         meses_conc  = _periodos_tabela("concilia_itens")
 
         # Labels de cada módulo para o título da aba
@@ -502,7 +548,7 @@ class ExcelConsolidado:
 
         # Linha 1: CGR, CGF, RPV
         R = 5
-        _resumo_card(R, 2, 3, "🔍", "CGR · Auditoria XML",     cgr_val, _BRL, BLUE)
+        _resumo_card(R, 2, 3, "🔍", "CGR · Auditoria",         cgr_val, _BRL, BLUE)
         _resumo_card(R, 4, 5, "📋", "CGF · Volume × PMPV",     cgf_val, _BRL, GOLD)
         _resumo_card(R, 6, 7, "🧾", "RPV · CGR − CGF",         rpv_val, _BRL, PURPLE)
 
@@ -767,7 +813,7 @@ class ExcelConsolidado:
         for i, w in enumerate(_WIDTHS_PMPV, 1):
             ws.column_dimensions[get_column_letter(i)].width = w
 
-    # ── Sheet 3: Auditoria XML ────────────────────────────────────────────────
+    # ── Sheet 3: Auditoria CGR ────────────────────────────────────────────────
 
     @staticmethod
     def _sheet_auditoria(wb, itens: list[dict], label_trimestre: str | None,
@@ -783,13 +829,13 @@ class ExcelConsolidado:
         _BLUE_LIGHT = "D6EAF8"
         _BLUE_XL    = "EBF5FB"
 
-        ws = wb.create_sheet("🔍 Auditoria XML")
+        ws = wb.create_sheet("🔍 Auditoria CGR")
         ws.sheet_view.showGridLines = False
 
         # Título
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NCOLS)
         t = ws.cell(row=1, column=1,
-                    value=f"  AUDITORIA XML — NF-e e CT-e  |  Trimestre: {label_trimestre or 'N/D'}")
+                    value=f"  AUDITORIA CGR — NF-e e CT-e  |  Trimestre: {label_trimestre or 'N/D'}")
         t.fill = _fill(_BLUE_DARK); t.font = _font(bold=True, size=14, color=_HEADER_FG)
         t.alignment = _align("left"); ws.row_dimensions[1].height = 34
 
@@ -798,7 +844,7 @@ class ExcelConsolidado:
             ws.cell(row=2, column=c).fill = _fill("A9CCE3")
 
         if not itens:
-            ws.cell(row=4, column=1, value="Nenhum item de Auditoria XML registrado para este trimestre.")
+            ws.cell(row=4, column=1, value="Nenhum item de Auditoria CGR registrado para este trimestre.")
             return
 
         from collections import defaultdict
@@ -1340,9 +1386,11 @@ class ExcelConsolidado:
 
         registros = []
         for mes in meses_todos:
+            # CGR considera apenas NF-e (compra de gás) — CT-e é frete/transporte.
             cgr = sum(
                 _to_float(i.get("cgr_liquido"))
                 for i in (db.listar_auditoria_itens(mes) or [])
+                if i.get("tipo") == "NF-e"
             )
             cons_m = db.buscar_consolidacao(mes) or {}
             cgf = _to_float(cons_m.get("cgf"))
@@ -1461,8 +1509,9 @@ class ExcelConsolidado:
 
         # ── Agrega cada componente por mês ────────────────────────────────────
         def _cgr_mes(m):
+            # CGR considera apenas NF-e (compra de gás) — CT-e é frete/transporte.
             itens = db.listar_auditoria_itens(m) or []
-            return sum(_to_float(i.get("cgr_liquido")) for i in itens)
+            return sum(_to_float(i.get("cgr_liquido")) for i in itens if i.get("tipo") == "NF-e")
 
         def _cgf_mes(m):
             # CGF em R$ = volume × PMPV, salvo na tabela consolidacao pelo módulo CGF
@@ -1523,7 +1572,7 @@ class ExcelConsolidado:
         rpv_por_mes = {m: cgr_por_mes[m] - cgf_por_mes[m] for m in meses_todos}
         scg_por_mes = {m: rpv_por_mes[m] + ret_por_mes[m] + rp_por_mes[m] for m in meses_todos}
 
-        _linha("CGR  (Auditoria XML)",      "R$", cgr_por_mes, _BRL, alt=False)
+        _linha("CGR  (Auditoria)",      "R$", cgr_por_mes, _BRL, alt=False)
         _linha("CGF  (Volume Faturado × PMPV)", "R$", cgf_por_mes, _BRL, alt=True)
         _linha("RPV  = CGR − CGF",          "R$", rpv_por_mes, _BRL, alt=False)
         _linha("RET  (EAT + EC)",            "R$", ret_por_mes, _BRL, alt=True)
@@ -1603,8 +1652,10 @@ class ExcelConsolidado:
                 return []
 
         def _cgr_mes(m):
+            # CGR considera apenas NF-e (compra de gás) — CT-e é frete/transporte.
             return sum(_to_float(i.get("cgr_liquido"))
-                       for i in (db.listar_auditoria_itens(m) or []))
+                       for i in (db.listar_auditoria_itens(m) or [])
+                       if i.get("tipo") == "NF-e")
 
         def _cgf_mes(m):
             return _to_float((db.buscar_consolidacao(m) or {}).get("cgf"))
@@ -1645,7 +1696,7 @@ class ExcelConsolidado:
         ws.column_dimensions["H"].width = 20
 
         CAMPOS = [
-            ("CGR  (Auditoria XML)",           "cgr"),
+            ("CGR  (Auditoria)",           "cgr"),
             ("CGF  (Volume × PMPV)",           "cgf"),
             ("RPV  = CGR − CGF",               "rpv"),
             ("RET  (EAT + EC)",                "ret"),

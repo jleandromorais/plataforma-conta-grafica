@@ -89,7 +89,7 @@ class LinhaValor(ctk.CTkFrame):
 
 class TelaSCG(ctk.CTkFrame):
     CAMPOS = [
-        ("cgr", "📄", "CGR  (Auditoria XML)",   COR_AZUL,    True),
+        ("cgr", "📄", "CGR  (Auditoria CGR)",   COR_AZUL,    True),
         ("cgf", "📋", "CGF  (Volume Faturado)",  COR_VERDE,   True),
         ("rpv", "🔢", "RPV  = CGR − CGF",        COR_ROXO,    False),
         ("ret", "⚡", "RET  (Encargos)",          COR_AMARELO, True),
@@ -428,8 +428,11 @@ class TelaSCG(ctk.CTkFrame):
     @staticmethod
     def _buscar_dados_fontes(periodo: str) -> dict:
         with DatabasePMPV() as db:
+            # CGR considera apenas NF-e (compra de gás) — CT-e é custo de
+            # transporte/frete e não integra o CGR da Conta Gráfica.
             cgr = sum(float(i.get("cgr_liquido") or 0)
-                      for i in (db.listar_auditoria_itens(periodo) or []))
+                      for i in (db.listar_auditoria_itens(periodo) or [])
+                      if i.get("tipo") == "NF-e")
             cons = db.buscar_consolidacao(periodo) or {}
             cgf = float(cons.get("cgf") or 0)
             ret = float(cons.get("ret") or 0)

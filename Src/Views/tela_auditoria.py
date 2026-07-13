@@ -9,7 +9,7 @@ import pandas as pd
 
 from Src.config import ui_theme as ui
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
-from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
+from Src.Services.comparador_conta_grafica import ComparadorContaGrafica, _normalizar_numero_nota
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
@@ -327,6 +327,17 @@ class TelaAuditoria(ctk.CTkFrame):
         self.lbl_cgr_bruto   = _cgr_card(linha_cgr, 0, "📦", "Bruto total",   ui.COR_TEXTO,  ui.COR_INPUT)
         self.lbl_cgr_icms    = _cgr_card(linha_cgr, 1, "🏛️", "ICMS deduzido", ui.COR_AVISO,  ui.COR_INPUT)
         self.lbl_cgr_liquido = _cgr_card(linha_cgr, 2, "✅", "CGR Líquido",   ui.COR_SUCESSO, ui.COR_INPUT)
+
+        ctk.CTkLabel(
+            frame_cgr,
+            text=("⚠️ Valores calculados a partir dos XML/PDF processados — pequenas "
+                  "diferenças de centavos por arredondamento ou leitura via OCR podem "
+                  "ocorrer. Sempre confira contra a planilha oficial antes de fechar o período."),
+            font=ctk.CTkFont(size=10),
+            text_color=ui.COR_MUTED,
+            wraplength=520,
+            justify="left",
+        ).pack(fill="x", padx=14, pady=(0, 10))
 
         # ── Painel trimestral ─────────────────────────────────────────────────
         frame_tri = ctk.CTkFrame(painel_dir, fg_color=ui.COR_CARD, corner_radius=10)
@@ -749,42 +760,57 @@ class TelaAuditoria(ctk.CTkFrame):
                 xmls = list({p.resolve() for p in pasta_empresa.rglob("*.xml")})
                 pdfs = list({p.resolve() for p in pasta_empresa.rglob("*.pdf")})
 
-                sem_xml_forcar_pdf = (not usar_pdf) and (len(xmls) == 0) and (len(pdfs) > 0)
                 arquivos_proc = 0
+                notas_via_xml: set[str] = set()
+                valores_via_xml: set[float] = set()
 
-                if not usar_pdf and not sem_xml_forcar_pdf:
+                if not usar_pdf:
                     for xml_file in xmls:
                         total_xmls += 1
                         arquivos_proc += 1
                         res = self._auditar_xml(xml_file, empresa)
                         if res:
                             resultados.append(res)
+                            notas_via_xml.add(_normalizar_numero_nota(res.numero))
+                            valores_via_xml.add(round(res.valor_total, 2))
                         if arquivos_proc % 25 == 0:
                             self._fila_auditoria.put(("status", f"📂 {empresa}: {arquivos_proc}/{len(xmls)} XMLs"))
-                else:
-                    for pdf_file in pdfs:
-                        total_ocr += 1
-                        arquivos_proc += 1
-                        dados = RegrasAuditoria.parse_pdf_ocr(pdf_file)
-                        if "erro" not in dados:
-                            vf = dados.get("valor_total", 0.0)
-                            resultados.append(
-                                XMLItem(
-                                    empresa,
-                                    dados.get("tipo", "NF-e"),
-                                    dados.get("numero", "N/A"),
-                                    vf,
-                                    dados.get("icms", 0.0),
-                                    dados.get("icms_taxa", 0.0),
-                                    dados.get("pis", 0.0),
-                                    dados.get("cofins", 0.0),
-                                    dados.get("volume", 0),
-                                    "OCR",
-                                    dados.get("volume_total", 0.0),
-                                )
+
+                # Todo PDF da pasta é lido via OCR (mesmo com XMLs presentes),
+                # para nunca descartar notas que só existem em PDF. A duplicata
+                # com o que já veio de XML só é descartada quando o número OU o
+                # valor total extraído do PDF batem com um XML já processado.
+                pdfs_para_ocr = pdfs
+                for pdf_file in pdfs_para_ocr:
+                    total_ocr += 1
+                    arquivos_proc += 1
+                    dados = RegrasAuditoria.parse_pdf_ocr(pdf_file)
+                    if "erro" not in dados:
+                        nota_pdf_norm = _normalizar_numero_nota(dados.get("numero", ""))
+                        valor_pdf = round(float(dados.get("valor_total", 0.0) or 0.0), 2)
+                        if not usar_pdf and (
+                            (nota_pdf_norm and nota_pdf_norm in notas_via_xml)
+                            or (valor_pdf and valor_pdf in valores_via_xml)
+                        ):
+                            continue  # já capturada via XML
+                        vf = dados.get("valor_total", 0.0)
+                        resultados.append(
+                            XMLItem(
+                                empresa,
+                                dados.get("tipo", "NF-e"),
+                                dados.get("numero", "N/A"),
+                                vf,
+                                dados.get("icms", 0.0),
+                                dados.get("icms_taxa", 0.0),
+                                dados.get("pis", 0.0),
+                                dados.get("cofins", 0.0),
+                                dados.get("volume", 0),
+                                "OCR",
+                                dados.get("volume_total", 0.0),
                             )
-                        if arquivos_proc % 10 == 0:
-                            self._fila_auditoria.put(("status", f"📂 {empresa}: {arquivos_proc}/{len(pdfs)} PDFs"))
+                        )
+                    if arquivos_proc % 10 == 0:
+                        self._fila_auditoria.put(("status", f"📂 {empresa}: {arquivos_proc}/{len(pdfs_para_ocr)} PDFs"))
 
             self._fila_auditoria.put(("done", resultados, total_xmls, total_ocr))
         except Exception as e:
@@ -849,12 +875,16 @@ class TelaAuditoria(ctk.CTkFrame):
         self.valor_total_geral  = self.valor_total_nfe + self.valor_total_cte
         self.volume_total_geral = self.volume_total_nfe + self.volume_total_cte
 
-        # Cálculo por documento (mesma lógica validada contra planilha Arch)
-        bruto_total = sum(r.valor_total for r in self.resultados)
-        icms_total_all = sum(r.valor_total * r.icms_taxa for r in self.resultados)
+        # Cálculo por documento (mesma lógica validada contra planilha Arch).
+        # CGR considera NF-e (compra de gás) + CT-e da TAG (custo de
+        # transporte via gasoduto, que a planilha oficial trata como parte
+        # do CGR). CT-e das demais transportadoras é frete e não integra o CGR.
+        itens_cgr = [r for r in self.resultados if r.tipo == 'NF-e' or r.empresa == 'TAG']
+        bruto_total = sum(r.valor_total for r in itens_cgr)
+        icms_total_all = sum(r.valor_total * r.icms_taxa for r in itens_cgr)
         self.cgr_liquido = sum(
             RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa)
-            for r in self.resultados
+            for r in itens_cgr
         )
         self._atualizar_painel_cgr(self.valor_total_geral, icms_total_all, self.cgr_liquido)
 
@@ -1034,7 +1064,7 @@ class TelaAuditoria(ctk.CTkFrame):
 
         n_itens = len(self.resultados) if self.resultados else 0
         if not messagebox.askyesno("Confirmar salvamento",
-                                   f"Salvar Auditoria XML no banco de dados?\n\n"
+                                   f"Salvar Auditoria CGR no banco de dados?\n\n"
                                    f"Período: {periodo}\n"
                                    f"CGR Líquido: R$ {cgr:,.2f}\n"
                                    f"Itens: {n_itens}"):

@@ -8,14 +8,17 @@ import customtkinter as ctk
 from Src.config import ui_theme as ui
 from Src.Database.database import DatabasePMPV
 from Src.common.formatting import format_brl, format_brl4, format_brl_compacto
+from Src.common.periodos import TRIMESTRES_CIVIS
 
 try:
     import matplotlib
-    matplotlib.use("Agg")
+    matplotlib.use("TkAgg")
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     _MPL = True
-except ImportError:
+except Exception:
+    import logging
+    logging.getLogger(__name__).exception("Falha ao carregar matplotlib — gráficos usarão fallback em tabela")
     _MPL = False
 
 # ── Paleta local ──────────────────────────────────────────────────────────────
@@ -70,6 +73,15 @@ def _pct(v: float) -> str:
 def _mes_full(periodo: str) -> str:
     ab = periodo.split("/")[0] if "/" in periodo else periodo[:3]
     return _MESES_FULL.get(ab, ab)
+
+
+def _passo_rotulos(qtd: int, largura_px: int, char_px: float) -> int:
+    """Intervalo de rótulos do eixo X para caber sem sobrepor (ex.: 'Jan/2026')."""
+    if qtd <= 1:
+        return 1
+    max_rotulos = max(1, int(largura_px / (8 * char_px)))
+    passo = -(-qtd // max_rotulos)  # ceil
+    return max(1, passo)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -165,6 +177,13 @@ class PainelResumo(ctk.CTkFrame):
         self.frame_gr_cgrcgf = ctk.CTkFrame(self, fg_color=_CARD, corner_radius=10)
         self.frame_gr_cgrcgf.pack(fill="x", padx=4)
 
+        # Gráfico composição CGR + RET + RP + RPV → SCG por trimestre
+        ctk.CTkLabel(self, text="🧱  Composição do SCG por trimestre",
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=_TEXTO).pack(anchor="w", padx=4, pady=(8, 4))
+        self.frame_gr_composicao = ctk.CTkFrame(self, fg_color=_CARD, corner_radius=10)
+        self.frame_gr_composicao.pack(fill="x", padx=4)
+
     def _secao(self, titulo: str, cor: str):
         """Faixa separadora de seção com título."""
         f = ctk.CTkFrame(self, fg_color=cor, corner_radius=6, height=28)
@@ -241,6 +260,7 @@ class PainelResumo(ctk.CTkFrame):
         self._grafico_linha(self.frame_gr_pmpv, pmpvs,  "pmpv", _pmpv_fmt, _COR_M1)
         self._grafico_linha(self.frame_gr_scg,  cons,   "scg",  _brl_compacto, _COR_M3, linha_zero=True)
         self._grafico_barras(cons)
+        self._grafico_composicao(cons)
 
     # ── KPIs ÚLTIMO MÊS ──────────────────────────────────────────────────────
 
@@ -300,23 +320,35 @@ class PainelResumo(ctk.CTkFrame):
         ax.set_facecolor(_CARD)
 
         if linha_zero:
-            ax.axhline(0, color=_MUTED, linewidth=0.8, linestyle="--")
-            cores_pts = [_VERDE if v >= 0 else _VERM for v in valores]
-            for i, (x, y) in enumerate(zip(range(len(labels)), valores)):
-                ax.bar(x, y, color=cores_pts[i], alpha=0.25, width=0.6)
-            linha_plt, = ax.plot(range(len(labels)), valores, marker="o",
-                                 color=cor, linewidth=2)
-            ax.set_xticks(range(len(labels)))
-            ax.set_xticklabels(labels, rotation=30, fontsize=8)
-        else:
-            linha_plt, = ax.plot(labels, valores, marker="o", color=cor, linewidth=2)
+            ax.axhline(0, color=_MUTED, linewidth=0.8, linestyle="--", zorder=1)
 
-        for spine in ax.spines.values():
-            spine.set_color(_MUTED)
-        ax.tick_params(axis="x", colors=_MUTED, labelrotation=30, labelsize=8)
-        ax.tick_params(axis="y", colors=_MUTED, labelsize=8)
+        linha_plt, = ax.plot(
+            range(len(labels)), valores, marker="o", color=cor,
+            linewidth=2.25, markersize=6.5, markerfacecolor=_CARD,
+            markeredgecolor=cor, markeredgewidth=2, solid_capstyle="round",
+            zorder=3,
+        )
+        passo = _passo_rotulos(len(labels), largura_px=460, char_px=6.5)
+        idx_visiveis = set(range(0, len(labels), passo))
+        if len(labels) - 1 not in idx_visiveis:
+            idx_visiveis.add(len(labels) - 1)
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(
+            [lab if i in idx_visiveis else "" for i, lab in enumerate(labels)],
+            rotation=0, fontsize=8,
+        )
+
+        for lado in ("top", "right", "left"):
+            ax.spines[lado].set_visible(False)
+        ax.spines["bottom"].set_color(_MUTED)
+        ax.spines["bottom"].set_linewidth(0.8)
+        ax.tick_params(axis="x", colors=_MUTED, labelsize=8, length=0)
+        ax.tick_params(axis="y", colors=_MUTED, labelsize=8, length=0)
         ax.yaxis.set_major_formatter(lambda v, _: fmt(v))
-        ax.grid(True, color=_CARD2, linewidth=0.5)
+        ax.grid(True, axis="y", color=_CARD2, linewidth=0.6, zorder=0)
+        ax.set_axisbelow(True)
+        margem = (max(valores) - min(valores)) * 0.15 or abs(max(valores) or 1) * 0.1
+        ax.set_ylim(min(valores) - margem, max(valores) + margem)
         fig.tight_layout()
 
         canvas = FigureCanvasTkAgg(fig, master=frame)
@@ -370,18 +402,34 @@ class PainelResumo(ctk.CTkFrame):
         ax.set_facecolor(_CARD)
 
         x = range(len(labels))
-        w = 0.38
-        b_cgr = ax.bar([i - w/2 for i in x], cgr, width=w, label="CGR", color=_AZUL, alpha=0.85)
-        b_cgf = ax.bar([i + w/2 for i in x], cgf, width=w, label="CGF", color=_VERDE, alpha=0.85)
+        w = 0.34
+        gap = 0.03
+        b_cgr = ax.bar([i - w/2 - gap/2 for i in x], cgr, width=w, label="CGR",
+                       color=_AZUL, zorder=3)
+        b_cgf = ax.bar([i + w/2 + gap/2 for i in x], cgf, width=w, label="CGF",
+                       color=_VERDE, zorder=3)
 
-        for spine in ax.spines.values():
-            spine.set_color(_MUTED)
+        for lado in ("top", "right", "left"):
+            ax.spines[lado].set_visible(False)
+        ax.spines["bottom"].set_color(_MUTED)
+        ax.spines["bottom"].set_linewidth(0.8)
+        passo = _passo_rotulos(len(labels), largura_px=940, char_px=6.5)
+        idx_visiveis = set(range(0, len(labels), passo))
+        if len(labels) - 1 not in idx_visiveis:
+            idx_visiveis.add(len(labels) - 1)
         ax.set_xticks(list(x))
-        ax.set_xticklabels(labels, rotation=30, fontsize=8)
-        ax.tick_params(colors=_MUTED, labelsize=8)
+        ax.set_xticklabels(
+            [lab if i in idx_visiveis else "" for i, lab in enumerate(labels)],
+            rotation=0, fontsize=8,
+        )
+        ax.tick_params(colors=_MUTED, labelsize=8, length=0)
         ax.yaxis.set_major_formatter(lambda v, _: _brl_compacto(v))
-        ax.grid(True, axis="y", color=_CARD2, linewidth=0.5)
-        ax.legend(facecolor=_CARD, edgecolor=_MUTED, labelcolor=_TEXTO, fontsize=9)
+        ax.grid(True, axis="y", color=_CARD2, linewidth=0.6, zorder=0)
+        ax.set_axisbelow(True)
+        ax.legend(
+            facecolor=_CARD, edgecolor=_CARD2, labelcolor=_TEXTO, fontsize=9,
+            loc="upper left", bbox_to_anchor=(1.0, 1.0), frameon=False,
+        )
         fig.tight_layout()
 
         canvas = FigureCanvasTkAgg(fig, master=frame)
@@ -406,6 +454,115 @@ class PainelResumo(ctk.CTkFrame):
                     if rect.contains(event)[0]:
                         anot.xy = (rect.get_x() + rect.get_width()/2, rect.get_height())
                         anot.set_text(f"{labels[idx]}\n{nome}: {_brl_compacto(vals[idx])}")
+                        anot.set_visible(True); canvas.draw_idle()
+                        return
+            if anot.get_visible():
+                anot.set_visible(False); canvas.draw_idle()
+
+        canvas.mpl_connect("motion_notify_event", _hover)
+
+    # ── GRÁFICO COMPOSIÇÃO SCG (CGR + RET + RP + RPV) POR TRIMESTRE ──────────
+
+    def _agrupar_trimestres(self, cons: list[dict]) -> list[dict]:
+        """Agrupa consolidações mensais em trimestres civis (Jan-Mar, Abr-Jun, ...)."""
+        por_mes = {c["periodo"]: c for c in cons}
+        agrupado: list[dict] = []
+        anos = sorted({_chave(c["periodo"])[0] for c in cons})
+        for ano in anos:
+            for nome_tri, meses_abrev in TRIMESTRES_CIVIS.items():
+                periodos_tri = [f"{m}/{ano}" for m in meses_abrev]
+                itens_tri = [por_mes[p] for p in periodos_tri if p in por_mes]
+                if not itens_tri:
+                    continue
+                soma = {
+                    chave: sum(float(i.get(chave) or 0) for i in itens_tri)
+                    for chave in ("cgr", "ret", "rp", "rpv", "scg")
+                }
+                agrupado.append({"trimestre": f"{nome_tri} {ano}", **soma})
+        return agrupado
+
+    def _grafico_composicao(self, cons: list[dict]):
+        frame = self.frame_gr_composicao
+        for w in frame.winfo_children():
+            w.destroy()
+
+        dados = self._agrupar_trimestres(cons)
+        if not dados:
+            ctk.CTkLabel(frame, text="Sem dados.",
+                         font=ctk.CTkFont(size=12), text_color=_MUTED,
+                         ).pack(padx=14, pady=30)
+            return
+
+        if not _MPL:
+            return
+
+        labels = [d["trimestre"] for d in dados]
+        cgr = [d["cgr"] for d in dados]
+        ret = [d["ret"] for d in dados]
+        rp  = [d["rp"]  for d in dados]
+        rpv = [d["rpv"] for d in dados]
+
+        # Paleta categórica validada (color-formula.md): blue, yellow, violet, aqua
+        cores = ["#3987e5", "#c98500", "#9085e9", "#199e70"]
+        segmentos = [("CGR", cgr), ("RET", ret), ("RP", rp), ("RPV", rpv)]
+
+        fig = Figure(figsize=(10, 3), dpi=100, facecolor=_CARD)
+        ax  = fig.add_subplot(111)
+        ax.set_facecolor(_CARD)
+
+        x = range(len(labels))
+        base = [0.0] * len(labels)
+        barras_por_segmento = []
+        for (nome, valores), cor_seg in zip(segmentos, cores):
+            barras = ax.bar(x, valores, bottom=base, width=0.55,
+                             label=nome, color=cor_seg, zorder=3)
+            barras_por_segmento.append((nome, barras, valores))
+            base = [b + v for b, v in zip(base, valores)]
+
+        for lado in ("top", "right", "left"):
+            ax.spines[lado].set_visible(False)
+        ax.spines["bottom"].set_color(_MUTED)
+        ax.spines["bottom"].set_linewidth(0.8)
+        ax.set_xticks(list(x))
+        ax.set_xticklabels(labels, rotation=0, fontsize=8)
+        ax.tick_params(colors=_MUTED, labelsize=8, length=0)
+        ax.yaxis.set_major_formatter(lambda v, _: _brl_compacto(v))
+        ax.grid(True, axis="y", color=_CARD2, linewidth=0.6, zorder=0)
+        ax.set_axisbelow(True)
+
+        # Rótulo do total (SCG) acima de cada barra
+        for i, total in enumerate(base):
+            ax.annotate(_brl_compacto(total), xy=(i, total),
+                        xytext=(0, 4), textcoords="offset points",
+                        ha="center", fontsize=8, color=_TEXTO, weight="bold")
+
+        ax.legend(
+            facecolor=_CARD, edgecolor=_CARD2, labelcolor=_TEXTO, fontsize=9,
+            loc="upper left", bbox_to_anchor=(1.0, 1.0), frameon=False,
+        )
+        fig.tight_layout()
+
+        canvas = FigureCanvasTkAgg(fig, master=frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+
+        anot = ax.annotate("", xy=(0, 0), xytext=(12, 12),
+                           textcoords="offset points",
+                           bbox=dict(boxstyle="round,pad=0.4", fc=_INPUT, ec=_MUTED),
+                           color=_TEXTO, fontsize=9)
+        anot.set_visible(False)
+
+        def _hover(event):
+            if event.inaxes != ax:
+                if anot.get_visible():
+                    anot.set_visible(False); canvas.draw_idle()
+                return
+            for nome, barras, valores in barras_por_segmento:
+                for idx, rect in enumerate(barras):
+                    if rect.contains(event)[0]:
+                        y_meio = rect.get_y() + rect.get_height() / 2
+                        anot.xy = (rect.get_x() + rect.get_width()/2, y_meio)
+                        anot.set_text(f"{labels[idx]}\n{nome}: {_brl_compacto(valores[idx])}")
                         anot.set_visible(True); canvas.draw_idle()
                         return
             if anot.get_visible():
