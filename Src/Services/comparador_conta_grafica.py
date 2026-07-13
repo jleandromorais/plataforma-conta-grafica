@@ -74,10 +74,12 @@ def _normalizar_numero_nota(valor: Any) -> str:
         txt = txt[:-2]
 
     # Trata formatos comuns de planilha com série ao final:
-    # 132893-55, 000001227-2, 7861/24 -> mantém apenas o número base.
-    m_numero_serie = re.fullmatch(r"\s*0*(\d{3,})\s*[-/]\s*\d{1,3}\s*", txt)
+    # 132893-55, 000001227-2, 7861/24, 000.000.034-1, 48-1 -> mantém apenas o número base.
+    # O número base pode vir com pontos como separador de milhar (ex: 000.000.034),
+    # que são removidos antes de tirar os zeros à esquerda.
+    m_numero_serie = re.fullmatch(r"\s*([\d.]+)\s*[-/]\s*\d{1,3}\s*", txt)
     if m_numero_serie:
-        base = m_numero_serie.group(1).lstrip("0")
+        base = m_numero_serie.group(1).replace(".", "").lstrip("0")
         return base or "0"
 
     digitos = re.sub(r"\D", "", txt)
@@ -204,6 +206,20 @@ def _escolher_coluna_nota(df: pd.DataFrame, notas_referencia: set[str] | None = 
             "Não foi possível identificar a coluna de número da nota fiscal na planilha selecionada."
         )
     return melhor_coluna
+
+
+def _linha_parece_nota_fiscal(row: "pd.Series", col_nota: str) -> bool:
+    """True se a linha tem indício de ser uma nota fiscal real (alguma coluna
+    com data de competência válida), não uma linha de resumo/índice de
+    correção monetária (nome do fornecedor + 1 número, sem data)."""
+    for col_name, val in row.items():
+        if col_name == col_nota or str(col_name).startswith("__"):
+            continue
+        if pd.isna(val):
+            continue
+        if _periodo_de_data(val):
+            return True
+    return False
 
 
 def _escolher_coluna_periodo(df: pd.DataFrame) -> str | None:
@@ -357,6 +373,17 @@ class ComparadorContaGrafica:
             total_linhas_periodo += 1
             valor_nota = row.get(col_nota)
             nota_norm = _normalizar_numero_nota(valor_nota)
+
+            # Linhas de blocos de resumo (ex: "Custo Médio Ponderado", índices de
+            # correção monetária por fornecedor) às vezes ficam na mesma coluna
+            # escolhida para número de nota, acima do cabeçalho real da tabela.
+            # Elas têm só o nome do fornecedor + um índice decimal pequeno (ex:
+            # 1.75), sem nenhum valor monetário/volume nas colunas vizinhas —
+            # diferente de uma linha de nota fiscal real. Descarta-as em vez de
+            # contá-las como divergência "só na planilha".
+            if nota_norm and not _linha_parece_nota_fiscal(row, col_nota):
+                continue
+
             if not nota_norm:
                 linhas_sem_numero.append(
                     {

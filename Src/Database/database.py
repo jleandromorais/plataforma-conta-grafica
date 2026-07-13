@@ -534,7 +534,7 @@ class DatabasePMPV:
         self.conn.commit()
 
     def atualizar_cgr(self, periodo: str, valor: float):
-        """Atualiza o CGR (Auditoria XML)."""
+        """Atualiza o CGR (Auditoria CGR)."""
         periodo = self._normalizar_periodo(periodo)
         self._garantir_periodo(periodo)
         self._update_consolidacao(periodo, cgr=valor)

@@ -92,7 +92,7 @@ class TelaRPV(ctk.CTkFrame):
         card_cgr.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
         ctk.CTkLabel(card_cgr, text="📄  CGR", font=("Roboto", 16, "bold"), text_color=AZUL).pack(pady=(18, 2))
-        ctk.CTkLabel(card_cgr, text="Conta Gráfica de Receita\n(Auditoria XML)", font=("Roboto", 11), text_color=MUTED).pack()
+        ctk.CTkLabel(card_cgr, text="Conta Gráfica de Receita\n(Auditoria CGR)", font=("Roboto", 11), text_color=MUTED).pack()
         ctk.CTkFrame(card_cgr, height=1, fg_color=INPUT_BG).pack(fill="x", padx=16, pady=12)
         ctk.CTkLabel(card_cgr, text="Valor (R$):", font=("Roboto", 11), text_color=MUTED).pack(anchor="w", padx=16)
 
