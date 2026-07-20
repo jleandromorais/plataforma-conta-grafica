@@ -11,7 +11,7 @@ import pandas as pd
 from Src.config import ui_theme as ui
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.comparador_conta_grafica import ComparadorContaGrafica, _normalizar_numero_nota
-from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE
+from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE, empresa_integra_cgr
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
@@ -49,15 +49,6 @@ def _extrair_periodo_do_caminho(caminho: str) -> str:
 # Mapeando variavel de controle para facilitar
 PDF_ATIVADO = True # Assumimos True se pdfplumber estiver instalado
 OCR_ATIVADO = OCR_ENABLED
-
-_EMPRESAS_CGR_TRANSPORTE = ('TAG', 'MASTERGAS')
-
-def _empresa_integra_cgr(nome_empresa: str) -> bool:
-    """CT-e da TAG e da Mastergás são custo de gás/transporte via gasoduto
-    e integram o CGR (a planilha oficial não trata como frete comum)."""
-    import re
-    nome_norm = unicodedata.normalize("NFKD", nome_empresa or "").encode("ascii", "ignore").decode("ascii").upper()
-    return any(re.search(rf'\b{empresa}\b', nome_norm) for empresa in _EMPRESAS_CGR_TRANSPORTE)
 
 class TelaAuditoria(ctk.CTkFrame):
     def __init__(self, parent=None):
@@ -890,7 +881,7 @@ class TelaAuditoria(ctk.CTkFrame):
         # (custo de gás/transporte via gasoduto, que a planilha oficial trata
         # como parte do CGR). CT-e das demais transportadoras é frete e não
         # integra o CGR.
-        itens_cgr = [r for r in self.resultados if r.tipo == 'NF-e' or _empresa_integra_cgr(r.empresa)]
+        itens_cgr = [r for r in self.resultados if r.tipo == 'NF-e' or empresa_integra_cgr(r.empresa)]
         bruto_total = sum(r.valor_total for r in itens_cgr)
         icms_total_all = sum(r.valor_total * r.icms_taxa for r in itens_cgr)
         self.cgr_liquido = sum(

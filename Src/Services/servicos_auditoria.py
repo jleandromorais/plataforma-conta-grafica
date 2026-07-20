@@ -1,5 +1,6 @@
 import os
 import re
+import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Tuple, List
@@ -32,6 +33,16 @@ PIS_COFINS_RATE = PIS_RATE + COFINS_RATE   # 0.0925
 
 # CSTs de ICMS que representam isenção/não-incidência (ICMS = 0%)
 CST_ICMS_ZERO = {'40', '41', '50', '51', '60', '90'}
+
+# CT-e da TAG e da Mastergás são custo de gás/transporte via gasoduto e
+# integram o CGR (a planilha oficial não trata como frete comum, diferente
+# do CT-e das demais transportadoras).
+_EMPRESAS_CGR_TRANSPORTE = ('TAG', 'MASTERGAS')
+
+
+def empresa_integra_cgr(nome_empresa: str) -> bool:
+    nome_norm = unicodedata.normalize("NFKD", nome_empresa or "").encode("ascii", "ignore").decode("ascii").upper()
+    return any(re.search(rf'\b{empresa}\b', nome_norm) for empresa in _EMPRESAS_CGR_TRANSPORTE)
 
 
 @dataclass

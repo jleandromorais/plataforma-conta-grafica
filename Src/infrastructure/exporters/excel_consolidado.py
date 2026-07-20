@@ -22,6 +22,7 @@ from openpyxl.chart import LineChart, Reference
 from openpyxl.chart.series import DataPoint
 
 from Src.Database.database import DatabasePMPV
+from Src.Services.servicos_auditoria import empresa_integra_cgr
 from Src.common.formatting import format_brl, format_brl4, format_brl_plain
 from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, TRIMESTRES_CIVIS
 from Src.infrastructure.exporters.excel_styles import (
@@ -1386,11 +1387,12 @@ class ExcelConsolidado:
 
         registros = []
         for mes in meses_todos:
-            # CGR considera apenas NF-e (compra de gás) — CT-e é frete/transporte.
+            # CGR considera NF-e + CT-e da TAG/Mastergás (transporte via
+            # gasoduto). CT-e das demais transportadoras é frete comum.
             cgr = sum(
                 _to_float(i.get("cgr_liquido"))
                 for i in (db.listar_auditoria_itens(mes) or [])
-                if i.get("tipo") == "NF-e"
+                if i.get("tipo") == "NF-e" or empresa_integra_cgr(i.get("empresa"))
             )
             cons_m = db.buscar_consolidacao(mes) or {}
             cgf = _to_float(cons_m.get("cgf"))
@@ -1509,9 +1511,10 @@ class ExcelConsolidado:
 
         # ── Agrega cada componente por mês ────────────────────────────────────
         def _cgr_mes(m):
-            # CGR considera apenas NF-e (compra de gás) — CT-e é frete/transporte.
+            # CGR considera NF-e + CT-e da TAG/Mastergás (transporte via
+            # gasoduto). CT-e das demais transportadoras é frete comum.
             itens = db.listar_auditoria_itens(m) or []
-            return sum(_to_float(i.get("cgr_liquido")) for i in itens if i.get("tipo") == "NF-e")
+            return sum(_to_float(i.get("cgr_liquido")) for i in itens if i.get("tipo") == "NF-e" or empresa_integra_cgr(i.get("empresa")))
 
         def _cgf_mes(m):
             # CGF em R$ = volume × PMPV, salvo na tabela consolidacao pelo módulo CGF
@@ -1652,10 +1655,11 @@ class ExcelConsolidado:
                 return []
 
         def _cgr_mes(m):
-            # CGR considera apenas NF-e (compra de gás) — CT-e é frete/transporte.
+            # CGR considera NF-e + CT-e da TAG/Mastergás (transporte via
+            # gasoduto). CT-e das demais transportadoras é frete comum.
             return sum(_to_float(i.get("cgr_liquido"))
                        for i in (db.listar_auditoria_itens(m) or [])
-                       if i.get("tipo") == "NF-e")
+                       if i.get("tipo") == "NF-e" or empresa_integra_cgr(i.get("empresa")))
 
         def _cgf_mes(m):
             return _to_float((db.buscar_consolidacao(m) or {}).get("cgf"))
