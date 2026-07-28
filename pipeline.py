@@ -172,7 +172,8 @@ def _etapa_auditoria(periodo: str, pasta: Path, cfg: dict) -> dict:
         logger.warning("[Auditoria] Pasta não encontrada: %s — pulando etapa", pasta)
         return {"periodo": periodo, "cgr": 0.0, "n_itens": 0}
 
-    xmls = [x for x in pasta.rglob("*.xml") if _competencia_bate(x, periodo)]
+    xmls = [x for x in pasta.rglob("*")
+            if x.suffix.lower() == ".xml" and _competencia_bate(x, periodo)]
     logger.info("[Auditoria] %d XMLs em %s (competência %s)", len(xmls), pasta, periodo)
 
     itens = []
@@ -181,8 +182,10 @@ def _etapa_auditoria(periodo: str, pasta: Path, cfg: dict) -> dict:
             tipo = RegrasAuditoria.detectar_tipo_xml(caminho)
             if tipo == "nfe":
                 dados = RegrasAuditoria.parse_nfe(caminho)
+                dados["caminho"] = str(caminho)
             elif tipo == "cte":
                 dados = RegrasAuditoria.parse_cte(caminho)
+                dados["caminho"] = str(caminho)
             else:
                 continue
             if dados and "erro" not in dados:
@@ -197,7 +200,13 @@ def _etapa_auditoria(periodo: str, pasta: Path, cfg: dict) -> dict:
         except Exception:
             logger.warning("[Auditoria] Falha ao processar %s", caminho.name, exc_info=True)
 
-    cgr_total = sum(i.get("cgr_liquido", 0) for i in itens)
+    cgr_total = 0.0
+    for i in itens:
+        caminho_str = _sem_acento(str(i.get("caminho", "")))
+        if "devolu" in caminho_str:
+            cgr_total -= i.get("cgr_liquido", 0)  # devolução subtrai
+        else:
+            cgr_total += i.get("cgr_liquido", 0)
     logger.info("[Auditoria] %d documentos | CGR = R$ %s", len(itens), _num_br(cgr_total))
 
     with DatabasePMPV() as db:

@@ -229,6 +229,27 @@ class RegrasRET:
                 if calc_exato > 0: dados['valor_total'] = calc_exato
                 else: dados['valor_total'] = max(todos_brl)
 
+                # PetroReconcavo e fornecedores similares discriminam "Valor Líquido",
+                # "PIS e COFINS" e "Valor Total (com tributos)" separadamente no PDF.
+                # Nesses casos o max(todos_brl) pode pegar acidentalmente um valor
+                # intermediário (ex: só o líquido), então priorizamos o valor bruto
+                # explicitamente rotulado como "com tributos".
+                valor_total_tributos_match = re.search(
+                    r'Valor\s+Total[^\n]{0,40}?com\s+tributos[^\n]{0,60}?'
+                    r'R\$\s*((?:\d{4,}|\d{1,3}(?:[.\s]\d{3})*)(?:,\d{2})?)',
+                    texto_completo, re.IGNORECASE,
+                )
+                if valor_total_tributos_match:
+                    valor_com_tributos = _parse(valor_total_tributos_match.group(1))
+                    if valor_com_tributos is not None:
+                        if todos_brl and abs(valor_com_tributos - max(todos_brl)) > 1.0 and log_callback:
+                            log_callback(
+                                f"Aviso: valor 'Valor Total (com tributos)' ({valor_com_tributos:.2f}) "
+                                f"difere de max(todos_brl) ({max(todos_brl):.2f}) em "
+                                f"{caminho_pdf}"
+                            )
+                        dados['valor_total'] = valor_com_tributos
+
                 qt_match = re.search(r'(?:QT|Quantidade)[:\s]*(\d+(?:[.,]\d+)?)', texto_completo, re.IGNORECASE)
                 if qt_match: dados['quantidade'] = float(qt_match.group(1).replace(',', '.'))
                 if dados['quantidade'] > 0: dados['valor_unitario'] = dados['valor_total'] / dados['quantidade']

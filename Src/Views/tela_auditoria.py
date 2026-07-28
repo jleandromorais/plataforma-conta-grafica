@@ -27,6 +27,9 @@ _MESES_DETECT = {
 }
 _MESES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
 
+def _sem_acento(s: str) -> str:
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+
 def _extrair_periodo_do_caminho(caminho: str) -> str:
     """Detecta 'Jan/2026' a partir do nome das pastas no caminho."""
     import re
@@ -758,7 +761,7 @@ class TelaAuditoria(ctk.CTkFrame):
             for idx, empresa in enumerate(empresas, start=1):
                 self._fila_auditoria.put(("status", f"📂 Auditando {empresa} ({idx}/{len(empresas)})..."))
                 pasta_empresa = self.pasta_selecionada / empresa
-                xmls = list({p.resolve() for p in pasta_empresa.rglob("*.xml")})
+                xmls = list({p.resolve() for p in pasta_empresa.rglob("*") if p.suffix.lower() == ".xml"})
                 pdfs = list({p.resolve() for p in pasta_empresa.rglob("*.pdf")})
 
                 arquivos_proc = 0
@@ -808,6 +811,7 @@ class TelaAuditoria(ctk.CTkFrame):
                                 dados.get("volume", 0),
                                 "OCR",
                                 dados.get("volume_total", 0.0),
+                                str(pdf_file),
                             )
                         )
                     if arquivos_proc % 10 == 0:
@@ -853,7 +857,8 @@ class TelaAuditoria(ctk.CTkFrame):
         
         vol_total = dados.get('volume_total', float(dados.get('volume', 0)))
         return XMLItem(empresa, dados['tipo'], dados['numero'], dados['valor_total'],
-                       dados['icms'], dados.get('icms_taxa', 0.0), dados['pis'], dados['cofins'], int(vol_total), "OK", vol_total)
+                       dados['icms'], dados.get('icms_taxa', 0.0), dados['pis'], dados['cofins'], int(vol_total), "OK", vol_total,
+                       str(xml_path))
 
     def _processar_totais_e_ui(self, n_xmls, n_pdfs):
         # Deduplicar por (empresa, tipo, numero) — segurança contra XMLs repetidos
@@ -884,10 +889,13 @@ class TelaAuditoria(ctk.CTkFrame):
         itens_cgr = [r for r in self.resultados if r.tipo == 'NF-e' or empresa_integra_cgr(r.empresa)]
         bruto_total = sum(r.valor_total for r in itens_cgr)
         icms_total_all = sum(r.valor_total * r.icms_taxa for r in itens_cgr)
-        self.cgr_liquido = sum(
-            RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa)
-            for r in itens_cgr
-        )
+        self.cgr_liquido = 0.0
+        for r in itens_cgr:
+            valor_liq = RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa)
+            if "devolu" in _sem_acento(r.caminho or "").lower():
+                self.cgr_liquido -= valor_liq
+            else:
+                self.cgr_liquido += valor_liq
         self._atualizar_painel_cgr(self.valor_total_geral, icms_total_all, self.cgr_liquido)
 
         _fmt = _fmt_brl
@@ -913,7 +921,13 @@ class TelaAuditoria(ctk.CTkFrame):
             nfes_e = [i for i in itens if i.tipo == "NF-e"]
             ctes_e = [i for i in itens if i.tipo == "CT-e"]
             val_e  = sum(i.valor_total for i in itens)
-            cgr_e  = sum(RegrasAuditoria.calcular_s_tributos(i.valor_total, i.icms_taxa) for i in itens)
+            cgr_e  = 0.0
+            for i in itens:
+                valor_liq = RegrasAuditoria.calcular_s_tributos(i.valor_total, i.icms_taxa)
+                if "devolu" in _sem_acento(i.caminho or "").lower():
+                    cgr_e -= valor_liq
+                else:
+                    cgr_e += valor_liq
             self.text_resultados.insert("end", f"┌─ {emp}\n")
             self.text_resultados.insert("end", f"│  NF-e: {len(nfes_e):>4} notas"
                                                f"   CT-e: {len(ctes_e):>3} notas"

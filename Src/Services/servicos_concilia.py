@@ -12,11 +12,16 @@ Para usar: Copie e cole esta classe no seu arquivo servicos_concilia.py
 """
 
 import re
+import unicodedata
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple
 from Src.common.formatting import parse_brl
 from Src.infrastructure.ocr.ocr_pdf import read_pdf_text
+
+
+def _sem_acento(s: str) -> str:
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
 
 
 @dataclass(frozen=True)
@@ -125,13 +130,34 @@ class RegrasConcilia:
                     pass
         
         # ============================================================================
+        # ESTRATÉGIA 3: PDFs sem "Total" nem "R$" — valor aparece isolado na linha
+        # ============================================================================
+        # Algumas notas de débito (ex: Eneva/Petrolina/Garanhuns) trazem o valor
+        # sozinho em uma linha própria, sem "R$" na frente — às vezes com separador
+        # de milhar ("25.790,68"), às vezes sem ("143,15"). Como CEP/CNPJ/datas
+        # nunca aparecem isolados numa linha inteira com vírgula decimal, exigir
+        # que o número ocupe a linha toda (^...$ com MULTILINE) já é suficiente
+        # para não gerar falso positivo, mesmo sem exigir separador de milhar.
+        if not lista_floats:
+            pattern_isolado = r'^\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*$'
+            matches = re.findall(pattern_isolado, text_clean, re.MULTILINE)
+
+            for m in matches:
+                try:
+                    f = parse_brl(m)
+                    if 0.01 < f < 999_999_999:
+                        lista_floats.append(f)
+                except (ValueError, AttributeError):
+                    pass
+
+        # ============================================================================
         # RETORNAR O RESULTADO
         # ============================================================================
-        
+
         if lista_floats:
             valor_final = max(lista_floats)  # Retorna o maior valor encontrado
             return valor_final, "Maior Valor Válido Detectado"
-        
+
         return 0.0, "Valor não identificado"
 
     @staticmethod
@@ -163,16 +189,22 @@ class RegrasConcilia:
                     valor, metodo_extracao = RegrasConcilia.extrair_valor(texto)
                     status = "OK" if valor > 0 else "REVISAR"
                     metodo_final = f"{metodo_leitura} -> {metodo_extracao}"
+
+                    # Notas de débito canceladas (substituídas por uma "ATUALIZADO")
+                    # entram com valor negativo, pois já foram cobradas/lançadas e
+                    # precisam ser estornadas do total do período.
+                    if "cancelado" in _sem_acento(arq.name).lower():
+                        valor = -valor
                 else:
                     valor = 0.0
                     status = "ERRO"
                     metodo_final = "Sem texto extraído"
-                    
+
             except Exception as e:
                 valor = 0.0
                 status = "ERRO"
                 metodo_final = f"Exceção: {str(e)[:50]}"
-            
+
             # Cria item com dados extraídos
             item = PdfItem(
                 file_name=arq.name,

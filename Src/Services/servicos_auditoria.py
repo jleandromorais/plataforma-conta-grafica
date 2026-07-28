@@ -59,6 +59,7 @@ class XMLItem:
     volume: int
     status: str
     volume_total: float
+    caminho: str = ""
 
 
 class RegrasAuditoria:

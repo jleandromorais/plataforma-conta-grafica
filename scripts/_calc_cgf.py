@@ -12,7 +12,7 @@ df_fat['Volume Faturado'] = pd.to_numeric(df_fat['Volume Faturado'], errors='coe
 TERMOS_CONS = ['consumo', 'proprio', 'proprio', 'cons. proprio']
 mask_cons = pd.Series([False]*len(df_fat), index=df_fat.index)
 for col in df_fat.columns:
-    if df_fat[col].dtype == object:
+    if pd.api.types.is_string_dtype(df_fat[col]) or pd.api.types.is_object_dtype(df_fat[col]):
         serie = df_fat[col].astype(str).str.lower().str.strip()
         for t in TERMOS_CONS:
             mask_cons |= serie.str.contains(t, na=False, regex=False)

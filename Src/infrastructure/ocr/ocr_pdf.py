@@ -48,7 +48,15 @@ def read_pdf_text(pdf_path: Path, lang: str = "por") -> Tuple[str, str]:
                 return "", "FALHA: Imagem (sem Tesseract)"
 
             image = pdf.pages[0].to_image(resolution=300).original
-            ocr_text = pytesseract.image_to_string(image, lang=lang)
+            try:
+                ocr_text = pytesseract.image_to_string(image, lang=lang)
+            except pytesseract.TesseractError:
+                # Traineddata do idioma pedido (ex: "por") pode não estar instalado
+                # nesta máquina — tenta "eng" como último recurso antes de desistir.
+                if lang != "eng":
+                    ocr_text = pytesseract.image_to_string(image, lang="eng")
+                else:
+                    raise
             return ocr_text, "OCR"
     except Exception as e:  # pragma: no cover
         return "", f"ERRO LEITURA: {e}"
