@@ -24,6 +24,11 @@ pytesseract==0.3.13
 python-dotenv==1.2.2
 PyYAML==6.0.3
 
+# API (backend web para o front React)
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+python-multipart==0.0.32
+
 # Opcionais (não instalados neste ambiente; ativados em runtime se presentes).
 # Mantêm restrição mínima — fixe a versão exata quando forem instalados.
 google-genai>=0.3.0

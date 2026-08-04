@@ -151,6 +151,24 @@ class RegrasConcilia:
                     pass
 
         # ============================================================================
+        # ESTRATÉGIA 4: Último recurso — qualquer número em formato BR no texto
+        # ============================================================================
+        # Se nenhuma das estratégias acima encontrou nada (ex: valor não ocupa a
+        # linha inteira sozinho), varre o texto todo por números no padrão
+        # brasileiro sem exigir "R$" nem linha isolada, e usa o maior valor válido.
+        if not lista_floats:
+            pattern_numero_br = r'\b(\d{1,3}(?:\.\d{3})*,\d{2})\b'
+            matches = re.findall(pattern_numero_br, text_clean)
+
+            for m in matches:
+                try:
+                    f = parse_brl(m)
+                    if 1.00 <= f <= 999_999.99:
+                        lista_floats.append(f)
+                except (ValueError, AttributeError):
+                    pass
+
+        # ============================================================================
         # RETORNAR O RESULTADO
         # ============================================================================
 
@@ -173,9 +191,38 @@ class RegrasConcilia:
         Returns:
             Lista de PdfItem com os dados extraídos
         """
+        # Exclui arquivos em subpastas "TOP" (Take or Pay não recuperável é
+        # tratado à parte, fora deste fluxo), igual ao filtro já existente
+        # para pastas de versões substituídas.
+        arquivos = [a for a in arquivos if "top" not in _sem_acento(str(a)).lower()]
+
+        # Deduplica por número de ND (ex: "NDPFP03882"): quando duas notas do
+        # mesmo número existem (original + retificada), mantém a que tem
+        # "atualiz"/"atualizado" no nome; se nenhuma tiver, mantém a primeira.
+        # Notas "cancelado" ficam de fora da dedupe: elas entram com valor
+        # negativo (ver abaixo) e devem ser somadas junto com a atualizada,
+        # não descartadas.
+        por_nd: dict[str, Path] = {}
+        canceladas = []
+        for arq in arquivos:
+            if "cancelado" in _sem_acento(arq.name).lower():
+                canceladas.append(arq)
+                continue
+            m = re.search(r'NDPFP\d+', arq.name, re.IGNORECASE)
+            if not m:
+                por_nd.setdefault(f"__sem_nd__{arq.name}", arq)
+                continue
+            nd = m.group(0).upper()
+            existente = por_nd.get(nd)
+            if existente is None:
+                por_nd[nd] = arq
+            elif "atualiz" in _sem_acento(arq.name).lower() and "atualiz" not in _sem_acento(existente.name).lower():
+                por_nd[nd] = arq
+        arquivos = list(por_nd.values()) + canceladas
+
         itens = []
         total = len(arquivos)
-        
+
         for i, arq in enumerate(arquivos):
             # Log de progresso
             log_callback(f"[{i+1}/{total}] Lendo: {arq.name}...")

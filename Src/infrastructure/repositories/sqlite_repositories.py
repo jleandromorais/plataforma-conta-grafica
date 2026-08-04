@@ -107,6 +107,27 @@ class SqliteSRRepository(SRRepository):
     def listar_sessoes_com_volumes(self):
         return self.db.listar_sessoes_com_volumes()
 
+    def carregar_dados_mes(self, sessao_id: int, mes: int):
+        return self.db.carregar_dados_mes(sessao_id, mes)
+
+    def buscar_cgf_resumo(self, periodo: str):
+        return self.db.buscar_cgf_resumo(periodo)
+
+    def salvar_sr(self, periodo: str, vp: float, vf: float, pr: float, sr: float):
+        self.db.salvar_sr(periodo, vp, vf, pr, sr)
+
+    def buscar_sr(self, periodo: str):
+        return self.db.buscar_sr(periodo)
+
+    def salvar_sr_trimestre(self, trimestre: str, meses):
+        self.db.salvar_sr_trimestre(trimestre, meses)
+
+    def buscar_sr_trimestre(self, trimestre: str):
+        return self.db.buscar_sr_trimestre(trimestre)
+
+    def listar_sr_trimestres(self):
+        return self.db.listar_sr_trimestres()
+
     def fechar(self):
         self.db.fechar()
 
