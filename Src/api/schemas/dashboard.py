@@ -27,3 +27,48 @@ class DashboardResponse(BaseModel):
     historico: list[KpiMensal]
     serie_pmpv: list[SeriePonto]
     serie_scg: list[SeriePonto]
+
+
+class EmpresaCGR(BaseModel):
+    empresa: str
+    notas: int
+    nfe: int
+    cte: int
+    valor_total: float
+    icms: float
+    pis_cofins: float
+    cgr_liquido: float
+
+
+class DashboardEmpresas(BaseModel):
+    ano_filtro: str | None = None
+    empresas: list[EmpresaCGR]          # do maior CGR líquido para o menor
+    total_cgr_liquido: float
+
+
+class RetMes(BaseModel):
+    periodo: str
+    total: float
+    por_tipo: dict[str, float]
+
+
+class DashboardRet(BaseModel):
+    ano_filtro: str | None = None
+    tipos: list[str]                    # até 3 maiores + "Outros", na ordem de cores
+    meses: list[RetMes]
+    total: float
+
+
+class VolumeMes(BaseModel):
+    periodo: str
+    volume_faturado: float
+    volume_devolucoes: float
+    volume_canceladas: float
+    volume_consumo_proprio: float
+    volume_final: float
+
+
+class DashboardVolumes(BaseModel):
+    ano_filtro: str | None = None
+    meses: list[VolumeMes]
+    totais: VolumeMes                   # soma do período filtrado
