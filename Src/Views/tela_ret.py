@@ -7,6 +7,7 @@ from pathlib import Path
 
 from Src.config import ui_theme as ui
 from Src.Services.servicos_ret import RegrasRET
+from Src.Services import servicos_ret_lote as lote_ret
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.Database.database import DatabasePMPV
@@ -353,39 +354,12 @@ class TelaRET(ctk.CTkFrame):
         self.log("INICIANDO PROCESSAMENTO")
         self.log("="*60)
         
-        self.dados_processados = []
-        arquivos_processados = 0
-        ignorados_nf = 0
-
-        for raiz, _, ficheiros in os.walk(self.pasta_selecionada):
-            partes_raiz = [p.upper() for p in Path(raiz).parts]
-            if any('NOTAS FISCAIS' in p or 'NOTA FISCAL' in p for p in partes_raiz):
-                ignorados_nf += len([f for f in ficheiros if f.lower().endswith('.pdf')])
-                continue
-
-            for ficheiro in ficheiros:
-                if ficheiro.lower().endswith('.pdf'):
-                    caminho_completo = os.path.join(raiz, ficheiro)
-
-                    tipo_nota = RegrasRET.extrair_tipo_nota(caminho_completo)
-                    if tipo_nota == 'NF':
-                        ignorados_nf += 1
-                        self.log(f"   [NF] Ignorado (Nota Fiscal): {ficheiro}")
-                        continue
-
-                    self.log(f"[PDF] Processando: {ficheiro}")
-
-                    # Chama o nosso novo serviço de regras passando o log!
-                    dados_pdf = RegrasRET.extrair_dados_pdf(caminho_completo, log_callback=self.log)
-
-                    if dados_pdf['valores_encontrados']:
-                        self.dados_processados.append(dados_pdf)
-                        self.log(f"   [OK] {len(dados_pdf['valores_encontrados'])} valores")
-                    else:
-                        self.dados_processados.append(dados_pdf)
-                        self.log(f"   [AVISO] Sem valores")
-
-                    arquivos_processados += 1
+        self.dados_processados, arquivos_processados, ignorados_nf = lote_ret.processar_pasta(
+            self.pasta_selecionada, log=self.log,
+        )
+        for d in self.dados_processados:
+            n = len(d['valores_encontrados'])
+            self.log(f"   [{'OK' if n else 'AVISO'}] {d['arquivo']}: {n} valores")
 
         if ignorados_nf:
             self.log(f"\n[INFO] {ignorados_nf} PDF(s) em 'Notas Fiscais' ignorados (fora do escopo do RET).")
@@ -558,9 +532,34 @@ CÁLCULO EC / RET  [precisão: 6 casas decimais]
             messagebox.showwarning("Aviso", "Processe os PDFs primeiro!")
             return
 
+        periodo = self.entry_periodo.get()
+
+        # PDFs de vários meses (ex.: pasta do trimestre): grava cada mês com o
+        # seu RET, em vez de somar tudo no mês selecionado.
+        grupos = lote_ret.agrupar_por_mes(self.dados_processados, periodo_padrao=periodo)
+        if len(grupos) > 1:
+            resumo = "\n".join(
+                f"  {p}: {format_brl(RegrasRET.calcular_ret(docs)['ret'])} ({len(docs)} doc.)"
+                for p, docs in sorted(grupos.items())
+            )
+            if not messagebox.askyesno(
+                "PDFs de vários meses",
+                f"Os PDFs processados são de {len(grupos)} meses:\n\n{resumo}\n\n"
+                "Salvar o RET de cada mês separadamente?",
+            ):
+                return
+            try:
+                salvos = lote_ret.salvar_meses(grupos)
+            except ValueError as e:
+                return messagebox.showwarning("Não foi possível salvar", str(e))
+            messagebox.showinfo(
+                "RET Salvo ✅",
+                "\n".join(f"{s['periodo']}: {format_brl(s['ret'])}" for s in salvos),
+            )
+            return
+
         calc = RegrasRET.calcular_ret(self.dados_processados)
         total_geral = calc['ret']
-        periodo = self.entry_periodo.get()
 
         total_fmt = format_brl(total_geral)
         if not messagebox.askyesno("Confirmar salvamento",

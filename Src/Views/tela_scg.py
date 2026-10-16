@@ -4,7 +4,6 @@ import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.config import ui_theme as ui
 from Src.Services.servicos_scg import ServicosSCG
-from Src.Services.servicos_auditoria import empresa_integra_cgr
 from Src.Database.database import DatabasePMPV
 from Src.common.formatting import format_brl_plain
 from Src.common.periodos import TRIMESTRES_CIVIS, MESES_ABREVS as MESES_ANO
@@ -428,22 +427,8 @@ class TelaSCG(ctk.CTkFrame):
 
     @staticmethod
     def _buscar_dados_fontes(periodo: str) -> dict:
-        with DatabasePMPV() as db:
-            # CGR considera NF-e (compra de gás) + CT-e da TAG/Mastergás
-            # (transporte via gasoduto, que a planilha oficial trata como
-            # parte do CGR). CT-e das demais transportadoras é frete e não
-            # integra o CGR.
-            cgr = sum(float(i.get("cgr_liquido") or 0)
-                      for i in (db.listar_auditoria_itens(periodo) or [])
-                      if i.get("tipo") == "NF-e" or empresa_integra_cgr(i.get("empresa")))
-            cons = db.buscar_consolidacao(periodo) or {}
-            cgf = float(cons.get("cgf") or 0)
-            ret = float(cons.get("ret") or 0)
-            rp = sum(float(i.get("valor") or 0)
-                     for i in (db.listar_concilia_itens(periodo) or []))
-        rpv = cgr - cgf
-        scg = rpv + ret + rp
-        return {"cgr": cgr, "cgf": cgf, "rpv": rpv, "ret": ret, "rp": rp, "scg": scg}
+        # A regra fica no serviço (também usada pela API web).
+        return ServicosSCG.buscar_dados_fontes(periodo)
 
     def _aplicar_dados(self, dados: dict):
         for key, linha in self.linhas.items():

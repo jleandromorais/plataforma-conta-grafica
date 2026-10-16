@@ -10,7 +10,7 @@ from typing import Any
 
 from Src.domain.ports.repositories import PMPVRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePMPVRepository
-from Src.Services.servicos_pmpv import RegrasPMPV
+from Src.Services.servicos_pmpv import ExcelPMPV, RegrasPMPV
 
 
 class PMPVUseCases:
@@ -94,6 +94,61 @@ class PMPVUseCases:
 
     def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
         self.repo.salvar_pmpv_mensal(periodo, pmpv)
+
+    def buscar_trimestre_ativo(self) -> list[str]:
+        return self.repo.buscar_trimestre_ativo()
+
+    def salvar_trimestre_ativo(self, meses: list[str]) -> None:
+        """Grava os 3 meses do trimestre ativo — lido por SCG, RET, CGF e o
+        Excel Final para saber qual trimestre exibir."""
+        self.repo.salvar_trimestre_ativo(meses)
+
+    def salvar_com_periodos(
+        self,
+        nome: str,
+        dados_por_mes: dict[str, list[dict[str, Any]]],
+        resultado: dict[str, Any],
+        periodos: list[str],
+    ) -> int:
+        """Mesmo efeito do "Salvar Sessão" do desktop (tela_pmpv.salvar):
+        sessão completa + PMPV mensal de cada mês + trimestre ativo."""
+        sessao_id = self.salvar_sessao_completa(nome, dados_por_mes, resultado)
+        if periodos:
+            pmpv = resultado.get("pmpv", 0.0)
+            for periodo in periodos:
+                self.salvar_pmpv_mensal(periodo, pmpv)
+            self.salvar_trimestre_ativo(periodos)
+        return sessao_id
+
+    @staticmethod
+    def importar_memoria(caminho_arquivo: str, periodos: list[str]) -> dict[str, Any]:
+        """Lê a planilha "Memória de Cálculo" para cada mês do trimestre.
+
+        Retorna {"meses": {periodo: [linhas]}, "erros": [str]} — um mês com
+        problema não impede os outros (mesmo comportamento do desktop).
+        """
+        meses: dict[str, list[dict[str, Any]]] = {}
+        erros: list[str] = []
+        for periodo in periodos:
+            try:
+                empresas = ExcelPMPV.ler_dados_memoria_calculo(caminho_arquivo, periodo)
+            except ValueError as e:
+                erros.append(f"{periodo}: {e}")
+                continue
+            if not empresas:
+                erros.append(f"{periodo}: nenhuma empresa com volume encontrada.")
+                continue
+            meses[periodo] = [
+                {
+                    "empresa": nome,
+                    "molecula": d["mol"],
+                    "transporte": d["trans"],
+                    "logistica": d["log"],
+                    "volume": d["volume"],
+                }
+                for nome, d in empresas.items()
+            ]
+        return {"meses": meses, "erros": erros}
 
     def __enter__(self):
         return self

@@ -63,8 +63,9 @@ class DashboardUseCases:
             cons = [c for c in cons if _chave(c["periodo"])[0] == int(ano)]
             pmpvs = [p for p in pmpvs if _chave(p["periodo"])[0] == int(ano)]
 
-        historico = [
-            {
+        historico = []
+        for c in cons:
+            linha = {
                 "periodo": c["periodo"],
                 "cgr": float(c.get("cgr") or 0),
                 "ret": float(c.get("ret") or 0),
@@ -73,13 +74,19 @@ class DashboardUseCases:
                 "rpv": float(c.get("rpv") or 0),
                 "scg": float(c.get("scg") or 0),
             }
-            for c in cons
-        ]
+            # Sem CGR ou sem CGF o SCG do mês não significa nada (ex.: só o CGF
+            # lançado dá um "SCG" de −R$ 99 mi). O mês aparece, mas marcado.
+            linha["pendencias"] = [
+                nome for nome, campo in (("CGR (Auditoria)", "cgr"), ("CGF", "cgf")) if not linha[campo]
+            ]
+            linha["completo"] = not linha["pendencias"]
+            historico.append(linha)
 
+        completos = [h for h in historico if h["completo"]]
         ultimo_mes = None
-        if historico:
-            atual = historico[-1]
-            anterior = historico[-2] if len(historico) >= 2 else None
+        if completos:
+            atual = completos[-1]
+            anterior = completos[-2] if len(completos) >= 2 else None
             variacao = None
             if anterior and anterior["scg"] != 0:
                 variacao = (atual["scg"] - anterior["scg"]) / abs(anterior["scg"]) * 100
@@ -88,7 +95,7 @@ class DashboardUseCases:
         serie_pmpv = [
             {"periodo": p["periodo"], "valor": float(p.get("pmpv") or 0)} for p in pmpvs
         ]
-        serie_scg = [{"periodo": c["periodo"], "valor": c["scg"]} for c in historico]
+        serie_scg = [{"periodo": c["periodo"], "valor": c["scg"]} for c in completos]
 
         return {
             "ano_filtro": ano,

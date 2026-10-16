@@ -2,6 +2,7 @@ from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from Src.common.excel_salvar import salvar_workbook
 
 # ── Paleta de cores ──────────────────────────────────────────────────────────
 _TITULO_BG      = "0D2137"
@@ -230,7 +231,7 @@ class ExcelAuditoria:
         if comparacao:
             ExcelAuditoria._adicionar_sheets_comparacao(wb, comparacao)
 
-        wb.save(nome_arquivo)
+        salvar_workbook(wb, nome_arquivo)
 
     @staticmethod
     def _adicionar_sheets_comparacao(wb, comparacao):

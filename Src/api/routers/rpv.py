@@ -3,8 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from Src.api.deps import get_servicos_rpv
-from Src.api.schemas.rpv import RPVResultado, RPVSalvarRequest, RPVSalvarResponse
+from Src.api.schemas.rpv import (
+    RPVHistoricoLinha,
+    RPVResultado,
+    RPVSalvarRequest,
+    RPVSalvarResponse,
+)
 from Src.Services.servicos_rpv import ServicosRPV
+from Src.common.periodos import is_periodo_valido
 
 router = APIRouter(prefix="/rpv", tags=["RPV"])
 
@@ -12,6 +18,12 @@ router = APIRouter(prefix="/rpv", tags=["RPV"])
 @router.get("/periodos")
 def listar_periodos(servico: ServicosRPV = Depends(get_servicos_rpv)) -> list:
     return servico.obter_periodos()
+
+
+@router.get("/historico", response_model=list[RPVHistoricoLinha])
+def historico(servico: ServicosRPV = Depends(get_servicos_rpv)) -> list[RPVHistoricoLinha]:
+    """CGR, CGF e RPV de cada período — mesma tabela do histórico do desktop."""
+    return [RPVHistoricoLinha(**h) for h in servico.historico()]
 
 
 @router.get("", response_model=RPVResultado)
@@ -32,5 +44,7 @@ def salvar(
     payload: RPVSalvarRequest,
     servico: ServicosRPV = Depends(get_servicos_rpv),
 ) -> RPVSalvarResponse:
+    if not is_periodo_valido(payload.periodo):
+        raise ValueError(f"Período inválido: {payload.periodo!r}. Use o formato Jan/2026.")
     rpv = servico.salvar_valores(payload.periodo, payload.cgr, payload.cgf)
     return RPVSalvarResponse(rpv=rpv)

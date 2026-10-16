@@ -18,13 +18,14 @@ from openpyxl.styles import (
     Alignment, Border, Font, GradientFill, PatternFill, Side,
 )
 from openpyxl.utils import get_column_letter
+from Src.common.excel_salvar import ArquivoEmUsoError, salvar_workbook
 from openpyxl.chart import LineChart, Reference
 from openpyxl.chart.series import DataPoint
 
 from Src.Database.database import DatabasePMPV
 from Src.Services.servicos_auditoria import empresa_integra_cgr
 from Src.common.formatting import format_brl, format_brl4, format_brl_plain
-from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, TRIMESTRES_CIVIS
+from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, TRIMESTRES_CIVIS, is_periodo_valido
 from Src.infrastructure.exporters.excel_styles import (
     fill as _fill, font as _font, border as _border,
     align as _align, to_float as _to_float,
@@ -134,7 +135,8 @@ _MES_ORD: dict[str, int] = {ab: i for i, ab in enumerate(_MESES_FULL, 1)}
 
 # Janelas de meses válidos por módulo (abreviaturas PT-BR)
 _MESES_PMPV = {"Fev", "Mar", "Abr"}   # Fevereiro a Abril
-_MESES_RET  = {"Jan", "Fev", "Mar"}   # Janeiro a Março
+# RET: sem filtro de mês — segue a grade civil completa (Jan-Mar, Abr-Jun,
+# Jul-Set, Out-Dez), agrupada em blocos por _agrupar_em_trimestres.
 # RPV (CGR + CGF): sem restrição de mês — usa todos disponíveis
 
 def _abrev_de_periodo(periodo: str) -> str:
@@ -220,6 +222,7 @@ class ExcelConsolidado:
         periodo: str | None = None,
         nome_arquivo: str | None = None,
         periodos_trimestre: list[str] | None = None,
+        abrir: bool = True,
     ) -> str:
         """
         Gera o Excel consolidado.
@@ -232,9 +235,11 @@ class ExcelConsolidado:
                      Auditoria, RET e Conciliação são agregados dos 3 meses.
                      Se None, usa apenas `periodo`.
             nome_arquivo: Caminho de saída. Se None, gera automaticamente.
+            abrir: Abre o arquivo no Excel ao final (desktop). A API web passa
+                   False — no servidor isso abriria o Excel na máquina errada.
         """
         with DatabasePMPV() as db:
-            return ExcelConsolidado._gerar(db, periodo, nome_arquivo, periodos_trimestre)
+            return ExcelConsolidado._gerar(db, periodo, nome_arquivo, periodos_trimestre, abrir)
 
     # ── Gerador principal ────────────────────────────────────────────────────
 
@@ -244,6 +249,7 @@ class ExcelConsolidado:
         periodo: str | None,
         nome_arquivo: str | None,
         periodos_trimestre: list[str] | None = None,
+        abrir: bool = True,
     ) -> str:
         # Abreviaturas de mês válidas PT-BR
         _ABREVS_VALIDAS = {"Jan","Fev","Mar","Abr","Mai","Jun",
@@ -308,7 +314,7 @@ class ExcelConsolidado:
         ) -> list[str]:
             """Retorna períodos Mmm/YYYY distintos da tabela.
 
-            filtro_modulo: conjunto de abreviaturas permitidas (ex: _MESES_RET).
+            filtro_modulo: conjunto de abreviaturas permitidas (ex: _MESES_PMPV).
             filtro_periodos: lista exata de períodos do trimestre civil
                 (ex: ['Jan/2026','Fev/2026','Mar/2026']) — usada por módulos
                 que devem seguir a grade civil fixa. `None` = sem filtro;
@@ -328,13 +334,12 @@ class ExcelConsolidado:
                 rows = [r for r in rows if r in filtro_periodos]
             return sorted(rows, key=_ord)
 
-        # Cada módulo usa apenas os meses da sua janela de negócio:
-        # RET  = Janeiro–Março (fixo)  |  PMPV = Fevereiro–Abril (fixo)
-        # Auditoria (CGR) e CGF: mostram TODOS os meses disponíveis no banco
+        # PMPV = Fevereiro–Abril (fixo).
+        # RET, Auditoria (CGR) e CGF: mostram TODOS os meses disponíveis no banco
         # (todos os anos/trimestres); o agrupamento em banners dentro da aba
         # respeita a grade civil (Jan-Mar, Abr-Jun, Jul-Set, Out-Dez) via
         # _agrupar_em_trimestres, nunca misturando meses de blocos diferentes.
-        meses_ret   = _periodos_tabela("ret_itens",       filtro_modulo=_MESES_RET)
+        meses_ret   = _periodos_tabela("ret_itens")         # RET — sem restrição
         meses_audit = _periodos_tabela("auditoria_itens")   # Auditoria/CGR — sem restrição
         meses_cgf   = _periodos_tabela("cgf_resumo")        # CGF — sem restrição
         meses_conc  = _periodos_tabela("concilia_itens")
@@ -392,23 +397,19 @@ class ExcelConsolidado:
         ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
         ExcelConsolidado._sheet_progresso(wb, execucoes, periodo)
 
+        # A mensagem ao usuário é exibida por quem chamou (ou pelo tratador
+        # global de erros da janela principal) — aqui só levanta o erro.
         try:
-            wb.save(final)
-        except PermissionError:
+            salvar_workbook(wb, final)
+        except ArquivoEmUsoError:
             wb.close()
-            from tkinter import messagebox
-            nome_arquivo = Path(final).name
-            messagebox.showerror(
-                "Arquivo em uso",
-                f"Não foi possível salvar '{nome_arquivo}'.\n\n"
-                f"O arquivo está aberto no Excel. Feche-o e tente gerar o relatório novamente."
-            )
-            raise PermissionError(f"Feche o arquivo '{nome_arquivo}' no Excel e tente novamente.")
+            raise
 
         wb.close()
 
         try:
-            os.startfile(final)
+            if abrir:
+                os.startfile(final)
         except Exception:
             pass
 
@@ -967,9 +968,14 @@ class ExcelConsolidado:
 
         # ── Linha 1: Título do trimestre ──────────────────────────────────────
         trimestre_label = label_trimestre or "N/D"
+        rotulo_titulo = "Trimestre"
+        if meses and len(meses) > 3:
+            # Vários trimestres: título mostra o intervalo; cada bloco tem seu banner.
+            trimestre_label = f"{meses[0]} a {meses[-1]}"
+            rotulo_titulo = "Períodos"
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NCOLS)
         t = ws.cell(row=1, column=1,
-                    value=f"  SISTEMA RET — ENCARGOS E DOCUMENTOS  |  Trimestre: {trimestre_label}")
+                    value=f"  SISTEMA RET — ENCARGOS E DOCUMENTOS  |  {rotulo_titulo}: {trimestre_label}")
         t.fill = _fill(_ORANGE_DARK)
         t.font = _font(bold=True, size=14, color=_HEADER_FG)
         t.alignment = _align("left")
@@ -997,12 +1003,34 @@ class ExcelConsolidado:
                 ordem.append(p)
 
         tipos_total: dict[str, float] = {}
-        grand_total = 0.0
         row = 3
 
         trimestres = _agrupar_em_trimestres(ordem)
         meses_por_trimestre = {m: i for i, tri in enumerate(trimestres) for m in tri}
         tri_atual = -1
+        tri_total = 0.0   # EC líquido acumulado do trimestre corrente
+
+        def _linha_total_trimestre(row: int, meses_tri: list[str], valor: float) -> int:
+            """Linha de total do trimestre (nunca soma trimestres diferentes)."""
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+            rotulo = "  ·  ".join(meses_tri)
+            tot_lbl = ws.cell(row=row, column=1,
+                              value=f"  ══ EC LÍQUIDO TOTAL DO TRIMESTRE (RET) — {rotulo} ══")
+            tot_lbl.fill = _fill(_ORANGE_DARK)
+            tot_lbl.font = _font(bold=True, size=13, color=_HEADER_FG)
+            tot_lbl.alignment = _align("left")
+            tot_lbl.border = _border()
+            tot_val = ws.cell(row=row, column=7, value=valor)
+            tot_val.fill = _fill(_ORANGE_DARK)
+            tot_val.font = _font(bold=True, size=13, color=_HEADER_FG)
+            tot_val.number_format = _BRL
+            tot_val.alignment = _align("right")
+            tot_val.border = _border()
+            for c in [2, 3, 4, 5, 6, 8, 9]:
+                ws.cell(row=row, column=c).fill = _fill(_ORANGE_DARK)
+                ws.cell(row=row, column=c).border = _border()
+            ws.row_dimensions[row].height = 26
+            return row + 2
 
         for periodo_mes in ordem:
             itens_mes = grupos.get(periodo_mes)
@@ -1012,6 +1040,9 @@ class ExcelConsolidado:
             # Banner de trimestre a cada novo grupo de 3 meses
             tri_idx = meses_por_trimestre.get(periodo_mes, -1)
             if tri_idx != tri_atual:
+                if tri_atual != -1:
+                    row = _linha_total_trimestre(row, trimestres[tri_atual], tri_total)
+                    tri_total = 0.0
                 tri_atual = tri_idx
                 tri_meses = trimestres[tri_idx]
                 label_tri = "  🗓  TRIMESTRE:  " + "  ·  ".join(tri_meses)
@@ -1084,34 +1115,20 @@ class ExcelConsolidado:
                     c.number_format = _BRL
                     c.alignment = _align("right")
             ws.row_dimensions[row].height = 20
-            grand_total += ec_liquido_mes
+            tri_total += ec_liquido_mes
             row += 1
 
             # Espaço entre meses
             ws.row_dimensions[row].height = 8
             row += 1
 
-        # ── Total Geral do Trimestre ──────────────────────────────────────────
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
-        tot_lbl = ws.cell(row=row, column=1, value="  ══ EC LÍQUIDO TOTAL DO TRIMESTRE (RET) ══")
-        tot_lbl.fill = _fill(_ORANGE_DARK)
-        tot_lbl.font = _font(bold=True, size=13, color=_HEADER_FG)
-        tot_lbl.alignment = _align("left")
-        tot_lbl.border = _border()
-        tot_val = ws.cell(row=row, column=7, value=grand_total)
-        tot_val.fill = _fill(_ORANGE_DARK)
-        tot_val.font = _font(bold=True, size=13, color=_HEADER_FG)
-        tot_val.number_format = _BRL
-        tot_val.alignment = _align("right")
-        tot_val.border = _border()
-        for c in [2, 3, 4, 5, 6, 8, 9]:
-            ws.cell(row=row, column=c).fill = _fill(_ORANGE_DARK)
-            ws.cell(row=row, column=c).border = _border()
-        ws.row_dimensions[row].height = 26
-        row += 2
+        # ── Total do último trimestre ─────────────────────────────────────────
+        if tri_atual != -1:
+            row = _linha_total_trimestre(row, trimestres[tri_atual], tri_total)
 
         # ── Resumo por Tipo de Encargo ────────────────────────────────────────
-        _section_title(ws, row, "  ── RESUMO POR TIPO DE ENCARGO (TRIMESTRE)", _NCOLS, _ORANGE_MED)
+        escopo = "TRIMESTRE" if len(trimestres) <= 1 else "TODOS OS TRIMESTRES"
+        _section_title(ws, row, f"  ── RESUMO POR TIPO DE ENCARGO ({escopo})", _NCOLS, _ORANGE_MED)
         ws.row_dimensions[row].height = 20
         row += 1
         _apply_header_row(ws, row, ["Tipo de Encargo", "Total (R$)"], [24, 20], _ORANGE_MED)
@@ -1499,7 +1516,9 @@ class ExcelConsolidado:
         # ── Coleta os meses disponíveis nas tabelas de origem ────────────────
         def _meses_de(tabela):
             try:
-                return sorted({r for r in db.listar_periodos_distintos(tabela) if r}, key=_ord)
+                # Só períodos "Mmm/AAAA": "Teste2", "Geral" etc. gravados por
+                # engano viravam colunas no relatório.
+                return sorted({r for r in db.listar_periodos_distintos(tabela) if r and is_periodo_valido(r)}, key=_ord)
             except Exception:
                 return []
 
@@ -1511,10 +1530,10 @@ class ExcelConsolidado:
 
         # ── Agrega cada componente por mês ────────────────────────────────────
         def _cgr_mes(m):
-            # CGR considera NF-e + CT-e da TAG/Mastergás (transporte via
-            # gasoduto). CT-e das demais transportadoras é frete comum.
-            itens = db.listar_auditoria_itens(m) or []
-            return sum(_to_float(i.get("cgr_liquido")) for i in itens if i.get("tipo") == "NF-e" or empresa_integra_cgr(i.get("empresa")))
+            # Valor GRAVADO (consolidação) — o que foi escolhido/salvo no SCG e
+            # o mesmo que a aba Dashboard usa. Antes somava os itens da
+            # Auditoria: meses sem itens (CGR digitado) saíam com SCG de −R$ 78 mi.
+            return _to_float((db.buscar_consolidacao(m) or {}).get("cgr"))
 
         def _cgf_mes(m):
             # CGF em R$ = volume × PMPV, salvo na tabela consolidacao pelo módulo CGF
@@ -1527,8 +1546,9 @@ class ExcelConsolidado:
             return _to_float(cons_m.get("ret"))
 
         def _rp_mes(m):
-            itens = db.listar_concilia_itens(m) or []
-            return sum(_to_float(i.get("valor")) for i in itens)
+            # Gravado (consolidação). Antes somava receitas + despesas dos
+            # itens; o saldo de penalidade é despesas − receitas.
+            return _to_float((db.buscar_consolidacao(m) or {}).get("rp"))
 
         # ── Título ────────────────────────────────────────────────────────────
         n_cols = 2 + len(meses_todos) + 1   # DADOS + UNIDADE + meses + TOTAL
@@ -1650,16 +1670,15 @@ class ExcelConsolidado:
 
         def _meses_de(tabela):
             try:
-                return sorted({r for r in db.listar_periodos_distintos(tabela) if r}, key=_ord)
+                return sorted({r for r in db.listar_periodos_distintos(tabela) if r and is_periodo_valido(r)}, key=_ord)
             except Exception:
                 return []
 
         def _cgr_mes(m):
-            # CGR considera NF-e + CT-e da TAG/Mastergás (transporte via
-            # gasoduto). CT-e das demais transportadoras é frete comum.
-            return sum(_to_float(i.get("cgr_liquido"))
-                       for i in (db.listar_auditoria_itens(m) or [])
-                       if i.get("tipo") == "NF-e" or empresa_integra_cgr(i.get("empresa")))
+            # Valor GRAVADO (consolidação) — o que foi escolhido/salvo no SCG e
+            # o mesmo que a aba Dashboard usa. Antes somava os itens da
+            # Auditoria: meses sem itens (CGR digitado) saíam com SCG de −R$ 78 mi.
+            return _to_float((db.buscar_consolidacao(m) or {}).get("cgr"))
 
         def _cgf_mes(m):
             return _to_float((db.buscar_consolidacao(m) or {}).get("cgf"))
@@ -1668,8 +1687,9 @@ class ExcelConsolidado:
             return _to_float((db.buscar_consolidacao(m) or {}).get("ret"))
 
         def _rp_mes(m):
-            return sum(_to_float(i.get("valor"))
-                       for i in (db.listar_concilia_itens(m) or []))
+            # Gravado (consolidação). Antes somava receitas + despesas dos
+            # itens; o saldo de penalidade é despesas − receitas.
+            return _to_float((db.buscar_consolidacao(m) or {}).get("rp"))
 
         # Todos os meses disponíveis no banco
         meses_banco = sorted(

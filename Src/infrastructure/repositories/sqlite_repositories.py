@@ -89,6 +89,12 @@ class SqlitePMPVRepository(PMPVRepository):
     def buscar_pmpv_mensal(self, periodo: str):
         return self.db.buscar_pmpv_mensal(periodo)
 
+    def buscar_trimestre_ativo(self):
+        return self.db.buscar_trimestre_ativo()
+
+    def salvar_trimestre_ativo(self, meses):
+        self.db.salvar_trimestre_ativo(meses)
+
     def fechar(self):
         self.db.fechar()
 

@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from Src.api.errors import registrar_exception_handlers
-from Src.api.routers import config, dashboard, pmpv, pr, pv, rpv, scg, sr
+from Src.api.routers import auditoria, cgf, conciliacao, config, dashboard, excel_final, pmpv, pr, pv, ret, rpv, scg, sr
 
 app = FastAPI(
     title="Plataforma Conta Gráfica — API",
@@ -44,12 +44,11 @@ app.include_router(rpv.router, prefix="/api")
 app.include_router(sr.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
-
-# TODO(spec §5): routers de CGF, Auditoria, Conciliação, RET ainda não
-# existem — dependem de Repository/Use Case novos (ver
-# SPEC_BACKEND_FASTAPI.md §5). Não incluir aqui rotas que chamem
-# Src.Database.database.DatabasePMPV diretamente (regra da spec §3).
-
+app.include_router(cgf.router, prefix="/api")
+app.include_router(auditoria.router, prefix="/api")
+app.include_router(ret.router, prefix="/api")
+app.include_router(conciliacao.router, prefix="/api")
+app.include_router(excel_final.router, prefix="/api")
 
 @app.get("/api/health")
 def health() -> dict:

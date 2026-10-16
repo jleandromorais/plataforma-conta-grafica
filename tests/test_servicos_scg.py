@@ -80,18 +80,24 @@ class TestObterCriarApagar:
 
 
 class TestGerarTextoHistorico:
+    # obter_periodos() só traz o nome do período (é assim no banco real);
+    # SCG e data vêm de buscar_consolidacao().
     def test_inclui_scg_e_data(self, servico):
-        servico.consolidacao.obter_periodos.return_value = [
-            {"periodo": "Jan/2026", "scg": 1234.56, "data_atualizacao": "2026-01-15 10:00:00"},
-        ]
+        servico.consolidacao.obter_periodos.return_value = [{"periodo": "Jan/2026"}]
+        servico.consolidacao.buscar_consolidacao.return_value = {
+            "cgr": 2000.0, "cgf": 765.44, "ret": 0.0, "rp": 0.0, "rpv": 1234.56,
+            "scg": 1234.56, "data_atualizacao": "2026-01-15 10:00:00",
+        }
         txt = servico.gerar_texto_historico()
         assert "Jan/2026" in txt
         assert "R$ 1.234,56" in txt
         assert "2026-01-15 10:00" in txt
 
     def test_scg_none_vira_zero(self, servico):
-        servico.consolidacao.obter_periodos.return_value = [
-            {"periodo": "Jan/2026", "scg": None, "data_atualizacao": None},
-        ]
+        servico.consolidacao.obter_periodos.return_value = [{"periodo": "Jan/2026"}]
+        servico.consolidacao.buscar_consolidacao.return_value = {
+            "cgr": None, "cgf": None, "ret": None, "rp": None, "rpv": None,
+            "scg": None, "data_atualizacao": None,
+        }
         txt = servico.gerar_texto_historico()
         assert "R$ 0,00" in txt

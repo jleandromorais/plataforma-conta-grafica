@@ -38,28 +38,35 @@ class ServicosRPV:
         dados = self.consolidacao.salvar_valores(periodo, cgr=cgr, cgf=cgf)
         return dados["rpv"]
 
-    def gerar_texto_historico(self) -> str:
-        """Monta o texto bonitinho da tabela de histórico."""
-        periodos = self.obter_periodos()
-        
-        cab = f"{'Período':<14} {'CGR':>16} {'CGF':>16} {'RPV':>16}   {'Atualizado':<16}\n"
-        texto_final = cab + "─" * 80 + "\n"
-
-        for p in periodos:
+    def historico(self) -> list[dict]:
+        """CGR, CGF e RPV de cada período, do mais recente ao mais antigo."""
+        linhas = []
+        for p in self.obter_periodos():
             dados = self.consolidacao.buscar_consolidacao(p["periodo"])
             if dados:
                 cgr = dados.get("cgr") or 0.0
                 cgf = dados.get("cgf") or 0.0
-                rpv = dados.get("rpv") or (cgr - cgf)
-                data = (dados.get("data_atualizacao") or "")[:16]
-                
-                linha = (
-                    f"{p['periodo']:<14} "
-                    f"{self.formatar_brl(cgr):>16} "
-                    f"{self.formatar_brl(cgf):>16} "
-                    f"{self.formatar_brl(rpv):>16}   "
-                    f"{data:<16}\n"
-                )
-                texto_final += linha
+                linhas.append({
+                    "periodo": p["periodo"],
+                    "cgr": cgr,
+                    "cgf": cgf,
+                    "rpv": dados.get("rpv") or (cgr - cgf),
+                    "data_atualizacao": (dados.get("data_atualizacao") or "")[:16],
+                })
+        return linhas
+
+    def gerar_texto_historico(self) -> str:
+        """Monta o texto bonitinho da tabela de histórico."""
+        cab = f"{'Período':<14} {'CGR':>16} {'CGF':>16} {'RPV':>16}   {'Atualizado':<16}\n"
+        texto_final = cab + "─" * 80 + "\n"
+
+        for h in self.historico():
+            texto_final += (
+                f"{h['periodo']:<14} "
+                f"{self.formatar_brl(h['cgr']):>16} "
+                f"{self.formatar_brl(h['cgf']):>16} "
+                f"{self.formatar_brl(h['rpv']):>16}   "
+                f"{h['data_atualizacao']:<16}\n"
+            )
 
         return texto_final

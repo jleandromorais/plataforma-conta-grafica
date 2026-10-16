@@ -2,8 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
-from tkinter import messagebox
-import customtkinter as ctk
+# tkinter/customtkinter só são carregados quando uma janela é aberta: a API
+# web usa obter_periodos_trimestre/registrar_execucao_excel_final em
+# servidores sem interface gráfica.
+class _MessageboxSobDemanda:
+    def __getattr__(self, nome):
+        from tkinter import messagebox as _mb
+        return getattr(_mb, nome)
+
+
+messagebox = _MessageboxSobDemanda()
 
 from Src.Database.database import DatabasePMPV
 from Src.common.periodos import normalizar_periodo, MESES_ABREVS as _MESES_ABREVS_SET
@@ -85,6 +93,7 @@ def solicitar_periodo_excel_final(
 
     Retorna `None` quando cancelado. Não aceita período vazio.
     """
+    import customtkinter as ctk
     modal = ctk.CTkToplevel(parent)
     modal.title(titulo)
     modal.geometry("520x220")

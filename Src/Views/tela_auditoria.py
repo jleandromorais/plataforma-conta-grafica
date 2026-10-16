@@ -4,14 +4,14 @@ from tkinter import filedialog, messagebox, simpledialog
 from pathlib import Path
 from datetime import datetime
 import threading
-import unicodedata
 from queue import Queue, Empty
 import pandas as pd
 
 from Src.config import ui_theme as ui
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
-from Src.Services.comparador_conta_grafica import ComparadorContaGrafica, _normalizar_numero_nota
-from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, PIS_COFINS_RATE, empresa_integra_cgr
+from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
+from Src.Services.servicos_auditoria import XMLItem
+from Src.Services import servicos_auditoria_lote as lote
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
@@ -19,35 +19,9 @@ from Src.common.formatting import format_brl as _fmt_brl
 from Src.Database.database import DatabasePMPV
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
-_MESES_DETECT = {
-    "JANEIRO":1,"JAN":1,"FEVEREIRO":2,"FEV":2,"MARÇO":3,"MARCO":3,"MAR":3,
-    "ABRIL":4,"ABR":4,"MAIO":5,"MAI":5,"JUNHO":6,"JUN":6,
-    "JULHO":7,"JUL":7,"AGOSTO":8,"AGO":8,"SETEMBRO":9,"SET":9,
-    "OUTUBRO":10,"OUT":10,"NOVEMBRO":11,"NOV":11,"DEZEMBRO":12,"DEZ":12,
-}
-_MESES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
-
-def _sem_acento(s: str) -> str:
-    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
-
 def _extrair_periodo_do_caminho(caminho: str) -> str:
-    """Detecta 'Jan/2026' a partir do nome das pastas no caminho."""
-    import re
-    from datetime import date
-    partes = Path(caminho).parts
-    tokens = []
-    for p in partes:
-        tokens.extend(re.split(r'[\s\-_\.]+', p.upper()))
-    mes_num = 0
-    for tok in reversed(tokens):          # testa do mais específico para o mais genérico
-        if tok in _MESES_DETECT:
-            mes_num = _MESES_DETECT[tok]
-            break
-    if not mes_num:
-        return ""
-    anos = re.findall(r'\b(20\d{2})\b', caminho)
-    ano = int(anos[-1]) if anos else date.today().year
-    return f"{_MESES_ABREV[mes_num - 1]}/{ano}"
+    """Detecta 'Jan/2026' a partir do nome das pastas (regra no serviço)."""
+    return lote.periodo_do_caminho(caminho)
 
 # Mapeando variavel de controle para facilitar
 PDF_ATIVADO = True # Assumimos True se pdfplumber estiver instalado
@@ -620,17 +594,7 @@ class TelaAuditoria(ctk.CTkFrame):
 
     def _worker_carregar_excel(self, arquivo: str):
         try:
-            planilhas = pd.read_excel(arquivo, sheet_name=None)
-            frames = []
-            for nome_aba, df_aba in planilhas.items():
-                if df_aba is None or df_aba.empty:
-                    continue
-                df_tmp = df_aba.copy()
-                df_tmp["__sheet_name__"] = str(nome_aba)
-                frames.append(df_tmp)
-            if not frames:
-                raise ValueError("A planilha selecionada não contém abas com dados.")
-            df = pd.concat(frames, ignore_index=True, sort=False)
+            df = lote.carregar_planilha_comparacao(arquivo)
             self._fila_carregamento.put(("excel_ok", arquivo, df))
         except Exception as e:
             self._fila_carregamento.put(("excel_error", str(e)))
@@ -760,62 +724,13 @@ class TelaAuditoria(ctk.CTkFrame):
 
             for idx, empresa in enumerate(empresas, start=1):
                 self._fila_auditoria.put(("status", f"📂 Auditando {empresa} ({idx}/{len(empresas)})..."))
-                pasta_empresa = self.pasta_selecionada / empresa
-                xmls = list({p.resolve() for p in pasta_empresa.rglob("*") if p.suffix.lower() == ".xml"})
-                pdfs = list({p.resolve() for p in pasta_empresa.rglob("*.pdf")})
-
-                arquivos_proc = 0
-                notas_via_xml: set[str] = set()
-                valores_via_xml: set[float] = set()
-
-                if not usar_pdf:
-                    for xml_file in xmls:
-                        total_xmls += 1
-                        arquivos_proc += 1
-                        res = self._auditar_xml(xml_file, empresa)
-                        if res:
-                            resultados.append(res)
-                            notas_via_xml.add(_normalizar_numero_nota(res.numero))
-                            valores_via_xml.add(round(res.valor_total, 2))
-                        if arquivos_proc % 25 == 0:
-                            self._fila_auditoria.put(("status", f"📂 {empresa}: {arquivos_proc}/{len(xmls)} XMLs"))
-
-                # Todo PDF da pasta é lido via OCR (mesmo com XMLs presentes),
-                # para nunca descartar notas que só existem em PDF. A duplicata
-                # com o que já veio de XML só é descartada quando o número OU o
-                # valor total extraído do PDF batem com um XML já processado.
-                pdfs_para_ocr = pdfs
-                for pdf_file in pdfs_para_ocr:
-                    total_ocr += 1
-                    arquivos_proc += 1
-                    dados = RegrasAuditoria.parse_pdf_ocr(pdf_file)
-                    if "erro" not in dados:
-                        nota_pdf_norm = _normalizar_numero_nota(dados.get("numero", ""))
-                        valor_pdf = round(float(dados.get("valor_total", 0.0) or 0.0), 2)
-                        if not usar_pdf and (
-                            (nota_pdf_norm and nota_pdf_norm in notas_via_xml)
-                            or (valor_pdf and valor_pdf in valores_via_xml)
-                        ):
-                            continue  # já capturada via XML
-                        vf = dados.get("valor_total", 0.0)
-                        resultados.append(
-                            XMLItem(
-                                empresa,
-                                dados.get("tipo", "NF-e"),
-                                dados.get("numero", "N/A"),
-                                vf,
-                                dados.get("icms", 0.0),
-                                dados.get("icms_taxa", 0.0),
-                                dados.get("pis", 0.0),
-                                dados.get("cofins", 0.0),
-                                dados.get("volume", 0),
-                                "OCR",
-                                dados.get("volume_total", 0.0),
-                                str(pdf_file),
-                            )
-                        )
-                    if arquivos_proc % 10 == 0:
-                        self._fila_auditoria.put(("status", f"📂 {empresa}: {arquivos_proc}/{len(pdfs_para_ocr)} PDFs"))
+                itens, n_xml, n_pdf = lote.auditar_empresa(
+                    self.pasta_selecionada / empresa, empresa, usar_pdf,
+                    progresso=lambda msg: self._fila_auditoria.put(("status", f"📂 {msg}")),
+                )
+                resultados.extend(itens)
+                total_xmls += n_xml
+                total_ocr += n_pdf
 
             self._fila_auditoria.put(("done", resultados, total_xmls, total_ocr))
         except Exception as e:
@@ -848,55 +763,18 @@ class TelaAuditoria(ctk.CTkFrame):
             self.after(120, self._poll_fila_auditoria)
 
     def _auditar_xml(self, xml_path: Path, empresa: str) -> XMLItem:
-        tipo = RegrasAuditoria.detectar_tipo_xml(xml_path)
-        if tipo == 'nfe': dados = RegrasAuditoria.parse_nfe(xml_path)
-        elif tipo == 'cte': dados = RegrasAuditoria.parse_cte(xml_path)
-        else: return None
-        
-        if 'erro' in dados: return None
-        
-        vol_total = dados.get('volume_total', float(dados.get('volume', 0)))
-        return XMLItem(empresa, dados['tipo'], dados['numero'], dados['valor_total'],
-                       dados['icms'], dados.get('icms_taxa', 0.0), dados['pis'], dados['cofins'], int(vol_total), "OK", vol_total,
-                       str(xml_path))
+        return lote.auditar_xml(xml_path, empresa)
 
     def _processar_totais_e_ui(self, n_xmls, n_pdfs):
-        # Deduplicar por (empresa, tipo, numero) — segurança contra XMLs repetidos
-        visto = set()
-        unicos = []
-        for r in self.resultados:
-            chave = (r.empresa, r.tipo, r.numero)
-            if chave not in visto:
-                visto.add(chave)
-                unicos.append(r)
-        self.resultados = unicos
-
-        nfes = [r for r in self.resultados if r.tipo == 'NF-e']
-        ctes = [r for r in self.resultados if r.tipo == 'CT-e']
-
-        self.valor_total_nfe    = sum(r.valor_total for r in nfes)
-        self.volume_total_nfe   = sum(r.volume_total for r in nfes)
-        self.valor_total_cte    = sum(r.valor_total for r in ctes)
-        self.volume_total_cte   = sum(r.volume_total for r in ctes)
-        self.valor_total_geral  = self.valor_total_nfe + self.valor_total_cte
-        self.volume_total_geral = self.volume_total_nfe + self.volume_total_cte
-
-        # Cálculo por documento (mesma lógica validada contra planilha Arch).
-        # CGR considera NF-e (compra de gás) + CT-e da TAG e da Mastergás
-        # (custo de gás/transporte via gasoduto, que a planilha oficial trata
-        # como parte do CGR). CT-e das demais transportadoras é frete e não
-        # integra o CGR.
-        itens_cgr = [r for r in self.resultados if r.tipo == 'NF-e' or empresa_integra_cgr(r.empresa)]
-        bruto_total = sum(r.valor_total for r in itens_cgr)
-        icms_total_all = sum(r.valor_total * r.icms_taxa for r in itens_cgr)
-        self.cgr_liquido = 0.0
-        for r in itens_cgr:
-            valor_liq = RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa)
-            if "devolu" in _sem_acento(r.caminho or "").lower():
-                self.cgr_liquido -= valor_liq
-            else:
-                self.cgr_liquido += valor_liq
-        self._atualizar_painel_cgr(self.valor_total_geral, icms_total_all, self.cgr_liquido)
+        self.resultados = lote.deduplicar(self.resultados)
+        tot = lote.calcular_totais(self.resultados)
+        self.valor_total_nfe    = tot["valor_total_nfe"]
+        self.valor_total_cte    = tot["valor_total_cte"]
+        self.valor_total_geral  = tot["valor_total_geral"]
+        self.volume_total_geral = tot["volume_total_geral"]
+        # CGR = NF-e + CT-e da TAG/Mastergás (gasoduto); devoluções subtraem.
+        self.cgr_liquido = tot["cgr_liquido"]
+        self._atualizar_painel_cgr(self.valor_total_geral, tot["icms_cgr"], self.cgr_liquido)
 
         _fmt = _fmt_brl
         def _sep(c="─", n=62): return c * n
@@ -912,27 +790,14 @@ class TelaAuditoria(ctk.CTkFrame):
         self.text_resultados.insert("end", f"{_sep('═')}\n\n")
 
         # ── Por empresa ──────────────────────────────────────────────────────
-        from collections import defaultdict
-        por_empresa: dict[str, list] = defaultdict(list)
-        for r in self.resultados:
-            por_empresa[r.empresa].append(r)
-
-        for emp, itens in sorted(por_empresa.items()):
-            nfes_e = [i for i in itens if i.tipo == "NF-e"]
-            ctes_e = [i for i in itens if i.tipo == "CT-e"]
-            val_e  = sum(i.valor_total for i in itens)
-            cgr_e  = 0.0
-            for i in itens:
-                valor_liq = RegrasAuditoria.calcular_s_tributos(i.valor_total, i.icms_taxa)
-                if "devolu" in _sem_acento(i.caminho or "").lower():
-                    cgr_e -= valor_liq
-                else:
-                    cgr_e += valor_liq
-            self.text_resultados.insert("end", f"┌─ {emp}\n")
-            self.text_resultados.insert("end", f"│  NF-e: {len(nfes_e):>4} notas"
-                                               f"   CT-e: {len(ctes_e):>3} notas"
-                                               f"   Total: {_fmt(val_e)}\n")
-            self.text_resultados.insert("end", f"│  CGR líquido: {_fmt(cgr_e)}\n")
+        for e in tot["por_empresa"]:
+            self.text_resultados.insert("end", f"┌─ {e['empresa']}\n")
+            self.text_resultados.insert("end", f"│  NF-e: {e['qtd_nfe']:>4} notas"
+                                               f"   CT-e: {e['qtd_cte']:>3} notas"
+                                               f"   Total: {_fmt(e['valor_total'])}\n")
+            self.text_resultados.insert("end", f"│  CGR líquido: {_fmt(e['cgr_liquido'])}\n")
+            if e["frete_fora_do_cgr"]:
+                self.text_resultados.insert("end", f"│  Frete fora do CGR: {_fmt(e['frete_fora_do_cgr'])}\n")
             self.text_resultados.insert("end", f"└{_sep()}\n\n")
 
         self.text_resultados.insert("end", f"\n")
@@ -1091,21 +956,8 @@ class TelaAuditoria(ctk.CTkFrame):
 
         # Salva os itens detalhados no banco principal
         if self.resultados:
-            icms_total = sum(r.icms for r in self.resultados)
-            itens_dict = [
-                {
-                    "empresa":     r.empresa,
-                    "tipo":        r.tipo,
-                    "numero":      r.numero,
-                    "valor_total": r.valor_total,
-                    "icms":        r.icms,
-                    "pis":         r.pis,
-                    "cofins":      r.cofins,
-                    "volume_total": r.volume_total,
-                    "cgr_liquido": RegrasAuditoria.calcular_s_tributos(r.valor_total, r.icms_taxa),
-                }
-                for r in self.resultados
-            ]
+            # Devoluções gravadas com CGR negativo (antes iam positivas).
+            itens_dict = lote.itens_para_banco(self.resultados)
             try:
                 with DatabasePMPV() as db:
                     db.salvar_auditoria_itens(periodo, itens_dict)

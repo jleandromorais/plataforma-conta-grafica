@@ -17,3 +17,11 @@ class RPVSalvarRequest(BaseModel):
 
 class RPVSalvarResponse(BaseModel):
     rpv: float
+
+
+class RPVHistoricoLinha(BaseModel):
+    periodo: str
+    cgr: float
+    cgf: float
+    rpv: float
+    data_atualizacao: str

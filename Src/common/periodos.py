@@ -199,6 +199,15 @@ def periodo_sort_key(periodo: str) -> tuple[int, int]:
     return (0, 0)
 
 
+def ordenar_historico(linhas: list[dict], campo: str = "periodo") -> list[dict]:
+    """Mais recente primeiro; períodos inválidos (ex.: "Teste2") no fim, com
+    `periodo_valido=False` para a tela poder destacá-los."""
+    for linha in linhas:
+        linha["periodo_valido"] = is_periodo_valido(linha[campo])
+    validos = sorted((l for l in linhas if l["periodo_valido"]), key=lambda l: periodo_sort_key(l[campo]), reverse=True)
+    return validos + [l for l in linhas if not l["periodo_valido"]]
+
+
 def is_periodo_valido(periodo: str) -> bool:
     """Retorna True se o período é um Mês/Ano válido (ex: Jan/2026)."""
     canonico = normalizar_periodo(periodo)

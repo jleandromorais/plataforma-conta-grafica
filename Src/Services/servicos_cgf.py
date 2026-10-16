@@ -1,8 +1,12 @@
 import re
 import unicodedata
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
+from Src.Database.database import DatabasePMPV
+from Src.common.periodos import is_periodo_valido
+from Src.common.precisao import arredondar_tarifa
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePMPVRepository
 
@@ -160,7 +164,9 @@ class ServicosCGF:
                     logs.append(f"   - Canceladas: {vol_canc:,.2f}\n")
 
             # Processamento de Devoluções
-            elif "devolu" in nome_low:
+            # "devolv" cobre "NF Devolvidas …" — antes só "devolu" (Devolução)
+            # era aceito e o arquivo de devolvidas era ignorado em silêncio.
+            elif "devolu" in nome_low or "devolv" in nome_low:
                 logs.append(f"🟡 DEVOLUÇÃO: {nome}")
                 dev_col_real = self._resolver_coluna(df, dev_col, ["Volume Devolução", "Volume Devolucao", "Volume de Devolução", "Volume de Devolucao"])
                 if dev_col_real is None:
@@ -210,3 +216,83 @@ class ServicosCGF:
         with ServicosConsolidacao() as consolidacao:
             dados = consolidacao.salvar_cgf(periodo, valor)
             return dados["rpv"]
+
+    def salvar_com_pmpv(self, periodo: str, resumo: dict, pmpv: float) -> dict:
+        """Grava o CGF em R$ (volume final × PMPV) e o resumo de volumes.
+
+        Exige PMPV > 0: sem ele o desktop gravava o VOLUME (m³) no campo do
+        CGF em R$, e esse número entrava no RPV/SCG como se fosse dinheiro.
+        """
+        if not is_periodo_valido(periodo):
+            raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+        if not pmpv or pmpv <= 0:
+            raise ValueError(f"Sem PMPV para {periodo}: calcule e salve o PMPV antes de salvar o CGF.")
+        volume_final = float(resumo.get("volume_final") or 0.0)
+        if volume_final == 0.0:
+            raise ValueError("Volume final zerado: processe as planilhas de NF antes de salvar.")
+        # PMPV com 4 casas, como a tela desktop (e o histórico gravado) usa.
+        pmpv = arredondar_tarifa(pmpv)
+        cgf_rs = volume_final * pmpv
+        rpv = self.salvar_cgf(periodo, cgf_rs)
+        with DatabasePMPV() as db:
+            db.salvar_cgf_resumo(
+                periodo,
+                resumo.get("volume_faturado", 0.0),
+                resumo.get("volume_canceladas", 0.0),
+                resumo.get("volume_devolucoes", 0.0),
+                resumo.get("volume_consumo_proprio", 0.0),
+                volume_final,
+            )
+        return {"cgf_rs": cgf_rs, "rpv": rpv}
+
+    def historico(self) -> list[dict]:
+        """Resumo de volumes gravado por período + CGF em R$ da consolidação."""
+        with DatabasePMPV() as db:
+            resumos = db.listar_cgf_resumos()
+            linhas = []
+            for r in resumos:
+                cons = db.buscar_consolidacao(r["periodo"]) or {}
+                linhas.append({
+                    "periodo": r["periodo"],
+                    "volume_faturado": r.get("volume_faturado") or 0.0,
+                    "volume_canceladas": r.get("volume_canceladas") or 0.0,
+                    "volume_devolucoes": r.get("volume_devolucoes") or 0.0,
+                    "volume_consumo_proprio": r.get("volume_consumo_proprio") or 0.0,
+                    "volume_final": r.get("volume_final") or 0.0,
+                    "cgf_rs": cons.get("cgf") or 0.0,
+                    "data_atualizacao": (r.get("data_atualizacao") or "")[:16],
+                })
+        from Src.common.periodos import ordenar_historico
+        return ordenar_historico(linhas)
+
+    @staticmethod
+    def periodo_do_nome_arquivo(caminho: str) -> str:
+        """Extrai 'Jan/2026' do nome do arquivo ou da pasta (ex.: 'NF Faturadas
+        01.26.xlsx' não tem mês por extenso → ''; 'Janeiro 2026/NF...' → 'Jan/2026')."""
+        tokens = re.split(r'[\s\-_\./\\]+', Path(caminho).stem.upper())
+        tokens += re.split(r'[\s\-_\./\\]+', Path(caminho).parent.name.upper())
+        mes_num = 0
+        for tok in reversed(tokens):
+            if tok in _MESES_DETECT:
+                mes_num = _MESES_DETECT[tok]
+                break
+        if not mes_num:
+            # Padrão "MM.AA" / "MM-AAAA" usado nos nomes das planilhas de NF
+            # (ex.: "NF Faturadas e complementares 01.26.xlsx" → Jan/2026).
+            m = re.search(r'(?<!\d)(0[1-9]|1[0-2])[.\-_/](\d{2}|20\d{2})(?!\d)', Path(caminho).stem)
+            if not m:
+                return ""
+            ano = int(m.group(2)) if len(m.group(2)) == 4 else 2000 + int(m.group(2))
+            return f"{_ABREVS[int(m.group(1)) - 1]}/{ano}"
+        anos = re.findall(r'\b(20\d{2})\b', caminho)
+        ano = int(anos[-1]) if anos else date.today().year
+        return f"{_ABREVS[mes_num - 1]}/{ano}"
+
+
+_MESES_DETECT = {
+    "JANEIRO": 1, "JAN": 1, "FEVEREIRO": 2, "FEV": 2, "MARÇO": 3, "MARCO": 3, "MAR": 3,
+    "ABRIL": 4, "ABR": 4, "MAIO": 5, "MAI": 5, "JUNHO": 6, "JUN": 6,
+    "JULHO": 7, "JUL": 7, "AGOSTO": 8, "AGO": 8, "SETEMBRO": 9, "SET": 9,
+    "OUTUBRO": 10, "OUT": 10, "NOVEMBRO": 11, "NOV": 11, "DEZEMBRO": 12, "DEZ": 12,
+}
+_ABREVS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]

@@ -5,23 +5,19 @@ from tkinter import messagebox
 from pathlib import Path
 from PIL import Image
 import os
+import importlib
+import logging
 
 from Src.config.ui_theme import configure_theme
 from Src.config import ui_theme as ui
 
+logger = logging.getLogger(__name__)
+
+# As telas dos módulos (e o gerador de Excel) são importadas só quando o
+# usuário abre cada uma — elas puxam pandas, openpyxl, pdfplumber e
+# matplotlib, que somavam ~10s na abertura do app. Ver _abrir_modulo.
 try:
-    from Src.Views.tela_pmpv import TelaPMPV
-    from Src.Views.tela_concilia import TelaConciliador
-    from Src.Views.tela_ret import TelaRET
-    from Src.Views.tela_auditoria import TelaAuditoria
-    from Src.Views.tela_scg import TelaSCG
-    from Src.Views.tela_cgf import TelaCGF
-    from Src.Views.tela_rpv import TelaRPV
-    from Src.Views.tela_sr import TelaSR
-    from Src.Views.tela_pr import TelaPR
-    from Src.Views.tela_pv import TelaPV
     from Src.Views.dashboard_resumo import PainelResumo
-    from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
     from Src.common.excel_final_destino import (
         obter_periodos_trimestre,
         EXCEL_FIXO_PATH,
@@ -33,6 +29,26 @@ except ImportError as e:
     print(f"Erro de importação dos módulos da aplicação: {e}")
 
 class PlataformaFinanceira(ctk.CTk):
+    def report_callback_exception(self, exc, val, tb):
+        """Tratador global de erros em botões/eventos.
+
+        Sem isto, um erro não tratado num clique vai para o stderr — que não
+        existe no .exe (sem console) — e o usuário fica sem resposta nenhuma.
+        """
+        logger.error("Erro não tratado na interface", exc_info=(exc, val, tb))
+        from Src.common.excel_salvar import ArquivoEmUsoError
+        if isinstance(val, ArquivoEmUsoError):
+            messagebox.showwarning("Arquivo em uso", str(val), parent=self)
+            return
+        messagebox.showerror(
+            "Algo deu errado",
+            "A operação não foi concluída por causa de um erro inesperado.\n\n"
+            "Se o problema continuar, avise o suporte informando o código abaixo "
+            "(o detalhe completo fica em logs\\app.log):\n\n"
+            f"[{exc.__name__}] {val}",
+            parent=self,
+        )
+
     def __init__(self):
         super().__init__()
 
@@ -188,10 +204,36 @@ class PlataformaFinanceira(ctk.CTk):
         container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         # --- DASHBOARD: resumo do período + evolução do PMPV ---
-        try:
-            PainelResumo(container).pack(fill="x", pady=(0, 14))
-        except Exception as e:
-            print(f"Aviso: não foi possível carregar o resumo do dashboard -> {e}")
+        # Os gráficos (matplotlib) levam alguns segundos para desenhar; o espaço
+        # fica reservado aqui e o painel é montado logo depois que a janela
+        # aparece, para o app não parecer travado na abertura.
+        slot_resumo = ctk.CTkFrame(container, fg_color="transparent")
+        slot_resumo.pack(fill="x", pady=(0, 14))
+        lbl_carregando = ctk.CTkLabel(slot_resumo, text="Carregando resumo…", text_color="gray")
+        lbl_carregando.pack(pady=24)
+
+        def _montar_resumo():
+            if not slot_resumo.winfo_exists():
+                return  # usuário já saiu da tela inicial
+            try:
+                PainelResumo(slot_resumo).pack(fill="x")
+            except Exception as e:
+                print(f"Aviso: não foi possível carregar o resumo do dashboard -> {e}")
+            finally:
+                if lbl_carregando.winfo_exists():
+                    lbl_carregando.destroy()
+
+        if self.winfo_viewable():
+            self.after(50, _montar_resumo)
+        else:
+            # Abertura do app: espera a janela ser exibida antes de desenhar.
+            def _ao_exibir(evento):
+                # <Map> na janela raiz também dispara para cada widget filho.
+                if evento.widget is not self:
+                    return
+                self.unbind("<Map>", id_bind)
+                self.after(50, _montar_resumo)
+            id_bind = self.bind("<Map>", _ao_exibir, add="+")
 
         # --- 3 MÓDULOS (mesmas cores do sidebar) ---
         etapas = [
@@ -311,13 +353,20 @@ class PlataformaFinanceira(ctk.CTk):
             widget.destroy()
 
     # --- MÉTODOS DE INTEGRAÇÃO (Abertura de Janelas) ---
-    def _abrir_modulo(self, classe_tela, nome_amigavel: str, dica: str):
+    def _abrir_modulo(self, tela: str, nome_amigavel: str, dica: str):
         """Abre uma tela de módulo com tratamento de erro amigável ao usuário.
+
+        `tela` é "modulo:Classe" dentro de Src.Views (ex. "tela_ret:TelaRET");
+        o import acontece aqui, no primeiro clique, e não na abertura do app.
 
         Em caso de falha, mostra uma mensagem em linguagem simples com uma
         dica do que fazer, e guarda o detalhe técnico ao final (para o suporte).
         """
+        self.configure(cursor="watch")
+        self.update_idletasks()
         try:
+            nome_modulo, nome_classe = tela.split(":")
+            classe_tela = getattr(importlib.import_module(f"Src.Views.{nome_modulo}"), nome_classe)
             self._limpar_area_principal()
             classe_tela(self.main_area).pack(fill="both", expand=True)
         except Exception as e:
@@ -328,64 +377,66 @@ class PlataformaFinanceira(ctk.CTk):
                 "Se o problema continuar, anote o código abaixo e avise o suporte:\n"
                 f"[{type(e).__name__}] {e}",
             )
+        finally:
+            self.configure(cursor="")
 
     def abrir_pmpv(self):
         self._abrir_modulo(
-            TelaPMPV, "Módulo PMPV",
+            "tela_pmpv:TelaPMPV", "Módulo PMPV",
             "Verifique se o sistema foi aberto pela tela inicial. Tente novamente.",
         )
 
     def abrir_ocr(self):
         self._abrir_modulo(
-            TelaConciliador, "Conciliação RP",
+            "tela_concilia:TelaConciliador", "Conciliação RP",
             "Confira se você tem os PDFs prontos para conciliar e tente novamente.",
         )
 
     def abrir_ret(self):
         self._abrir_modulo(
-            TelaRET, "Sistema RET",
+            "tela_ret:TelaRET", "Sistema RET",
             "Verifique se os arquivos de encargos/NFs estão acessíveis e tente novamente.",
         )
 
     def abrir_auditoria(self):
         self._abrir_modulo(
-            TelaAuditoria, "Auditoria CGR",
+            "tela_auditoria:TelaAuditoria", "Auditoria CGR",
             "Confira se os PDFs das notas fiscais estão disponíveis e tente novamente.",
         )
 
     def abrir_scg(self):
         self._abrir_modulo(
-            TelaSCG, "Consolidação SCG",
+            "tela_scg:TelaSCG", "Consolidação SCG",
             "Esta etapa depende de RPV, RET e RP. Verifique se já foram calculados.",
         )
 
     def abrir_cgf(self):
         self._abrir_modulo(
-            TelaCGF, "Volume CGF",
+            "tela_cgf:TelaCGF", "Volume CGF",
             "Verifique se os dados de volume faturado estão disponíveis e tente novamente.",
         )
 
     def abrir_rpv(self):
         self._abrir_modulo(
-            TelaRPV, "RPV",
+            "tela_rpv:TelaRPV", "RPV",
             "Esta etapa usa os valores de CGR e CGF. Verifique se já foram calculados.",
         )
 
     def abrir_sr(self):
         self._abrir_modulo(
-            TelaSR, "SR (Saldo Regulatório)",
+            "tela_sr:TelaSR", "SR (Saldo Regulatório)",
             "Esta etapa depende do Volume Prospectivo e do VF. Calcule o PMPV e o CGF antes.",
         )
 
     def abrir_pr(self):
         self._abrir_modulo(
-            TelaPR, "PR Final",
+            "tela_pr:TelaPR", "PR Final",
             "Esta etapa depende de SGR e SR. Verifique se foram calculados antes.",
         )
 
     def abrir_pv(self):
         self._abrir_modulo(
-            TelaPV, "PV Final",
+            "tela_pv:TelaPV", "PV Final",
             "Esta etapa usa o PMPV e o PR. Calcule esses módulos antes de continuar.",
         )
 
@@ -451,6 +502,8 @@ class PlataformaFinanceira(ctk.CTk):
             periodo_filtro = periodo_resultado[0]
 
             periodos_trimestre = obter_periodos_trimestre(periodo_filtro) if periodo_filtro else None
+
+            from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
             arquivo = ExcelConsolidado.exportar(
                 periodo=periodo_filtro,

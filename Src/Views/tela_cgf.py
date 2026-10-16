@@ -16,29 +16,9 @@ from Src.common.excel_final_destino import (
 )
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 
-# ── Detecção de período pelo nome do arquivo/pasta ──────────────────────────
-_MESES_DETECT_CGF = {
-    "JANEIRO":1,"JAN":1,"FEVEREIRO":2,"FEV":2,"MARÇO":3,"MARCO":3,"MAR":3,
-    "ABRIL":4,"ABR":4,"MAIO":5,"MAI":5,"JUNHO":6,"JUN":6,
-    "JULHO":7,"JUL":7,"AGOSTO":8,"AGO":8,"SETEMBRO":9,"SET":9,
-    "OUTUBRO":10,"OUT":10,"NOVEMBRO":11,"NOV":11,"DEZEMBRO":12,"DEZ":12,
-}
-_ABREVS_CGF = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
-
 def _periodo_do_caminho_cgf(caminho: str) -> str:
-    """Extrai 'Jan/2026' do nome do ficheiro ou pasta."""
-    tokens = re.split(r'[\s\-_\./\\]+', Path(caminho).stem.upper())
-    tokens += re.split(r'[\s\-_\./\\]+', Path(caminho).parent.name.upper())
-    mes_num = 0
-    for tok in reversed(tokens):
-        if tok in _MESES_DETECT_CGF:
-            mes_num = _MESES_DETECT_CGF[tok]
-            break
-    if not mes_num:
-        return ""
-    anos = re.findall(r'\b(20\d{2})\b', caminho)
-    ano = int(anos[-1]) if anos else date.today().year
-    return f"{_ABREVS_CGF[mes_num - 1]}/{ano}"
+    """Extrai 'Jan/2026' do nome do ficheiro ou pasta (regra em ServicosCGF)."""
+    return ServicosCGF.periodo_do_nome_arquivo(caminho)
 
 
 class TelaCGF(ctk.CTkFrame):

@@ -53,13 +53,15 @@ class ExcelPMPV:
         df = None
         
         try:
-            xl_tmp = pd.ExcelFile(caminho_arquivo)
-            for candidata in _ABAS_CANDIDATAS:
-                if candidata in xl_tmp.sheet_names:
-                    df = pd.read_excel(xl_tmp, sheet_name=candidata, header=None)
-                    break
-            if df is None:
-                df = pd.read_excel(xl_tmp, sheet_name=xl_tmp.sheet_names[0], header=None)
+            # `with` fecha a planilha ao terminar — sem isso o arquivo ficava
+            # travado (não dava para apagar/mover) enquanto o app estivesse aberto.
+            with pd.ExcelFile(caminho_arquivo) as xl_tmp:
+                for candidata in _ABAS_CANDIDATAS:
+                    if candidata in xl_tmp.sheet_names:
+                        df = pd.read_excel(xl_tmp, sheet_name=candidata, header=None)
+                        break
+                if df is None:
+                    df = pd.read_excel(xl_tmp, sheet_name=xl_tmp.sheet_names[0], header=None)
         except Exception as exc:
             raise ValueError(f"Não foi possível ler o arquivo:\n{exc}")
 

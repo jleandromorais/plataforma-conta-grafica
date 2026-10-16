@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from Src.common.precisao import arredondar_tarifa
 
 
 class SRSessao(BaseModel):
@@ -39,12 +41,16 @@ class SRTrimestreLinhaCarregada(BaseModel):
     vf: float
     pr: float
 
+    _pr_4_casas = field_validator("pr")(lambda v: arredondar_tarifa(v))
+
 
 class SRTrimestreLinhaEntrada(BaseModel):
     mes: str
     vp: float
     vf: float
-    pr: float
+    pr: float  # usado com 4 casas, como no desktop (campo PR da tela)
+
+    _pr_4_casas = field_validator("pr")(lambda v: arredondar_tarifa(v))
     selic_mensal: float = 0.0
     sr_anterior: float = 0.0
 

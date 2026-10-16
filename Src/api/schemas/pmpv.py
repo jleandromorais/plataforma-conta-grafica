@@ -17,6 +17,23 @@ class SalvarPMPVRequest(BaseModel):
     nome: str
     dados_por_mes: dict[str, list[dict[str, Any]]]
     resultado: dict[str, Any]
+    # Meses do trimestre (ex.: ["Fev/2026","Mar/2026","Abr/2026"]). Quando
+    # informado, grava também o PMPV mensal de cada mês e o trimestre ativo,
+    # como o "Salvar Sessão" do desktop.
+    periodos: list[str] = []
+
+
+class LinhaEmpresa(BaseModel):
+    empresa: str
+    molecula: float
+    transporte: float
+    logistica: float
+    volume: float
+
+
+class ImportarMemoriaResponse(BaseModel):
+    meses: dict[str, list[LinhaEmpresa]]
+    erros: list[str]
 
 
 class SalvarPMPVResponse(BaseModel):

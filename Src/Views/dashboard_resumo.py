@@ -351,8 +351,9 @@ class PainelResumo(ctk.CTkFrame):
         ax.set_ylim(min(valores) - margem, max(valores) + margem)
         fig.tight_layout()
 
+        # Sem canvas.draw() aqui: o FigureCanvasTkAgg desenha ao receber o tamanho
+        # real do widget; desenhar antes (no tamanho padrão) era trabalho jogado fora.
         canvas = FigureCanvasTkAgg(fig, master=frame)
-        canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
 
         anot = ax.annotate("", xy=(0, 0), xytext=(12, 12),
@@ -432,8 +433,9 @@ class PainelResumo(ctk.CTkFrame):
         )
         fig.tight_layout()
 
+        # Sem canvas.draw() aqui: o FigureCanvasTkAgg desenha ao receber o tamanho
+        # real do widget; desenhar antes (no tamanho padrão) era trabalho jogado fora.
         canvas = FigureCanvasTkAgg(fig, master=frame)
-        canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
 
         anot = ax.annotate("", xy=(0, 0), xytext=(12, 12),
@@ -502,9 +504,11 @@ class PainelResumo(ctk.CTkFrame):
         rp  = [d["rp"]  for d in dados]
         rpv = [d["rpv"] for d in dados]
 
-        # Paleta categórica validada (color-formula.md): blue, yellow, violet, aqua
-        cores = ["#3987e5", "#c98500", "#9085e9", "#199e70"]
-        segmentos = [("CGR", cgr), ("RET", ret), ("RP", rp), ("RPV", rpv)]
+        # SCG = RPV + RET + RP. O CGR já está dentro do RPV (CGR − CGF);
+        # empilhá-lo de novo inflava a barra do trimestre em ~R$ 290 mi.
+        del cgr
+        cores = ["#199e70", "#c98500", "#9085e9"]  # aqua, yellow, violet (paleta validada)
+        segmentos = [("RPV", rpv), ("RET", ret), ("RP", rp)]
 
         fig = Figure(figsize=(10, 3), dpi=100, facecolor=_CARD)
         ax  = fig.add_subplot(111)
@@ -542,8 +546,9 @@ class PainelResumo(ctk.CTkFrame):
         )
         fig.tight_layout()
 
+        # Sem canvas.draw() aqui: o FigureCanvasTkAgg desenha ao receber o tamanho
+        # real do widget; desenhar antes (no tamanho padrão) era trabalho jogado fora.
         canvas = FigureCanvasTkAgg(fig, master=frame)
-        canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
 
         anot = ax.annotate("", xy=(0, 0), xytext=(12, 12),

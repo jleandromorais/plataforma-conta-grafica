@@ -6,6 +6,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from datetime import datetime
 
 from Src.common.periodos import TRIMESTRES_FISCAIS, MESES_ABREVS as _MESES_BR
+from Src.common.excel_salvar import salvar_workbook
 
 # Converte TRIMESTRES_FISCAIS (índices 0-based) para números de mês 1-based
 _TRIMESTRES: list[tuple[str, list[int]]] = [
@@ -164,7 +165,7 @@ class ExcelRET:
         # ABA POR MÊS
         ExcelRET._criar_aba_por_mes(wb, dados_processados)
 
-        wb.save(excel_path)
+        salvar_workbook(wb, excel_path)
         wb.close()
 
     @staticmethod

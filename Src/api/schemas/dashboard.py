@@ -12,6 +12,8 @@ class KpiMensal(BaseModel):
     rpv: float
     scg: float
     variacao_scg_pct: float | None = None
+    completo: bool = True               # tem CGR e CGF
+    pendencias: list[str] = []          # o que falta lançar no mês
 
 
 class SeriePonto(BaseModel):

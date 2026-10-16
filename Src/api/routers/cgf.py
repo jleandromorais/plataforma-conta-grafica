@@ -1,0 +1,84 @@
+"""CGF — Volume Faturado. Mesma regra da tela desktop (tela_cgf.py), via
+ServicosCGF: VF = faturado (sem consumo próprio) − devoluções; CGF em R$ =
+VF × PMPV do mês."""
+from __future__ import annotations
+
+import shutil
+import tempfile
+from pathlib import Path
+
+from fastapi import APIRouter, File, Form, UploadFile
+
+from Src.api.schemas.cgf import (
+    CGFHistoricoLinha,
+    CGFProcessarResponse,
+    CGFSalvarRequest,
+    CGFSalvarResponse,
+)
+from Src.Services.servicos_cgf import ServicosCGF
+
+router = APIRouter(prefix="/cgf", tags=["CGF"])
+
+_EXTENSOES = {".xlsx", ".xls", ".xlsm", ".csv"}
+_PALAVRAS_TIPO = ("faturada", "complementar", "cancelad", "denegad", "devolu", "devolv")
+
+
+@router.post("/processar", response_model=CGFProcessarResponse)
+def processar(
+    arquivos: list[UploadFile] = File(...),
+    col_fat_volume: str = Form("Volume Faturado"),
+    col_fat_consumo: str = Form("Produto"),
+    val_fat_consumo: str = Form("consumo proprio"),
+    col_canc_volume: str = Form("Volume Canc/Deneg"),
+    col_dev_volume: str = Form("Volume Devolução"),
+) -> CGFProcessarResponse:
+    """Calcula os volumes a partir das planilhas de NF. NÃO grava nada.
+
+    O tipo de cada planilha vem do NOME do arquivo (faturada/complementar,
+    cancelada/denegada, devolução) — por isso o nome original é preservado.
+    """
+    if not arquivos:
+        raise ValueError("Envie ao menos uma planilha de NF.")
+
+    pasta = Path(tempfile.mkdtemp(prefix="cgf_"))
+    try:
+        caminhos: list[str] = []
+        ignorados: list[str] = []
+        for up in arquivos:
+            nome = Path(up.filename or "").name  # sem diretórios
+            if Path(nome).suffix.lower() not in _EXTENSOES:
+                raise ValueError(f"'{nome}' não é uma planilha (.xlsx, .xls ou .csv).")
+            if not any(p in nome.lower() for p in _PALAVRAS_TIPO):
+                ignorados.append(nome)
+            destino = pasta / nome
+            with destino.open("wb") as f:
+                shutil.copyfileobj(up.file, f)
+            caminhos.append(str(destino))
+
+        r = ServicosCGF().processar_arquivos(
+            caminhos, col_fat_volume, col_fat_consumo, val_fat_consumo, col_canc_volume, col_dev_volume,
+        )
+        periodo = next((p for p in map(ServicosCGF.periodo_do_nome_arquivo, caminhos) if p), "")
+        return CGFProcessarResponse(
+            volume_faturado=r["volume_faturado"],
+            volume_canceladas=r["volume_canceladas"],
+            volume_devolucoes=r["volume_devolucoes"],
+            volume_consumo_proprio=r["volume_consumo_proprio"],
+            volume_final=r["volume_final"],
+            periodo_detectado=periodo,
+            arquivos_ignorados=ignorados,
+            logs=r["logs"],
+        )
+    finally:
+        shutil.rmtree(pasta, ignore_errors=True)
+
+
+@router.post("/salvar", response_model=CGFSalvarResponse)
+def salvar(payload: CGFSalvarRequest) -> CGFSalvarResponse:
+    """Grava CGF em R$ (volume final × PMPV) e o resumo de volumes. Exige PMPV."""
+    return CGFSalvarResponse(**ServicosCGF().salvar_com_pmpv(payload.periodo, payload.model_dump(), payload.pmpv))
+
+
+@router.get("/historico", response_model=list[CGFHistoricoLinha])
+def historico() -> list[CGFHistoricoLinha]:
+    return [CGFHistoricoLinha(**h) for h in ServicosCGF().historico()]

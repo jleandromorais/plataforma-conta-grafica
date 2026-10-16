@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, List
 
-from Src.common.app_paths import raiz_aplicacao
+from Src.common.app_paths import caminho_banco, em_pasta_de_rede
 from Src.common.periodos import (
     normalizar_periodo, variantes_periodo, periodo_sort_key, is_periodo_valido,
     MESES_ABREVS as _MESES_ABREVS, abrev_para_numero,
@@ -40,7 +40,7 @@ class DatabasePMPV:
 
     def __init__(self, db_path: str | None = None):
         if db_path is None:
-            db_path = str(raiz_aplicacao() / "pmpv_data.db")
+            db_path = str(caminho_banco())
         self.db_path = db_path
         self.conn = None
         self.cursor = None
@@ -50,9 +50,12 @@ class DatabasePMPV:
     def _conectar(self):
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
-        # WAL melhora concorrência e reduz risco de corrupção/"database is locked".
+        # WAL melhora concorrência e reduz risco de corrupção/"database is locked"
+        # em disco local — mas não funciona em pasta de rede (Z:, \\servidor),
+        # onde pode corromper o banco; lá usa o journal tradicional.
+        modo = "DELETE" if em_pasta_de_rede(self.db_path) else "WAL"
         try:
-            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute(f"PRAGMA journal_mode={modo}")
             self.conn.execute("PRAGMA foreign_keys=ON")
         except sqlite3.Error:
             logger.exception("Falha ao aplicar PRAGMAs de inicialização")
@@ -613,10 +616,29 @@ class DatabasePMPV:
         self.salvar_scg(periodo, scg)
         return scg
     
+    @staticmethod
+    def _com_rpv_scg_calculados(registro: Dict | None) -> Dict | None:
+        """RPV = CGR − CGF e SCG = RPV + RET + RP, sempre recalculados na leitura.
+
+        As colunas `rpv`/`scg` gravadas podem estar velhas (ex.: Abr/2026 tinha
+        scg = 86.918.626 quando o certo é 6.573.449) e iam assim para o
+        Dashboard e o Excel Final. A mesma regra já era aplicada pelo
+        ServicosConsolidacao; aqui ela vale para todo leitor do banco.
+        """
+        if not registro:
+            return registro
+        r = dict(registro)
+        rpv = float(r.get("cgr") or 0.0) - float(r.get("cgf") or 0.0)
+        r["rpv"] = rpv
+        r["scg"] = rpv + float(r.get("ret") or 0.0) + float(r.get("rp") or 0.0)
+        return r
+
     def buscar_consolidacao(self, periodo: str) -> dict:
-        """Busca dados de consolidação de um período"""
+        """Busca dados de consolidação de um período (RPV/SCG recalculados)."""
         registros = self._buscar_por_periodo("consolidacao", periodo, order_by="data_atualizacao DESC, id DESC")
-        return self._merge_registros_periodo(registros, periodo, ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
+        return self._com_rpv_scg_calculados(
+            self._merge_registros_periodo(registros, periodo, ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
+        )
     
     def listar_periodos(self) -> List:
         """Lista todos os períodos válidos (Mês/Ano), ordenados do mais recente ao mais antigo."""
@@ -658,7 +680,10 @@ class DatabasePMPV:
             )
         else:
             self.cursor.execute("SELECT * FROM consolidacao ORDER BY data_criacao DESC")
-        return self._deduplicar_periodos([dict(row) for row in self.cursor.fetchall()], ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
+        return [
+            self._com_rpv_scg_calculados(r)
+            for r in self._deduplicar_periodos([dict(row) for row in self.cursor.fetchall()], ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
+        ]
 
     def apagar_periodo(self, periodo: str):
         variantes = self._variantes_periodo(periodo)
