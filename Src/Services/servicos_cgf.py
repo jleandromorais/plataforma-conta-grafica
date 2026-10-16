@@ -217,6 +217,25 @@ class ServicosCGF:
             dados = consolidacao.salvar_cgf(periodo, valor)
             return dados["rpv"]
 
+    def calcular_cgf_rs(self, periodo: str, volume_final: float, pmpv: float | None = None) -> dict:
+        """CGF em R$ = volume final × PMPV, sem gravar nada.
+
+        `pmpv` informado (>0) é usado como digitado; ausente, busca o PMPV
+        salvo do mês. Sem PMPV, devolve cgf_rs=None em vez de falhar: a tela
+        mostra "—" e pede o valor.
+        """
+        if not is_periodo_valido(periodo):
+            raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+        if pmpv and pmpv > 0:
+            origem, valor = "manual", pmpv
+        else:
+            valor = self.buscar_pmpv(periodo) or 0.0
+            origem = "banco" if valor > 0 else "ausente"
+        valor = arredondar_tarifa(valor) if valor > 0 else 0.0
+        cgf_rs = float(volume_final) * valor if valor > 0 else None
+        return {"periodo": periodo, "pmpv": valor, "pmpv_origem": origem,
+                "volume_final": float(volume_final), "cgf_rs": cgf_rs}
+
     def salvar_com_pmpv(self, periodo: str, resumo: dict, pmpv: float) -> dict:
         """Grava o CGF em R$ (volume final × PMPV) e o resumo de volumes.
 

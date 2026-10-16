@@ -22,6 +22,20 @@ class CGFSalvarRequest(CGFVolumes):
     pmpv: float
 
 
+class CGFCalcularRSRequest(BaseModel):
+    periodo: str
+    volume_final: float
+    pmpv: float | None = None       # ausente: usa o PMPV salvo do mês
+
+
+class CGFCalcularRSResponse(BaseModel):
+    periodo: str
+    pmpv: float                     # 0 quando não há PMPV
+    pmpv_origem: str                # "manual" | "banco" | "ausente"
+    volume_final: float
+    cgf_rs: float | None            # None sem PMPV
+
+
 class CGFSalvarResponse(BaseModel):
     cgf_rs: float
     rpv: float

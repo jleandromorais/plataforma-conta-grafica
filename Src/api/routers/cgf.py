@@ -10,6 +10,8 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, UploadFile
 
 from Src.api.schemas.cgf import (
+    CGFCalcularRSRequest,
+    CGFCalcularRSResponse,
     CGFHistoricoLinha,
     CGFProcessarResponse,
     CGFSalvarRequest,
@@ -71,6 +73,14 @@ def processar(
         )
     finally:
         shutil.rmtree(pasta, ignore_errors=True)
+
+
+@router.post("/calcular-rs", response_model=CGFCalcularRSResponse)
+def calcular_rs(payload: CGFCalcularRSRequest) -> CGFCalcularRSResponse:
+    """CGF em R$ = volume final × PMPV (do payload ou, se ausente, do banco). Não grava."""
+    return CGFCalcularRSResponse(
+        **ServicosCGF().calcular_cgf_rs(payload.periodo, payload.volume_final, payload.pmpv)
+    )
 
 
 @router.post("/salvar", response_model=CGFSalvarResponse)
