@@ -1,0 +1,15 @@
+# Dependências só da API web (imagem Docker). O requirements.txt completo inclui
+# o app desktop (customtkinter, matplotlib) e o Airflow, que o servidor não usa.
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+python-multipart==0.0.32
+PyJWT==2.15.1
+
+pandas>=2.2,<3.0
+openpyxl==3.1.5
+pdfplumber==0.11.9
+pillow==12.1.1
+pytesseract==0.3.13
+SQLAlchemy>=1.4,<2.0
+python-dotenv==1.2.2
+PyYAML==6.0.3
