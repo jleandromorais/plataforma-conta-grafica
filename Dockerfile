@@ -17,6 +17,8 @@ COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt
 
 COPY Src ./Src
+# Banco inicial: copiado para /data só se o volume ainda estiver vazio.
+COPY seed ./seed
 
 # /data é o disco persistente: o banco fica aqui e sobrevive a novos deploys.
 # O volume é anexado pela plataforma (Railway Volumes, mount path /data), não aqui.

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import uvicorn
@@ -23,6 +24,11 @@ def garantir_banco() -> None:
     if caminho.is_file():
         return
     caminho.parent.mkdir(parents=True, exist_ok=True)
+    semente = Path(__file__).resolve().parents[2] / "seed" / "pmpv_data.db"
+    if semente.is_file():
+        shutil.copyfile(semente, caminho)
+        print(f"[serve] banco inicial copiado de {semente} para {caminho}", flush=True)
+        return
     from Src.Database.database import DatabasePMPV
 
     with DatabasePMPV(str(caminho)):
