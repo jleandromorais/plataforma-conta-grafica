@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements-api.txt
 COPY Src ./Src
 
 # /data é o disco persistente: o banco fica aqui e sobrevive a novos deploys.
-VOLUME ["/data"]
+# O volume é anexado pela plataforma (Railway Volumes, mount path /data), não aqui.
 EXPOSE 8080
 
 CMD ["python", "-m", "Src.api.serve"]
