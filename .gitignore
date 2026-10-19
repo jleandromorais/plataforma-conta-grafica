@@ -85,6 +85,7 @@ backend/data/
 plataforma_pmpv.db
 pmpv_data.db
 RET_dados.db
+!seed/pmpv_data.db
 
 *.spec
 *.ps1
