@@ -341,10 +341,14 @@ class TelaSR(ctk.CTkFrame):
 
         meses_tri = self._get_trimestre_labels()
 
+        from Src.application.use_cases.sr_use_cases import vp_do_mes
+        from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
+
         with DatabasePMPV() as db:
+            repo = SqliteSRRepository(db)
             for i, linha in enumerate(self._linhas):
-                dados_mes = db.carregar_dados_mes(sid, i + 1) or []
-                vp = sum(float(l.get("volume", 0) or 0) for l in dados_mes)
+                # VP pelo mês do calendário (não pela posição na sessão escolhida)
+                vp = vp_do_mes(repo, meses_tri[i])
 
                 resumo = db.buscar_cgf_resumo(meses_tri[i])
                 vf = float(resumo["volume_final"]) if resumo and resumo.get(

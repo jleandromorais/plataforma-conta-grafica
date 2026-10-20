@@ -80,6 +80,9 @@ class SqlitePMPVRepository(PMPVRepository):
     def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
         self.db.salvar_pmpv_mensal(periodo, pmpv)
 
+    def salvar_vp_periodo(self, periodo: str, vp: float, sessao_id: int | None = None):
+        self.db.salvar_vp_periodo(periodo, vp, sessao_id)
+
     def listar_periodos(self):
         return self.db.listar_periodos()
 
@@ -115,6 +118,12 @@ class SqliteSRRepository(SRRepository):
 
     def carregar_dados_mes(self, sessao_id: int, mes: int):
         return self.db.carregar_dados_mes(sessao_id, mes)
+
+    def buscar_vp_periodo(self, periodo: str):
+        return self.db.buscar_vp_periodo(periodo)
+
+    def listar_sessoes_id_nome(self):
+        return self.db.listar_sessoes_id_nome()
 
     def buscar_cgf_resumo(self, periodo: str):
         return self.db.buscar_cgf_resumo(periodo)

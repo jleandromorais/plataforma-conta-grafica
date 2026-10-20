@@ -17,7 +17,7 @@ class DatabasePMPV:
     # com "?", então são interpolados na string. Para evitar SQL injection,
     # validamos contra esta lista antes de montar qualquer SQL.
     _TABELAS_VALIDAS = frozenset({
-        "sessoes", "dados_mes", "resultados", "consolidacao", "pmpv_mensal",
+        "sessoes", "dados_mes", "resultados", "consolidacao", "pmpv_mensal", "vp_mensal",
         "auditoria_itens", "ret_itens", "concilia_itens", "sr_resultados",
         "sr_trimestre", "cgf_resumo", "pr_resultados", "pv_resultados",
         "excel_final_sessoes", "excel_final_execucoes", "config",
@@ -130,6 +130,17 @@ class DatabasePMPV:
             CREATE TABLE IF NOT EXISTS pmpv_mensal (
                 periodo           TEXT PRIMARY KEY,
                 pmpv              REAL NOT NULL,
+                data_atualizacao  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # VP MENSAL — Volume Prospectivo (m³) por mês do calendário, gravado ao
+        # salvar o PMPV. O SR busca aqui pelo mês; as sessões só guardam mês 1/2/3.
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vp_mensal (
+                periodo           TEXT PRIMARY KEY,
+                vp                REAL NOT NULL,
+                sessao_id         INTEGER,
                 data_atualizacao  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -744,6 +755,25 @@ class DatabasePMPV:
             "SELECT periodo, pmpv, data_atualizacao FROM pmpv_mensal ORDER BY data_atualizacao DESC"
         )
         return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("pmpv",))
+
+    def salvar_vp_periodo(self, periodo: str, vp: float, sessao_id: int | None = None):
+        """Grava (ou substitui) o VP em m³ de um mês do calendário (tabela vp_mensal)."""
+        periodo = self._normalizar_periodo(periodo)
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO vp_mensal (periodo, vp, sessao_id, data_atualizacao)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, (periodo, vp, sessao_id))
+        self.conn.commit()
+
+    def buscar_vp_periodo(self, periodo: str):
+        """VP em m³ do mês do calendário, ou None se o PMPV desse mês não foi salvo."""
+        row = self._primeiro_por_periodo("vp_mensal", periodo)
+        return float(row["vp"]) if row else None
+
+    def listar_sessoes_id_nome(self) -> List[Dict]:
+        """Sessões PMPV (id, nome), da mais recente para a mais antiga."""
+        self.cursor.execute("SELECT id, nome FROM sessoes ORDER BY id DESC")
+        return [dict(r) for r in self.cursor.fetchall()]
 
     def salvar_vp_mensal(self, periodo: str, vp: float):
         """Salva/atualiza apenas o Volume Prospectivo em sr_resultados para um período."""

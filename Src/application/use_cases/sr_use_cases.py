@@ -13,9 +13,10 @@ SR TOTAL = soma de sr_selic de todos os meses do trimestre.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from Src.common.periodos import MESES_ABREVS
+from Src.common.periodos import MESES_ABREVS, TRIMESTRES_FISCAIS_ABREVS, normalizar_periodo
 from Src.domain.ports.repositories import SRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
@@ -42,6 +43,44 @@ def _trimestre_label(labels: list[str]) -> str:
     return f"{labels[0]}_{labels[-1]}"
 
 
+_RE_NOME_SESSAO = re.compile(r"^PMPV_([A-Za-z]{3})_+([A-Za-z]{3})_(\d{4})$")
+
+
+def periodos_da_sessao(nome: str) -> list[str]:
+    """Meses do calendário de uma sessão salva pelo PMPV ("PMPV_Fev___Abr_2026"
+    → Fev/2026, Mar/2026, Abr/2026; "PMPV_Nov___Jan_2025" → Nov/2025 … Jan/2026).
+    Nome em outro formato (ex.: "PMPV_13042026_0906") → []."""
+    m = _RE_NOME_SESSAO.match(nome or "")
+    if not m:
+        return []
+    inicio, fim, ano = m.group(1).capitalize(), m.group(2).capitalize(), int(m.group(3))
+    for _, meses in TRIMESTRES_FISCAIS_ABREVS:
+        if meses[0] == inicio and meses[-1] == fim:
+            return [normalizar_periodo(p) for p in labels_trimestre(meses, ano)]
+    return []
+
+
+def vp_do_mes(repo: SRRepository, periodo: str) -> float:
+    """VP (m³) de um mês do calendário, vindo do PMPV que cobre esse mês.
+
+    1º a tabela vp_mensal (gravada ao salvar o PMPV); senão, a sessão mais
+    recente cujo nome indica o trimestre que contém o mês. Nunca usa a posição
+    (mês 1/2/3) de uma sessão de outro trimestre: era isso que deslocava o VP
+    quando o SR (Jan–Mar) não coincidia com o trimestre do PMPV (Fev–Abr).
+    Sem PMPV para o mês → 0.0.
+    """
+    vp = repo.buscar_vp_periodo(periodo)
+    if vp is not None:
+        return vp
+    alvo = normalizar_periodo(periodo)
+    for sessao in repo.listar_sessoes_id_nome():
+        periodos = periodos_da_sessao(sessao.get("nome", ""))
+        if alvo in periodos:
+            dados_mes = repo.carregar_dados_mes(sessao["id"], periodos.index(alvo) + 1) or []
+            return sum(float(l.get("volume", 0) or 0) for l in dados_mes)
+    return 0.0
+
+
 class SRUseCases:
     def __init__(self, repo: SRRepository | None = None):
         self.repo = repo or SqliteSRRepository()
@@ -54,15 +93,15 @@ class SRUseCases:
         return False
 
     def carregar_vp_vf_pr(self, sessao_id: int, labels_meses: list[str]) -> list[dict[str, Any]]:
-        """Para cada mês do trimestre (1, 2, 3), preenche VP (soma de volume
-        da sessão PMPV), VF (volume_final do CGF do período) e PR (salvo em
-        sr_resultados, com fallback calculado a partir de SCG/SR/VP)."""
+        """Para cada mês do trimestre, preenche VP (do PMPV que cobre aquele mês
+        do calendário — ver `vp_do_mes`), VF (volume_final do CGF do período) e
+        PR (salvo em sr_resultados, com fallback calculado a partir de SCG/SR/VP).
+        `sessao_id` fica na assinatura por compatibilidade; o VP não depende dela."""
         resultado = []
         servicos_cons = ServicosConsolidacao()
         try:
-            for i, periodo in enumerate(labels_meses, start=1):
-                dados_mes = self.repo.carregar_dados_mes(sessao_id, i) or []
-                vp = sum(float(l.get("volume", 0) or 0) for l in dados_mes)
+            for periodo in labels_meses:
+                vp = vp_do_mes(self.repo, periodo)
 
                 resumo = self.repo.buscar_cgf_resumo(periodo)
                 vf = float(resumo["volume_final"]) if resumo and resumo.get("volume_final") is not None else 0.0

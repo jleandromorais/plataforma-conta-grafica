@@ -615,6 +615,10 @@ class TelaPMPV(ctk.CTkFrame):
                 self.use_cases.salvar_pmpv_mensal(periodo, pmpv)
             except Exception:
                 logger.exception("Falha ao gravar pmpv_mensal para o período %s", periodo)
+        try:
+            self.use_cases.salvar_vp_por_periodo(self._get_data_dict(), periodos)
+        except Exception:
+            logger.exception("Falha ao gravar vp_mensal para %s", periodos)
 
     def salvar(self):
         if not hasattr(self, 'res_final'):
@@ -653,7 +657,8 @@ class TelaPMPV(ctk.CTkFrame):
 
         nome = datetime.now().strftime("PMPV_%d%m%Y_%H%M")
         dados = self._get_data_dict()
-        self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
+        sessao_id = self.use_cases.salvar_sessao_completa(nome, dados, self.res_final)
+        self.use_cases.salvar_vp_por_periodo(dados, periodos, sessao_id)
 
         meta_execucao = registrar_execucao_excel_final(etapa="PMPV", periodo=periodo_salvar, parent=self)
         if not meta_execucao:

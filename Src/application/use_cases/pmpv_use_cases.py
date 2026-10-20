@@ -95,6 +95,19 @@ class PMPVUseCases:
     def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
         self.repo.salvar_pmpv_mensal(periodo, pmpv)
 
+    def salvar_vp_por_periodo(
+        self,
+        dados_por_mes: dict[str, list[dict[str, Any]]],
+        periodos: list[str],
+        sessao_id: int | None = None,
+    ) -> None:
+        """Grava o VP (soma dos volumes) de cada mês com o mês do calendário,
+        para o SR achar o VP certo mesmo quando o trimestre do SR (ex.: Jan–Mar)
+        não coincide com o do PMPV (Nov–Jan, Fev–Abr...)."""
+        for periodo, linhas in zip(periodos, dados_por_mes.values()):
+            vp = sum(float(l.get("volume", 0) or 0) for l in linhas)
+            self.repo.salvar_vp_periodo(periodo, vp, sessao_id)
+
     def buscar_trimestre_ativo(self) -> list[str]:
         return self.repo.buscar_trimestre_ativo()
 
@@ -117,6 +130,7 @@ class PMPVUseCases:
             pmpv = resultado.get("pmpv", 0.0)
             for periodo in periodos:
                 self.salvar_pmpv_mensal(periodo, pmpv)
+            self.salvar_vp_por_periodo(dados_por_mes, periodos, sessao_id)
             self.salvar_trimestre_ativo(periodos)
         return sessao_id
 
