@@ -187,6 +187,9 @@ class SqlitePRRepository(PRRepository):
     def salvar_pv(self, periodo: str, pmpv: float, pr: float, pv: float):
         return self.db.salvar_pv(periodo, pmpv, pr, pv)
 
+    def salvar_pv_lote(self, periodos, pmpv: float, pr: float, pv: float):
+        return self.db.salvar_pv_lote(periodos, pmpv, pr, pv)
+
     def listar_pv(self):
         return self.db.listar_pv()
 

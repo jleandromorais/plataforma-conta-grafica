@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from Src.api.deps import get_servicos_pv
 from Src.api.schemas.pv import (
@@ -8,6 +8,9 @@ from Src.api.schemas.pv import (
     PVResultado,
     PVSalvarRequest,
     PVSalvarResponse,
+    PVTrimestreResultado,
+    PVTrimestreSalvarRequest,
+    PVTrimestreSalvarResponse,
 )
 from Src.Services.servicos_pv import ServicosPV
 
@@ -48,3 +51,24 @@ def salvar(
 ) -> PVSalvarResponse:
     pv = servico.salvar_valores(payload.periodo, payload.pmpv, payload.pr)
     return PVSalvarResponse(pv=pv)
+
+
+# ── Trimestral (tela do site) ─────────────────────────────────────────────────
+# Os endpoints mensais acima continuam: o desktop (tela_pv.py) usa o mesmo serviço.
+
+@router.get("/trimestre", response_model=PVTrimestreResultado)
+def buscar_trimestre(
+    trimestre: str,
+    ano: int = Query(ge=2000, le=2098),
+    servico: ServicosPV = Depends(get_servicos_pv),
+) -> PVTrimestreResultado:
+    """PV do trimestre fiscal: PMPV + PR do mesmo trimestre (ex.: trimestre="Fev - Abr", ano=2026)."""
+    return PVTrimestreResultado(**servico.buscar_trimestre(trimestre, ano))
+
+
+@router.post("/trimestre/salvar", response_model=PVTrimestreSalvarResponse)
+def salvar_trimestre(
+    payload: PVTrimestreSalvarRequest,
+    servico: ServicosPV = Depends(get_servicos_pv),
+) -> PVTrimestreSalvarResponse:
+    return PVTrimestreSalvarResponse(**servico.salvar_trimestre(payload.trimestre, payload.ano, payload.pmpv, payload.pr))

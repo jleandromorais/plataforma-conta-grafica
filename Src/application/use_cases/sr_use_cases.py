@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from Src.common.periodos import MESES_ABREVS, TRIMESTRES_FISCAIS_ABREVS, normalizar_periodo
+from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, labels_meses, normalizar_periodo
 from Src.domain.ports.repositories import SRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
@@ -24,19 +24,9 @@ from Src.Services.servicos_consolidacao import ServicosConsolidacao
 
 def labels_trimestre(meses: list[str], ano: int) -> list[str]:
     """Reproduz TelaSR._get_trimestre_labels: monta os labels 'Mes/Ano' do
-    trimestre, avançando o ano quando o mês seguinte "volta" no calendário
-    (ex.: Nov, Dez, Jan cruza virada de ano)."""
-    resultado: list[str] = []
-    ano_atual = ano
-    for i, mes in enumerate(meses):
-        idx = MESES_ABREVS.index(mes) if mes in MESES_ABREVS else i
-        if i > 0:
-            mes_ant = meses[i - 1]
-            idx_ant = MESES_ABREVS.index(mes_ant) if mes_ant in MESES_ABREVS else i - 1
-            if idx < idx_ant:
-                ano_atual += 1
-        resultado.append(f"{mes}/{ano_atual}")
-    return resultado
+    trimestre, avançando o ano na virada (ex.: Nov, Dez, Jan). A lógica fica
+    em Src/common/periodos.labels_meses (também usada pelo PV)."""
+    return labels_meses(meses, ano)
 
 
 def _trimestre_label(labels: list[str]) -> str:

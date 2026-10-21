@@ -239,3 +239,32 @@ TRIMESTRES_CIVIS: dict[str, list[str]] = {
     "Jul - Set": ["Jul", "Ago", "Set"],
     "Out - Dez": ["Out", "Nov", "Dez"],
 }
+
+
+def labels_meses(meses: list[str], ano: int) -> list[str]:
+    """['Nov','Dez','Jan'], 2025 → ['Nov/2025','Dez/2025','Jan/2026'].
+
+    O ano avança quando o mês seguinte "volta" no calendário. Mês fora de
+    MESES_ABREVS usa a posição na lista (mesmo comportamento do SR)."""
+    resultado: list[str] = []
+    ano_atual = ano
+    for i, mes in enumerate(meses):
+        idx = MESES_ABREVS.index(mes) if mes in MESES_ABREVS else i
+        if i > 0:
+            mes_ant = meses[i - 1]
+            idx_ant = MESES_ABREVS.index(mes_ant) if mes_ant in MESES_ABREVS else i - 1
+            if idx < idx_ant:
+                ano_atual += 1
+        resultado.append(f"{mes}/{ano_atual}")
+    return resultado
+
+
+def periodos_do_trimestre(label: str, ano: int) -> list[str]:
+    """Meses de um trimestre fiscal ("Nov - Jan", 2025 → Nov/2025, Dez/2025, Jan/2026).
+    O ano é o do 1º mês, como no PMPV (o módulo PR usa o do último mês no
+    Nov – Jan). Trimestre desconhecido → ValueError."""
+    for nome, meses in TRIMESTRES_FISCAIS_ABREVS:
+        if nome == label.strip():
+            return labels_meses(meses, ano)
+    validos = ", ".join(nome for nome, _ in TRIMESTRES_FISCAIS_ABREVS)
+    raise ValueError(f"Trimestre fiscal '{label}' não existe. Use um destes: {validos}.")

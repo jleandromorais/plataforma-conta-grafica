@@ -1042,8 +1042,25 @@ class DatabasePMPV:
     def buscar_pv(self, periodo: str) -> Dict:
         return self._primeiro_por_periodo("pv_resultados", periodo)
 
+    def salvar_pv_lote(self, periodos: List[str], pmpv: float, pr: float, pv: float):
+        """Grava o mesmo PV em vários períodos numa transação só (tudo ou nada)."""
+        try:
+            for periodo in periodos:
+                self.cursor.execute("""
+                    INSERT OR REPLACE INTO pv_resultados (periodo, pmpv, pr, pv, data_atualizacao)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (self._normalizar_periodo(periodo), pmpv, pr, pv))
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+
     def listar_pv(self) -> List[Dict]:
-        self.cursor.execute("SELECT * FROM pv_resultados ORDER BY data_atualizacao DESC")
+        """PVs mensais. As chaves de trimestre ("Fev - Abr/2026") ficam de fora:
+        o Excel Final e o histórico do desktop leem esta lista como meses."""
+        self.cursor.execute(
+            "SELECT * FROM pv_resultados WHERE periodo NOT LIKE '% - %' ORDER BY data_atualizacao DESC"
+        )
         return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("pmpv", "pr", "pv"))
 
     # ==========================================
