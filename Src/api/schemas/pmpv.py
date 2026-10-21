@@ -34,6 +34,7 @@ class LinhaEmpresa(BaseModel):
 class ImportarMemoriaResponse(BaseModel):
     meses: dict[str, list[LinhaEmpresa]]
     erros: list[str]
+    meses_encontrados: list[str] = []  # meses que a planilha tem (ex.: "Nov/2025")
 
 
 class SalvarPMPVResponse(BaseModel):

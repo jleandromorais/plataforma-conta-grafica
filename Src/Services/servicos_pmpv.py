@@ -1,6 +1,10 @@
+import logging
+
 import pandas as pd
 
-from Src.common.periodos import _MESES, _EN_TO_PT, en_para_pt
+from Src.common.periodos import _MESES, _EN_TO_PT, en_para_pt, normalizar_periodo
+
+logger = logging.getLogger(__name__)
 
 # Extensão do mapa PT com variantes EN e acentos ausentes em _MESES
 _MAPA_MES = {
@@ -48,47 +52,47 @@ class ExcelPMPV:
         return _MAPA_MES.get(txt, txt[:3])
     
     @staticmethod
-    def ler_dados_memoria_calculo(caminho_arquivo, mes_escolhido):
+    def ler_aba(caminho_arquivo) -> pd.DataFrame:
+        """Aba de dados da Memória de Cálculo (PMPV / Custo médio ponderado / 1ª)."""
         _ABAS_CANDIDATAS = ["PMPV", "Custo médio ponderado", "Custo medio ponderado"]
-        df = None
-        
         try:
             # `with` fecha a planilha ao terminar — sem isso o arquivo ficava
             # travado (não dava para apagar/mover) enquanto o app estivesse aberto.
             with pd.ExcelFile(caminho_arquivo) as xl_tmp:
-                for candidata in _ABAS_CANDIDATAS:
-                    if candidata in xl_tmp.sheet_names:
-                        df = pd.read_excel(xl_tmp, sheet_name=candidata, header=None)
-                        break
-                if df is None:
-                    df = pd.read_excel(xl_tmp, sheet_name=xl_tmp.sheet_names[0], header=None)
-        except Exception as exc:
-            raise ValueError(f"Não foi possível ler o arquivo:\n{exc}")
+                aba = next((a for a in _ABAS_CANDIDATAS if a in xl_tmp.sheet_names), xl_tmp.sheet_names[0])
+                return pd.read_excel(xl_tmp, sheet_name=aba, header=None)
+        except Exception:
+            # O texto da exceção (zip, openpyxl...) não ajuda o usuário: fica só no log.
+            logger.exception("Falha ao abrir a Memória de Cálculo")
+            raise ValueError(
+                "Não consegui abrir a planilha. Confira se é a Memória de Cálculo em Excel "
+                "(.xlsx/.xls), sem senha e sem estar corrompida."
+            ) from None
 
-        meses_cols = {}
-        first_header_row = None
+    @staticmethod
+    def colunas_de_meses(df: pd.DataFrame) -> dict[int, str]:
+        """{coluna: 'Fev/26'} da 1ª linha com datas (nas 15 primeiras).
 
+        Datas fora de 2000–2099 (ex.: célula vazia que o Excel lê como 1900) são
+        ignoradas: com ano de 2 dígitos virariam um mês errado."""
         for ri in range(min(15, len(df))):
-            for ci in range(2, len(df.columns)):
-                cell = df.iloc[ri, ci]
-                if pd.notna(cell) and hasattr(cell, "strftime"):
-                    first_header_row = ri
-                    for ci2 in range(2, len(df.columns)):
-                        c2 = df.iloc[ri, ci2]
-                        if pd.notna(c2) and hasattr(c2, "strftime"):
-                            eng = c2.strftime("%b/%y")
-                            p = eng.split("/")
-                            lbl = en_para_pt(p[0]) + "/" + p[1]
-                            meses_cols[ci2] = lbl
-                    break
-            if first_header_row is not None:
-                break
+            linha = [
+                (ci, df.iloc[ri, ci]) for ci in range(2, len(df.columns))
+                if pd.notna(df.iloc[ri, ci]) and hasattr(df.iloc[ri, ci], "strftime")
+                and 2000 <= df.iloc[ri, ci].year <= 2099
+            ]
+            if linha:
+                return {ci: en_para_pt(cel.strftime("%b")) + "/" + cel.strftime("%y") for ci, cel in linha}
+        raise ValueError(
+            "Não achei a linha de meses (datas) nas 15 primeiras linhas da aba de dados. "
+            "Confira se o arquivo é a Memória de Cálculo."
+        )
 
-        if not meses_cols:
-            raise ValueError("Nenhuma coluna de mês encontrada.")
-
+    @staticmethod
+    def coluna_do_mes(meses_cols: dict[int, str], mes_escolhido) -> int | None:
+        """Coluna do mês pedido ('Fev/2026', 'fev-26', 'Fev'...), ou None."""
         mes_input_norm = ExcelPMPV._normalizar_mes(mes_escolhido)
-        col_dados = next(
+        return next(
             (
                 ci
                 for ci, lbl in meses_cols.items()
@@ -97,13 +101,29 @@ class ExcelPMPV:
             ),
             None,
         )
-        
+
+    @staticmethod
+    def rotulos(meses_cols: dict[int, str]) -> list[str]:
+        """Meses da planilha no formato do sistema, ex.: ['Fev/2026', 'Mar/2026']."""
+        return [normalizar_periodo(m) for m in meses_cols.values()]
+
+    @staticmethod
+    def ler_dados_memoria_calculo(caminho_arquivo, mes_escolhido, df: pd.DataFrame | None = None):
+        """Empresas do mês. `df` (já lido com `ler_aba`) evita abrir a planilha de novo."""
+        if df is None:
+            df = ExcelPMPV.ler_aba(caminho_arquivo)
+        meses_cols = ExcelPMPV.colunas_de_meses(df)
+        col_dados = ExcelPMPV.coluna_do_mes(meses_cols, mes_escolhido)
+
         if col_dados is None:
-            raise ValueError(f"Mês '{mes_escolhido}' não encontrado.")
+            raise ValueError(
+                f"{mes_escolhido} não está na planilha (ela tem {', '.join(ExcelPMPV.rotulos(meses_cols))})."
+            )
 
         first_month_col = min(meses_cols.keys())
         empresas = {}
         empresa_atual = None
+        _CAMPOS = {"A": "mol", "B": "trans", "C": "log", "E": "volume"}
 
         for ri in range(len(df)):
             col1 = df.iloc[ri, 1]
@@ -119,15 +139,19 @@ class ExcelPMPV:
                 empresas.setdefault(empresa_atual, {"mol": 0.0, "trans": 0.0, "log": 0.0, "volume": 0.0})
                 continue
 
-            if empresa_atual is None: continue
+            if empresa_atual is None or col1_str not in _CAMPOS: continue
 
             val_raw = df.iloc[ri, col_dados]
-            val = float(val_raw) if pd.notna(val_raw) and str(val_raw).strip() not in ("", "nan") else 0.0
+            try:
+                val = float(val_raw) if pd.notna(val_raw) and str(val_raw).strip() not in ("", "nan") else 0.0
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"a empresa {empresa_atual}, linha {col1_str}, tem '{val_raw}' "
+                    "no lugar de um número. Corrija a célula na planilha e importe de novo."
+                ) from None
 
-            if col1_str == "A": empresas[empresa_atual]["mol"] = val
-            elif col1_str == "B": empresas[empresa_atual]["trans"] = val
-            elif col1_str == "C" and val: empresas[empresa_atual]["log"] = val
-            elif col1_str == "E": empresas[empresa_atual]["volume"] = val
+            if col1_str == "C" and not val: continue
+            empresas[empresa_atual][_CAMPOS[col1_str]] = val
 
         return {k: v for k, v in empresas.items() if v["volume"] > 0}
 

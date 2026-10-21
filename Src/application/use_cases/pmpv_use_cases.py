@@ -138,19 +138,38 @@ class PMPVUseCases:
     def importar_memoria(caminho_arquivo: str, periodos: list[str]) -> dict[str, Any]:
         """Lê a planilha "Memória de Cálculo" para cada mês do trimestre.
 
-        Retorna {"meses": {periodo: [linhas]}, "erros": [str]} — um mês com
-        problema não impede os outros (mesmo comportamento do desktop).
+        Retorna {"meses": {periodo: [linhas]}, "erros": [str],
+        "meses_encontrados": [str]} — um mês com problema não impede os outros
+        (mesmo comportamento do desktop). `meses_encontrados` são os meses que a
+        planilha tem, para a tela sugerir o trimestre certo.
+        Arquivo ilegível ou sem linha de meses → ValueError (nada a importar).
         """
+        df = ExcelPMPV.ler_aba(caminho_arquivo)  # lida uma vez só
+        meses_cols = ExcelPMPV.colunas_de_meses(df)
+        encontrados = ExcelPMPV.rotulos(meses_cols)
+        faixa = f"{encontrados[0]} a {encontrados[-1]}" if len(encontrados) > 1 else encontrados[0]
+        # mesma comparação que a leitura usa (aceita "Fev/2026", "fev-26"...)
+        faltando = [p for p in periodos if ExcelPMPV.coluna_do_mes(meses_cols, p) is None]
+
         meses: dict[str, list[dict[str, Any]]] = {}
         erros: list[str] = []
+        if faltando and len(faltando) == len(periodos):
+            erros.append(f"A planilha não tem {', '.join(faltando)}. Ela tem {', '.join(encontrados)}.")
+            return {"meses": meses, "erros": erros, "meses_encontrados": encontrados}
+
         for periodo in periodos:
+            if periodo in faltando:
+                erros.append(f"{periodo} não está na planilha (ela vai de {faixa}).")
+                continue
             try:
-                empresas = ExcelPMPV.ler_dados_memoria_calculo(caminho_arquivo, periodo)
+                empresas = ExcelPMPV.ler_dados_memoria_calculo(caminho_arquivo, periodo, df=df)
             except ValueError as e:
                 erros.append(f"{periodo}: {e}")
                 continue
             if not empresas:
-                erros.append(f"{periodo}: nenhuma empresa com volume encontrada.")
+                erros.append(
+                    f"{periodo}: a coluna do mês existe, mas nenhuma empresa tem volume (linha E) preenchido."
+                )
                 continue
             meses[periodo] = [
                 {
@@ -162,7 +181,7 @@ class PMPVUseCases:
                 }
                 for nome, d in empresas.items()
             ]
-        return {"meses": meses, "erros": erros}
+        return {"meses": meses, "erros": erros, "meses_encontrados": encontrados}
 
     def __enter__(self):
         return self
