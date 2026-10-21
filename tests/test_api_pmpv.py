@@ -93,6 +93,25 @@ def test_salvar_sem_periodos_continua_compativel(client):
     assert client.get("/api/pmpv/trimestre-ativo").json()["meses"] == []
 
 
+def test_historico_lista_sessoes_da_mais_recente(client):
+    assert client.get("/api/pmpv/historico").json() == []
+
+    resultado = client.post("/api/pmpv/calcular", json=_payload_calculo()).json()
+    for nome in ("PMPV_A", "PMPV_B"):
+        client.post("/api/pmpv/salvar", json={
+            "nome": nome, "dados_por_mes": DADOS, "resultado": resultado, "periodos": PERIODOS,
+        })
+
+    historico = client.get("/api/pmpv/historico").json()
+    assert [h["nome"] for h in historico] == ["PMPV_B", "PMPV_A"]
+    h = historico[0]
+    assert h["pmpv"] == pytest.approx(resultado["pmpv"])
+    assert h["conta_grafica"] == pytest.approx(-0.021)
+    assert h["preco_final"] == pytest.approx(resultado["preco_final"])
+    assert h["vp"] == pytest.approx(resultado["vp_mensal"])
+    assert h["data_criacao"]
+
+
 def test_trimestre_ativo_ida_e_volta(client):
     assert client.post("/api/pmpv/trimestre-ativo", json={"meses": PERIODOS}).status_code == 204
     assert client.get("/api/pmpv/trimestre-ativo").json()["meses"] == PERIODOS

@@ -17,12 +17,12 @@ from Src.api.schemas.cgf import (
     CGFSalvarRequest,
     CGFSalvarResponse,
 )
+from Src.api.schemas.comum import ProblemaArquivo
 from Src.Services.servicos_cgf import ServicosCGF
 
 router = APIRouter(prefix="/cgf", tags=["CGF"])
 
 _EXTENSOES = {".xlsx", ".xls", ".xlsm", ".csv"}
-_PALAVRAS_TIPO = ("faturada", "complementar", "cancelad", "denegad", "devolu", "devolv")
 
 
 @router.post("/processar", response_model=CGFProcessarResponse)
@@ -50,7 +50,7 @@ def processar(
             nome = Path(up.filename or "").name  # sem diretórios
             if Path(nome).suffix.lower() not in _EXTENSOES:
                 raise ValueError(f"'{nome}' não é uma planilha (.xlsx, .xls ou .csv).")
-            if not any(p in nome.lower() for p in _PALAVRAS_TIPO):
+            if ServicosCGF.tipo_do_nome(nome) is None:
                 ignorados.append(nome)
             destino = pasta / nome
             with destino.open("wb") as f:
@@ -69,6 +69,7 @@ def processar(
             volume_final=r["volume_final"],
             periodo_detectado=periodo,
             arquivos_ignorados=ignorados,
+            problemas=[ProblemaArquivo(**p) for p in r["problemas"]],
             logs=r["logs"],
         )
     finally:

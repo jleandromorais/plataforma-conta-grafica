@@ -74,20 +74,41 @@ def cgr_liquido_item(item: XMLItem) -> float:
 
 # ── Leitura dos arquivos ─────────────────────────────────────────────────────
 
-def auditar_xml(xml_path: Path, empresa: str) -> XMLItem | None:
+def problema(arquivo: str, empresa: str | None, gravidade: str, codigo: str, mensagem: str,
+             tecnico: str | None = None) -> dict:
+    """Problema num arquivo, no formato de ProblemaArquivo (Src/api/schemas/comum.py)."""
+    return {"arquivo": arquivo, "empresa": empresa, "gravidade": gravidade,
+            "codigo": codigo, "mensagem": mensagem, "tecnico": tecnico}
+
+
+def motivo_curto(texto: str, *caminhos: Path) -> str:
+    """Motivo técnico sem caminho do servidor e com tamanho de uma linha."""
+    for c in caminhos:
+        texto = texto.replace(str(c), c.name)
+    texto = " ".join(texto.split())
+    return texto[:157] + "..." if len(texto) > 160 else texto
+
+
+def _ler_xml(xml_path: Path, empresa: str) -> tuple[XMLItem | None, str, str]:
+    """(item, código do problema, motivo). Sem problema: código ''."""
     tipo = RegrasAuditoria.detectar_tipo_xml(xml_path)
     if tipo == "nfe":
         dados = RegrasAuditoria.parse_nfe(xml_path)
     elif tipo == "cte":
         dados = RegrasAuditoria.parse_cte(xml_path)
     else:
-        return None
+        return None, "xml_tipo_desconhecido", ""
     if "erro" in dados:
-        return None
+        return None, "xml_invalido", motivo_curto(str(dados["erro"]), xml_path)
     vol_total = dados.get("volume_total", float(dados.get("volume", 0)))
-    return XMLItem(empresa, dados["tipo"], dados["numero"], dados["valor_total"],
+    item = XMLItem(empresa, dados["tipo"], dados["numero"], dados["valor_total"],
                    dados["icms"], dados.get("icms_taxa", 0.0), dados["pis"], dados["cofins"],
                    int(vol_total), "OK", vol_total, str(xml_path))
+    return item, "", ""
+
+
+def auditar_xml(xml_path: Path, empresa: str) -> XMLItem | None:
+    return _ler_xml(xml_path, empresa)[0]
 
 
 def auditar_empresa(
@@ -95,13 +116,15 @@ def auditar_empresa(
     empresa: str,
     usar_pdf: bool,
     progresso: Callable[[str], None] | None = None,
+    problemas: list[dict] | None = None,
 ) -> tuple[list[XMLItem], int, int]:
     """Lê os XMLs (modo XML) e todos os PDFs da pasta de uma empresa.
 
     Todo PDF é lido (mesmo com XMLs presentes), para nunca descartar notas que
     só existem em PDF. A duplicata de um XML já lido só é descartada quando o
     número OU o valor total extraído do PDF batem com ele.
-    Retorna (itens, qtd_xml_lidos, qtd_pdf_lidos).
+    Retorna (itens, qtd_xml_lidos, qtd_pdf_lidos). Se `problemas` for passada,
+    recebe cada arquivo que não virou nota e o motivo (ver Front_end/SPEC_ERROS.md).
     """
     xmls = list({p.resolve() for p in pasta_empresa.rglob("*") if p.suffix.lower() == ".xml"})
     pdfs = list({p.resolve() for p in pasta_empresa.rglob("*") if p.suffix.lower() == ".pdf"})
@@ -109,11 +132,26 @@ def auditar_empresa(
     notas_xml: set[str] = set()
     valores_xml: set[float] = set()
     n_xml = n_pdf = 0
+    raiz = pasta_empresa.resolve()
+
+    def anotar(arquivo: Path, gravidade: str, codigo: str, mensagem: str, tecnico: str = "") -> None:
+        if problemas is not None:
+            nome = arquivo.relative_to(raiz).as_posix() if arquivo.is_relative_to(raiz) else arquivo.name
+            problemas.append(problema(nome, empresa, gravidade, codigo, mensagem, tecnico or None))
+
+    if not xmls and not pdfs and problemas is not None:
+        problemas.append(problema("", empresa, "aviso", "empresa_sem_notas",
+                                  "A pasta da empresa não tem XML nem PDF; nada foi auditado."))
 
     if not usar_pdf:
         for i, xml_file in enumerate(xmls, start=1):
             n_xml += 1
-            item = auditar_xml(xml_file, empresa)
+            item, codigo, motivo = _ler_xml(xml_file, empresa)
+            if codigo == "xml_invalido":
+                anotar(xml_file, "aviso", codigo, "O XML não pôde ser lido; a nota não entrou no CGR. "
+                       "Baixe o XML de novo do portal e reenvie a pasta.", motivo)
+            elif codigo == "xml_tipo_desconhecido":
+                anotar(xml_file, "info", codigo, "Não é NF-e nem CT-e (evento, cancelamento etc.); ignorado.")
             if item:
                 itens.append(item)
                 notas_xml.add(_normalizar_numero_nota(item.numero))
@@ -127,6 +165,8 @@ def auditar_empresa(
         if progresso and i % 10 == 0:
             progresso(f"{empresa}: {i}/{len(pdfs)} PDFs")
         if "erro" in dados:
+            anotar(pdf_file, "aviso", "pdf_ocr_falhou", "Não consegui ler o PDF; a nota não entrou no CGR. "
+                   "Se a nota importa, envie o XML dela.", motivo_curto(str(dados["erro"]), pdf_file))
             continue
         nota = _normalizar_numero_nota(dados.get("numero", ""))
         valor = round(float(dados.get("valor_total", 0.0) or 0.0), 2)
@@ -145,6 +185,7 @@ def auditar_pasta(
     empresas: list[str],
     usar_pdf: bool,
     progresso: Callable[[str], None] | None = None,
+    problemas: list[dict] | None = None,
 ) -> tuple[list[XMLItem], int, int]:
     """Audita as subpastas `empresas` de `pasta`. Retorna itens deduplicados."""
     todos: list[XMLItem] = []
@@ -152,7 +193,7 @@ def auditar_pasta(
     for idx, empresa in enumerate(empresas, start=1):
         if progresso:
             progresso(f"Auditando {empresa} ({idx}/{len(empresas)})...")
-        itens, x, p = auditar_empresa(pasta / empresa, empresa, usar_pdf, progresso)
+        itens, x, p = auditar_empresa(pasta / empresa, empresa, usar_pdf, progresso, problemas)
         todos.extend(itens)
         n_xml += x
         n_pdf += p

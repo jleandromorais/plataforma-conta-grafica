@@ -41,6 +41,16 @@ class SalvarPMPVResponse(BaseModel):
     sessao_id: int
 
 
+class PMPVHistoricoLinha(BaseModel):
+    id: int
+    nome: str
+    data_criacao: str | None
+    pmpv: float
+    conta_grafica: float
+    preco_final: float
+    vp: float
+
+
 class PMPVMensalRequest(BaseModel):
     pmpv: float
 

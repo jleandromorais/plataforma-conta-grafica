@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from Src.api.schemas.comum import ProblemaArquivo
+
 
 class ItemAuditoria(BaseModel):
     empresa: str
@@ -61,6 +63,7 @@ class ProcessarAuditoriaResponse(BaseModel):
     totais: TotaisAuditoria
     comparacao: ComparacaoAuditoria | None
     aviso_comparacao: str
+    problemas: list[ProblemaArquivo] = []
 
 
 class SalvarAuditoriaRequest(BaseModel):

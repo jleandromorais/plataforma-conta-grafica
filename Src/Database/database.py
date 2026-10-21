@@ -775,6 +775,25 @@ class DatabasePMPV:
         self.cursor.execute("SELECT id, nome FROM sessoes ORDER BY id DESC")
         return [dict(r) for r in self.cursor.fetchall()]
 
+    def listar_historico_pmpv(self) -> List[Dict]:
+        """Sessões PMPV com o último resultado de cada uma, da mais recente para a mais antiga."""
+        self.cursor.execute("""
+            SELECT
+                s.id,
+                s.nome,
+                strftime('%d/%m/%Y %H:%M', s.data_criacao) AS data_criacao,
+                COALESCE(r.pmpv_trimestral, 0.0) AS pmpv,
+                COALESCE(r.conta_grafica, 0.0)   AS conta_grafica,
+                COALESCE(r.preco_final, 0.0)     AS preco_final,
+                COALESCE(r.vp_total, 0.0)        AS vp
+            FROM sessoes s
+            LEFT JOIN resultados r ON r.id = (
+                SELECT MAX(id) FROM resultados WHERE sessao_id = s.id
+            )
+            ORDER BY s.id DESC
+        """)
+        return [dict(r) for r in self.cursor.fetchall()]
+
     def salvar_vp_mensal(self, periodo: str, vp: float):
         """Salva/atualiza apenas o Volume Prospectivo em sr_resultados para um período."""
         periodo = self._normalizar_periodo(periodo)

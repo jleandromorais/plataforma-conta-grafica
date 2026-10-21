@@ -89,6 +89,9 @@ class SqlitePMPVRepository(PMPVRepository):
     def listar_pmpv_mensal(self):
         return self.db.listar_pmpv_mensal()
 
+    def listar_historico(self):
+        return self.db.listar_historico_pmpv()
+
     def buscar_pmpv_mensal(self, periodo: str):
         return self.db.buscar_pmpv_mensal(periodo)
 

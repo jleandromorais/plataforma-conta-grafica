@@ -98,6 +98,61 @@ def test_processar_pasta_enviada(client):
     assert r["comparacao"] is None and r["aviso_comparacao"]
 
 
+def _codigos(r: dict) -> list[str]:
+    return [p["codigo"] for p in r["problemas"]]
+
+
+def test_processar_sem_problemas_quando_tudo_certo(client):
+    r = client.post("/api/auditoria/processar", files=_envio_sintetico()).json()
+    assert r["problemas"] == []
+
+
+def test_xml_malformado_vira_problema_com_empresa_e_arquivo(client):
+    """AC6: a nota que não pôde ser lida aparece, e a conta lidos × auditadas × problemas fecha."""
+    envio = _envio_sintetico() + [("arquivos", ("GALP/quebrado.xml", b"<nfeProc><NFe>sem fechar", "text/xml"))]
+    r = client.post("/api/auditoria/processar", files=envio).json()
+    [p] = [p for p in r["problemas"] if p["codigo"] == "xml_invalido"]
+    assert p["gravidade"] == "aviso"
+    assert p["empresa"] == "GALP" and p["arquivo"] == "quebrado.xml"
+    assert r["qtd_xml_lidos"] == len(r["itens"]) + 1
+
+
+def test_xml_que_nao_e_nota_vira_info(client):
+    envio = _envio_sintetico() + [("arquivos", ("PETROBRAS/evento.xml", b"<outro>qualquer</outro>", "text/xml"))]
+    r = client.post("/api/auditoria/processar", files=envio).json()
+    [p] = [p for p in r["problemas"] if p["codigo"] == "xml_tipo_desconhecido"]
+    assert p["gravidade"] == "info" and p["empresa"] == "PETROBRAS"
+
+
+def test_empresa_escolhida_que_nao_esta_na_pasta(client):
+    r = client.post(
+        "/api/auditoria/processar", files=_envio_sintetico(), data={"empresas": json.dumps(["PETROBRAS", "ENEVA"])},
+    ).json()
+    [p] = [p for p in r["problemas"] if p["codigo"] == "empresa_nao_encontrada"]
+    assert p["empresa"] == "ENEVA" and p["gravidade"] == "aviso"
+
+
+def test_empresa_sem_notas(tmp_path):
+    (tmp_path / "VAZIA").mkdir()
+    (tmp_path / "PETROBRAS").mkdir()
+    (tmp_path / "PETROBRAS" / "nf.xml").write_text(_nfe("1"), encoding="utf-8")
+    problemas: list[dict] = []
+    itens, _, _ = lote.auditar_pasta(tmp_path, ["PETROBRAS", "VAZIA"], usar_pdf=False, problemas=problemas)
+    assert len(itens) == 1
+    assert [(p["codigo"], p["empresa"]) for p in problemas] == [("empresa_sem_notas", "VAZIA")]
+
+
+def test_planilha_de_comparacao_corrompida_nao_da_500(client):
+    """AC7."""
+    envio = _envio_sintetico() + [("planilha", ("conta grafica.xlsx", b"nao e excel", "application/octet-stream"))]
+    resp = client.post("/api/auditoria/processar", files=envio, data={"periodo": "Jan/2026"})
+    assert resp.status_code == 200, resp.text
+    r = resp.json()
+    assert len(r["itens"]) == 4
+    [p] = [p for p in r["problemas"] if p["codigo"] == "planilha_comparacao_ilegivel"]
+    assert p["arquivo"] == "conta grafica.xlsx" and p["gravidade"] == "erro"
+
+
 def test_processar_zip_e_filtro_de_empresas(client):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:

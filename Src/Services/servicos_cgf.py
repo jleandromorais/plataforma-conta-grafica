@@ -99,35 +99,102 @@ class ServicosCGF:
                     mask |= serie_col.str.contains(termo, na=False, regex=False)
         return mask
 
-    def processar_arquivos(self, arquivos: list, fat_col: str, fat_cons_col: str, 
+    # Palavras do NOME do arquivo que dizem o tipo da planilha. A tela web repete
+    # esta regra em Front_end/src/pages/CGF/index.tsx (tipoDoArquivo): mantenha iguais.
+    # Ordem importa: faturada/complementar é testada antes de cancelada.
+    PALAVRAS_FATURADA = ("faturada", "complementar")
+    PALAVRAS_CANCELADA = ("canc", "deneg", "rejeitad")   # cobre "NF canc.rejeitadas.deneg"
+    PALAVRAS_DEVOLUCAO = ("devolu", "devolv")             # "devolv" cobre "NF Devolvidas …"
+
+    @classmethod
+    def tipo_do_nome(cls, nome: str) -> str | None:
+        """'faturada' | 'cancelada' | 'devolucao' pelo nome do arquivo, ou None."""
+        n = nome.lower()
+        if any(p in n for p in cls.PALAVRAS_FATURADA):
+            return "faturada"
+        if any(p in n for p in cls.PALAVRAS_CANCELADA):
+            return "cancelada"
+        if any(p in n for p in cls.PALAVRAS_DEVOLUCAO):
+            return "devolucao"
+        return None
+
+    @staticmethod
+    def _problema(arquivo: str, gravidade: str, codigo: str, mensagem: str, tecnico: str | None = None) -> dict:
+        return {"arquivo": arquivo, "gravidade": gravidade, "codigo": codigo, "mensagem": mensagem, "tecnico": tecnico}
+
+    def processar_arquivos(self, arquivos: list, fat_col: str, fat_cons_col: str,
                            fat_cons_val: str, canc_col: str, dev_col: str) -> dict:
-        """Lê os ficheiros selecionados, aplica as regras de negócio e gera os logs."""
+        """Lê os ficheiros selecionados, aplica as regras de negócio e gera os logs.
+
+        Além dos logs, devolve `problemas`: o que impediu ou afetou a leitura de
+        cada arquivo, em texto para o usuário (ver Front_end/SPEC_ERROS.md).
+        """
         logs = []
+        problemas: list[dict] = []
         total_faturado = total_canceladas = total_devolucoes = total_consumo_proprio = 0.0
+        tipos_enviados: set[str] = set()
+        rotulo_total = {"faturada": "O faturado", "cancelada": "O total de canceladas", "devolucao": "O total de devoluções"}
+        rotulo_tipo = {"faturada": "faturadas", "cancelada": "canceladas", "devolucao": "devoluções"}
+
+        def coluna(df, nome, tipo, configurada, aliases):
+            """Coluna real da planilha; registra o problema quando não acha ou usa um apelido."""
+            real = self._resolver_coluna(df, configurada, aliases)
+            if real is None:
+                logs.append(f"   [!] Coluna '{configurada}' ausente. Ignorado.\n")
+                problemas.append(self._problema(
+                    nome, "erro", "coluna_ausente",
+                    f"Não achei a coluna \"{configurada}\" na planilha de {rotulo_tipo[tipo]}. "
+                    f"{rotulo_total[tipo]} deste arquivo ficou em 0. Confira o nome em \"Colunas das planilhas\".",
+                    "colunas encontradas: " + ", ".join(str(c) for c in df.columns),
+                ))
+            elif self._normalizar_texto(real) != self._normalizar_texto(configurada):
+                logs.append(f"   [i] Coluna localizada automaticamente: '{real}'")
+                problemas.append(self._problema(
+                    nome, "info", "coluna_por_apelido", f"Usei a coluna \"{real}\" no lugar de \"{configurada}\".",
+                ))
+            return real
 
         for path in arquivos:
             nome = Path(path).name
-            nome_low = nome.lower()
-            
+            tipo = self.tipo_do_nome(nome)
+
+            if tipo is None:
+                problemas.append(self._problema(
+                    nome, "erro", "tipo_nao_reconhecido",
+                    "Não sei se é faturada, cancelada ou devolução: o nome precisa conter faturada, complementar, "
+                    "cancelada, denegada, rejeitada, devolução ou devolvida. O arquivo ficou de fora, então o "
+                    "volume final pode estar incompleto. Renomeie e envie de novo.",
+                ))
+                continue
+            tipos_enviados.add(tipo)
+
             try:
                 df = self.ler_tabela(path)
             except Exception as e:
-                logs.append(f"[ERRO] {e}\n")
+                causa = type(e.__cause__ or e.__context__ or e).__name__
+                logs.append(f"[ERRO] Não foi possível ler {nome}: {causa}\n")
+                problemas.append(self._problema(
+                    nome, "erro", "planilha_ilegivel",
+                    "Não consegui abrir a planilha. Ela pode estar corrompida, protegida por senha ou aberta em "
+                    "outro programa. Salve de novo no Excel (.xlsx) e envie.",
+                    causa,
+                ))
                 continue
-                
+
             if df is None:
+                continue
+            if df.empty:
+                logs.append(f"   [!] {nome}: planilha vazia.\n")
+                problemas.append(self._problema(nome, "aviso", "planilha_vazia", "A planilha está vazia; nada foi somado."))
                 continue
 
             # Processamento de Notas Faturadas ou Complementares
-            if "faturada" in nome_low or "complementar" in nome_low:
+            if tipo == "faturada":
                 logs.append(f"🟢 FATURADA: {nome}")
-                fat_col_real = self._resolver_coluna(df, fat_col, ["Volume Faturado", "Volume"])
+                fat_col_real = coluna(df, nome, tipo, fat_col, ["Volume Faturado", "Volume"])
                 if fat_col_real is None:
-                    logs.append(f"   [!] Coluna '{fat_col}' ausente. Ignorado.\n")
                     continue
-                if fat_col_real != fat_col:
-                    logs.append(f"   [i] Coluna de faturado localizada automaticamente: '{fat_col_real}'")
-                    
+
                 mask_cons = self.mascara_consumo(df, fat_cons_col, fat_cons_val)
                 qtd_cons = mask_cons.sum()
 
@@ -139,7 +206,7 @@ class ServicosCGF:
 
                 vol_fat  = df_sem_cons[fat_col_real].sum()
                 vol_cons = df_cons[fat_col_real].sum()
-                
+
                 total_faturado += float(vol_fat)
                 total_consumo_proprio += float(vol_cons)
 
@@ -148,36 +215,44 @@ class ServicosCGF:
                     logs.append(f"   - Consumo próprio:  {vol_cons:,.2f}  ({qtd_cons} linha(s) detectada(s))\n")
                 else:
                     logs.append(f"   (nenhum consumo próprio detectado)\n")
+                    problemas.append(self._problema(
+                        nome, "info", "consumo_nao_encontrado",
+                        f"Nenhuma linha \"{fat_cons_val}\" na coluna \"{fat_cons_col}\": consumo próprio = 0.",
+                    ))
 
             # Processamento de Canceladas / Denegadas
-            elif "cancelad" in nome_low or "denegad" in nome_low:
+            elif tipo == "cancelada":
                 logs.append(f"🔴 CANCELADAS: {nome}")
-                canc_col_real = self._resolver_coluna(df, canc_col, ["Volume Canc/Deneg", "Volume Canc Deneg", "Volume Canceladas", "Volume Denegadas", "Volume Cancelada"])
-                if canc_col_real is None:
-                    logs.append(f"   [!] Coluna de canceladas não encontrada a partir de '{canc_col}'.\n")
-                else:
-                    if canc_col_real != canc_col:
-                        logs.append(f"   [i] Coluna de canceladas localizada automaticamente: '{canc_col_real}'")
+                canc_col_real = coluna(df, nome, tipo, canc_col, ["Volume Canc/Deneg", "Volume Canc Deneg", "Volume Canceladas", "Volume Denegadas", "Volume Cancelada"])
+                if canc_col_real is not None:
                     df[canc_col_real] = self._converter_serie_numerica(df[canc_col_real])
                     vol_canc = df[canc_col_real].sum()
                     total_canceladas += float(vol_canc)
                     logs.append(f"   - Canceladas: {vol_canc:,.2f}\n")
 
             # Processamento de Devoluções
-            # "devolv" cobre "NF Devolvidas …" — antes só "devolu" (Devolução)
-            # era aceito e o arquivo de devolvidas era ignorado em silêncio.
-            elif "devolu" in nome_low or "devolv" in nome_low:
+            else:
                 logs.append(f"🟡 DEVOLUÇÃO: {nome}")
-                dev_col_real = self._resolver_coluna(df, dev_col, ["Volume Devolução", "Volume Devolucao", "Volume de Devolução", "Volume de Devolucao"])
-                if dev_col_real is None:
-                    logs.append(f"   [!] Coluna de devoluções não encontrada a partir de '{dev_col}'.\n")
-                else:
-                    if dev_col_real != dev_col:
-                        logs.append(f"   [i] Coluna de devoluções localizada automaticamente: '{dev_col_real}'")
+                dev_col_real = coluna(df, nome, tipo, dev_col, ["Volume Devolução", "Volume Devolucao", "Volume de Devolução", "Volume de Devolucao"])
+                if dev_col_real is not None:
                     df[dev_col_real] = self._converter_serie_numerica(df[dev_col_real])
                     vol_dev = df[dev_col_real].sum()
                     total_devolucoes += float(vol_dev)
                     logs.append(f"   - Devoluções: {vol_dev:,.2f}\n")
+
+        if "faturada" not in tipos_enviados:
+            problemas.append(self._problema(
+                "", "erro", "sem_faturadas",
+                "Nenhuma planilha de faturadas foi enviada: o volume final ficaria só com devoluções. "
+                "Envie a planilha \"NF faturadas e complementares\".",
+            ))
+        for tipo in ("cancelada", "devolucao"):
+            if tipo not in tipos_enviados:
+                problemas.append(self._problema(
+                    "", "aviso", "tipo_ausente",
+                    f"Nenhuma planilha de {rotulo_tipo[tipo]} enviada: esse total ficou em 0. "
+                    f"Se o mês não teve {rotulo_tipo[tipo]}, pode seguir.",
+                ))
 
         # Cálculo Final CGF — canceladas não integram o VF (apenas devoluções e consumo próprio)
         volume_final = total_faturado - total_devolucoes
@@ -194,6 +269,7 @@ class ServicosCGF:
 
         return {
             "logs": logs,
+            "problemas": problemas,
             "volume_final": volume_final,
             "volume_faturado": total_faturado,
             "volume_canceladas": total_canceladas,

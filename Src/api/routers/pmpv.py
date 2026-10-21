@@ -10,6 +10,7 @@ from Src.api.deps import get_pmpv_use_cases
 from Src.api.schemas.pmpv import (
     CalcularPMPVRequest,
     ImportarMemoriaResponse,
+    PMPVHistoricoLinha,
     PMPVMensalRequest,
     PMPVMensalResponse,
     SalvarPMPVRequest,
@@ -68,6 +69,12 @@ def salvar_mensal(
 @router.get("/periodos")
 def listar_periodos(uc: PMPVUseCases = Depends(get_pmpv_use_cases)) -> list:
     return uc.repo.listar_periodos()
+
+
+@router.get("/historico", response_model=list[PMPVHistoricoLinha])
+def historico(uc: PMPVUseCases = Depends(get_pmpv_use_cases)) -> list[PMPVHistoricoLinha]:
+    """Sessões salvas com PMPV, Conta Gráfica, preço final e VP — da mais recente à mais antiga."""
+    return [PMPVHistoricoLinha(**h) for h in uc.repo.listar_historico()]
 
 
 @router.get("/trimestre-ativo", response_model=TrimestreAtivoResponse)

@@ -71,6 +71,105 @@ def test_processar_avisa_arquivo_sem_tipo_no_nome(client):
     assert r["arquivos_ignorados"] == ["planilha qualquer.xlsx"]
 
 
+XL = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _problemas(r: dict, codigo: str) -> list[dict]:
+    return [p for p in r["problemas"] if p["codigo"] == codigo]
+
+
+def test_processar_sem_problemas_quando_tudo_certo(client):
+    r = client.post("/api/cgf/processar", files=_arquivos_sinteticos()).json()
+    assert [p for p in r["problemas"] if p["gravidade"] != "info"] == []
+
+
+def test_reconhece_abreviacoes_canc_deneg(client):
+    """AC1: o caso real 'NF canc.rejeitadas.deneg.xlsx' é a planilha de canceladas."""
+    canc = pd.DataFrame({"Volume Canc/Deneg": [40.0]})
+    arquivos = [a for a in _arquivos_sinteticos() if "Canceladas" not in a[1][0]]
+    arquivos.append(("arquivos", ("NF canc.rejeitadas.deneg.xlsx", _xlsx(canc), XL)))
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    assert r["arquivos_ignorados"] == []
+    assert r["volume_canceladas"] == pytest.approx(40.0)
+
+
+def test_tipo_nao_reconhecido_e_erro_com_palavras_aceitas(client):
+    """AC2."""
+    arquivos = _arquivos_sinteticos() + [("arquivos", ("NF qualquer.xlsx", _xlsx(pd.DataFrame({"a": [1]})), XL))]
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    [p] = _problemas(r, "tipo_nao_reconhecido")
+    assert p["gravidade"] == "erro"
+    assert p["arquivo"] == "NF qualquer.xlsx"
+    assert "faturada" in p["mensagem"] and "devolução" in p["mensagem"]
+
+
+def test_coluna_ausente_lista_colunas_encontradas(client):
+    """AC3."""
+    fat = pd.DataFrame({"Data": ["01/03"], "Qtd": [10]})
+    arquivos = [a for a in _arquivos_sinteticos() if "Faturadas" not in a[1][0]]
+    arquivos.append(("arquivos", ("NF Faturadas 03.26.xlsx", _xlsx(fat), XL)))
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    [p] = _problemas(r, "coluna_ausente")
+    assert p["gravidade"] == "erro"
+    assert "Volume Faturado" in p["mensagem"]
+    assert "Data" in p["tecnico"] and "Qtd" in p["tecnico"]
+
+
+def test_planilha_ilegivel_sem_caminho_do_servidor(client):
+    """AC4."""
+    arquivos = _arquivos_sinteticos() + [("arquivos", ("NF Devolvidas extra.xlsx", b"isto nao e um xlsx", XL))]
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    [p] = _problemas(r, "planilha_ilegivel")
+    assert p["gravidade"] == "erro"
+    assert p["arquivo"] == "NF Devolvidas extra.xlsx"
+    textos = " ".join(f"{q['mensagem']} {q.get('tecnico') or ''}" for q in r["problemas"])
+    for proibido in ("/tmp", "\\", "cgf_", "Temp"):
+        assert proibido not in textos
+
+
+def test_so_faturadas_avisa_tipos_ausentes(client):
+    """AC5."""
+    arquivos = [a for a in _arquivos_sinteticos() if "Faturadas" in a[1][0]]
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    ausentes = _problemas(r, "tipo_ausente")
+    assert len(ausentes) == 2
+    assert all(p["gravidade"] == "aviso" for p in ausentes)
+    assert not [p for p in r["problemas"] if p["gravidade"] == "erro"]
+
+
+def test_sem_faturadas_e_erro(client):
+    arquivos = [a for a in _arquivos_sinteticos() if "Faturadas" not in a[1][0]]
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    [p] = _problemas(r, "sem_faturadas")
+    assert p["gravidade"] == "erro"
+
+
+def test_planilha_vazia_e_aviso(client):
+    arquivos = _arquivos_sinteticos() + [("arquivos", ("NF Devolvidas 2.xlsx", _xlsx(pd.DataFrame({"Volume Devolução": []})), XL))]
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    [p] = _problemas(r, "planilha_vazia")
+    assert p["gravidade"] == "aviso"
+
+
+def test_coluna_por_apelido_e_info(client):
+    canc = pd.DataFrame({"Volume Canceladas": [40.0]})
+    arquivos = [a for a in _arquivos_sinteticos() if "Canceladas" not in a[1][0]]
+    arquivos.append(("arquivos", ("NF Canceladas 03.26.xlsx", _xlsx(canc), XL)))
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    [p] = _problemas(r, "coluna_por_apelido")
+    assert p["gravidade"] == "info"
+    assert "Volume Canceladas" in p["mensagem"]
+
+
+def test_consumo_nao_encontrado_e_info(client):
+    fat = pd.DataFrame({"Produto": ["Gás"], "Volume Faturado": [100.0]})
+    arquivos = [a for a in _arquivos_sinteticos() if "Faturadas" not in a[1][0]]
+    arquivos.append(("arquivos", ("NF Faturadas 03.26.xlsx", _xlsx(fat), XL)))
+    r = client.post("/api/cgf/processar", files=arquivos).json()
+    [p] = _problemas(r, "consumo_nao_encontrado")
+    assert p["gravidade"] == "info"
+
+
 def test_processar_rejeita_arquivo_que_nao_e_planilha(client):
     resp = client.post("/api/cgf/processar", files=[("arquivos", ("NF Faturadas.pdf", b"%PDF", "application/pdf"))])
     assert resp.status_code == 422

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.comum import ProblemaArquivo
+
 
 class CGFVolumes(BaseModel):
     volume_faturado: float          # já sem consumo próprio
@@ -14,6 +16,7 @@ class CGFVolumes(BaseModel):
 class CGFProcessarResponse(CGFVolumes):
     periodo_detectado: str          # "" quando o nome dos arquivos não indica o mês
     arquivos_ignorados: list[str]   # nome não diz se é faturada/cancelada/devolução
+    problemas: list[ProblemaArquivo] = []
     logs: list[str]
 
 

@@ -17,6 +17,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
+from Src.api.schemas.comum import ProblemaArquivo
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_arquivo, gravar_envio
 from Src.api.schemas.auditoria import (
     ComparacaoAuditoria,
@@ -53,15 +54,30 @@ def _item_da_api(i: ItemAuditoria) -> XMLItem:
                    i.volume, i.status, i.volume_total, i.caminho)
 
 
-def _comparar(itens: list[XMLItem], planilha: Path | None, periodo: str):
-    """Comparação opcional com a planilha da Conta Gráfica."""
+def _comparar(itens: list[XMLItem], planilha: Path | None, periodo: str,
+              nome_planilha: str = "planilha", problemas: list[dict] | None = None):
+    """Comparação opcional com a planilha da Conta Gráfica.
+
+    Planilha que não abre não derruba a auditoria: vira problema e a resposta
+    segue sem comparação.
+    """
     if planilha is None:
         return None, "Envie a planilha da Conta Gráfica para comparar as notas."
     if not is_periodo_valido(periodo):
         return None, "Informe o mês/ano para comparar com a planilha."
-    comp = ComparadorContaGrafica.comparar(
-        resultados=itens, df_excel=lote.carregar_planilha_comparacao(str(planilha)), periodo=periodo,
-    )
+    try:
+        df_excel = lote.carregar_planilha_comparacao(str(planilha))
+    except Exception as e:  # noqa: BLE001 — qualquer falha de leitura vira mensagem, não 500
+        if problemas is None:
+            raise ValueError(f"Não consegui abrir a planilha de comparação {nome_planilha}. Salve como .xlsx e tente de novo.") from e
+        problemas.append(lote.problema(
+            nome_planilha, None, "erro", "planilha_comparacao_ilegivel",
+            "Não consegui abrir a planilha de comparação. A auditoria foi feita, mas sem comparação. "
+            "Salve a planilha como .xlsx e tente de novo.",
+            lote.motivo_curto(f"{type(e).__name__}: {e}", planilha),
+        ))
+        return None, "A planilha de comparação não pôde ser aberta (veja os problemas)."
+    comp = ComparadorContaGrafica.comparar(resultados=itens, df_excel=df_excel, periodo=periodo)
     return comp, ""
 
 
@@ -86,15 +102,24 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
         if not empresas_pasta:
             raise ValueError("Nenhuma subpasta de empresa encontrada. A pasta enviada deve ter uma subpasta por empresa.")
 
+        problemas: list[dict] = []
         escolhidas = json.loads(str(form.get("empresas") or "[]")) or empresas_pasta
         empresas = [e for e in escolhidas if e in empresas_pasta]
+        for e in escolhidas:
+            if e not in empresas_pasta:
+                problemas.append(lote.problema(
+                    "", e, "aviso", "empresa_nao_encontrada",
+                    "A empresa foi marcada, mas não há subpasta com esse nome na pasta enviada; ela não foi auditada.",
+                ))
         usar_pdf = str(form.get("modo") or "XML").upper() == "PDF"
         periodo_detectado = lote.periodo_do_caminho(str(form.get("pasta_raiz") or "") + "/" + base.name)
         periodo = str(form.get("periodo") or "") or periodo_detectado
 
-        itens, n_xml, n_pdf = await run_in_threadpool(lote.auditar_pasta, base, empresas, usar_pdf)
+        itens, n_xml, n_pdf = await run_in_threadpool(lote.auditar_pasta, base, empresas, usar_pdf, None, problemas)
         tot = lote.calcular_totais(itens)
-        comp, aviso = await run_in_threadpool(_comparar, itens, planilha, periodo)
+        up_planilha = form.get("planilha")
+        nome_planilha = Path(getattr(up_planilha, "filename", "") or "planilha").name
+        comp, aviso = await run_in_threadpool(_comparar, itens, planilha, periodo, nome_planilha, problemas)
 
         return ProcessarAuditoriaResponse(
             periodo_detectado=periodo_detectado,
@@ -112,6 +137,7 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
                 avisos=list(comp.avisos),
             ) if comp else None,
             aviso_comparacao=aviso,
+            problemas=[ProblemaArquivo(**p) for p in problemas],
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
