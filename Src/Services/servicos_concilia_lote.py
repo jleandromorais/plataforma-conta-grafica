@@ -1,16 +1,17 @@
 """Conciliação RP (penalidades) — orquestração usada pela API web, com as
 mesmas regras da tela desktop (tela_concilia.py) via RegrasConcilia.
 
-RP (saldo de penalidade) = Σ despesas − Σ receitas — mesma fórmula da planilha
-oficial "Conta Gráfica" (linha "Saldo de penalidade") e do que a tela desktop
-grava. Notas "cancelado" entram negativas (RegrasConcilia).
+RP (saldo de penalidade) = (Σ despesas − Σ receitas) × (1 − 9,25% PIS/COFINS) —
+mesma fórmula da planilha oficial "Conta Gráfica" (linha "Saldo de penalidade")
+e do que a tela desktop grava. Notas "cancelado" entram negativas
+(RegrasConcilia). Os itens ficam com o valor bruto da nota.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable
 
-from Src.Services.servicos_concilia import PdfItem, RegrasConcilia
+from Src.Services.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConcilia
 
 
 def pdfs_da_pasta(pasta: Path | None) -> list[Path]:
@@ -33,8 +34,8 @@ def processar(pasta_receitas: Path | None, pasta_despesas: Path | None,
 
 
 def totais(itens: list[PdfItem]) -> dict:
-    receitas = sum(i.amount for i in itens if i.category == "Receita")
-    despesas = sum(i.amount for i in itens if i.category == "Despesa")
+    receitas = sum(i.amount for i in itens if i.category == "Receita") * FATOR_PIS_COFINS
+    despesas = sum(i.amount for i in itens if i.category == "Despesa") * FATOR_PIS_COFINS
     return {
         "total_receitas": receitas,
         "total_despesas": despesas,
@@ -73,8 +74,8 @@ def historico() -> list[dict]:
         for periodo in periodos:
             itens = db.listar_concilia_itens(periodo) or []
             cons = db.buscar_consolidacao(periodo) or {}
-            receitas = sum(float(i["valor"] or 0) for i in itens if i["categoria"] == "Receita")
-            despesas = sum(float(i["valor"] or 0) for i in itens if i["categoria"] == "Despesa")
+            receitas = sum(float(i["valor"] or 0) for i in itens if i["categoria"] == "Receita") * FATOR_PIS_COFINS
+            despesas = sum(float(i["valor"] or 0) for i in itens if i["categoria"] == "Despesa") * FATOR_PIS_COFINS
             linhas.append({
                 "periodo": periodo,
                 "qtd_itens": len(itens),

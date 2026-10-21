@@ -50,8 +50,8 @@ def test_comparar_periodo_novo_mostra_modulos_e_gravado_vazio(client):
     assert resp.status_code == 200
     corpo = resp.json()
     assert corpo["modulos"]["cgr"] == pytest.approx(1000.0)  # frete ficou de fora
-    assert corpo["modulos"]["rp"] == pytest.approx(50.0)
-    assert corpo["modulos"]["scg"] == pytest.approx(1050.0)  # RPV(1000-0) + RET 0 + RP 50
+    assert corpo["modulos"]["rp"] == pytest.approx(50.0 * 0.9075)  # líquido de PIS/COFINS
+    assert corpo["modulos"]["scg"] == pytest.approx(1000.0 + 50.0 * 0.9075)  # RPV(1000-0) + RET 0 + RP
     assert corpo["modulos"] == pytest.approx(ServicosSCG.buscar_dados_fontes("Abr/2026"))
 
 

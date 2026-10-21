@@ -24,6 +24,7 @@ from openpyxl.chart.series import DataPoint
 
 from Src.Database.database import DatabasePMPV
 from Src.Services.servicos_auditoria import empresa_integra_cgr
+from Src.Services.servicos_concilia import FATOR_PIS_COFINS
 from Src.common.formatting import format_brl, format_brl4, format_brl_plain
 from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, TRIMESTRES_CIVIS, is_periodo_valido
 from Src.infrastructure.exporters.excel_styles import (
@@ -1193,6 +1194,9 @@ class ExcelConsolidado:
                 alternate=(i % 2 == 1))
             row += 1
 
+        # Totais líquidos de PIS/COFINS, como na planilha oficial (padrão RP).
+        tot_rec *= FATOR_PIS_COFINS
+        tot_desp *= FATOR_PIS_COFINS
         saldo = tot_rec - tot_desp
         _apply_total_row(ws, row,
             (["TOTAL RECEITA"] if mostrar_periodo else []) + ["TOTAL RECEITA", "Receita", tot_rec, "", ""],
@@ -1203,7 +1207,7 @@ class ExcelConsolidado:
             bg="FADBD8")
         row += 1
         bg_saldo = _GREEN if saldo >= 0 else _RED
-        c = ws.cell(row=row, column=1, value="SALDO  RP  =  Receita − Despesa")
+        c = ws.cell(row=row, column=1, value="SALDO  RP  =  Receita − Despesa  (líq. PIS/COFINS)")
         c.fill = _fill(bg_saldo)
         c.font = _font(bold=True, color=_HEADER_FG, size=12)
         c.border = _border()

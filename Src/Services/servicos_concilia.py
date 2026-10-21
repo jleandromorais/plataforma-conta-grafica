@@ -24,6 +24,12 @@ def _sem_acento(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
 
 
+# Padrão RP: a planilha oficial "Conta Gráfica" lança receitas e despesas de
+# penalidade líquidas de PIS/COFINS (9,25%) — ex.: "=15764.98*(1-0.0925)".
+# Os itens guardam o valor bruto da nota; totais e RP usam o líquido.
+FATOR_PIS_COFINS = 1 - 0.0925
+
+
 @dataclass(frozen=True)
 class PdfItem:
     file_name: str
@@ -130,16 +136,18 @@ class RegrasConcilia:
                     pass
         
         # ============================================================================
-        # ESTRATÉGIA 3: PDFs sem "Total" nem "R$" — valor aparece isolado na linha
+        # ESTRATÉGIA 3: PDFs sem "Total" nem "R$" — valor no fim da linha
         # ============================================================================
         # Algumas notas de débito (ex: Eneva/Petrolina/Garanhuns) trazem o valor
-        # sozinho em uma linha própria, sem "R$" na frente — às vezes com separador
-        # de milhar ("25.790,68"), às vezes sem ("143,15"). Como CEP/CNPJ/datas
-        # nunca aparecem isolados numa linha inteira com vírgula decimal, exigir
-        # que o número ocupe a linha toda (^...$ com MULTILINE) já é suficiente
-        # para não gerar falso positivo, mesmo sem exigir separador de milhar.
+        # sem "R$" na frente — às vezes com separador de milhar ("25.790,68"), às
+        # vezes sem ("143,15"). O valor fica no fim da linha, sozinho ou depois de
+        # um texto: na ND Petrolina de jan-26 o total vem como
+        # "30/01/2026 15.764,98" e as parcelas como "... DEZ-25 11.779,43".
+        # Exigir a linha inteira pegava só a parcela isolada (3.985,55).
+        # CEP/CNPJ/datas não terminam em vírgula com 2 casas, então ancorar o
+        # número no fim da linha (MULTILINE) não gera falso positivo.
         if not lista_floats:
-            pattern_isolado = r'^\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*$'
+            pattern_isolado = r'(?:^|\s)(\d{1,3}(?:\.\d{3})*,\d{2})\s*$'
             matches = re.findall(pattern_isolado, text_clean, re.MULTILINE)
 
             for m in matches:

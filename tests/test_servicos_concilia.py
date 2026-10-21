@@ -74,6 +74,21 @@ class TestExtrairValor:
         valor, _ = RegrasConcilia.extrair_valor(texto)
         assert valor == pytest.approx(9999.99)
 
+    def test_nd_eneva_total_no_fim_da_linha(self):
+        # ND Petrolina jan-26: sem "Total" nem "R$"; só a 1ª parcela fica sozinha
+        # na linha, o total vem depois da data de vencimento.
+        texto = (
+            "ORIGEM/ESPECIFICAÇÃO DO DÉBITO\n"
+            "3.985,55\n"
+            "Erro de Programação Petrolina QDP < 85% DEZ - 25\n"
+            "Erro de Programação Petrolina QDP >115% DEZ-25 11.779,43\n"
+            "Vencimento\n"
+            "30/01/2026 15.764,98\n"
+            "VALOR POR EXTENSO\n"
+        )
+        valor, _ = RegrasConcilia.extrair_valor(texto)
+        assert valor == pytest.approx(15764.98)
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # processar_arquivos

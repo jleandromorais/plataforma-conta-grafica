@@ -1,5 +1,6 @@
 from Src.Database.database import DatabasePMPV
 from Src.Services.servicos_auditoria import empresa_integra_cgr
+from Src.Services.servicos_concilia import FATOR_PIS_COFINS
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.formatting import format_brl
 
@@ -69,7 +70,7 @@ class ServicosSCG:
           TAG/Mastergás (transporte via gasoduto, que a planilha oficial trata
           como parte do CGR). CT-e das demais transportadoras é frete e não
           integra o CGR;
-        - RP  = Σ valor dos itens da Conciliação;
+        - RP  = Σ valor dos itens da Conciliação × (1 − 9,25% PIS/COFINS);
         - CGF e RET = o que está gravado na consolidação.
         """
         with DatabasePMPV() as db:
@@ -79,11 +80,12 @@ class ServicosSCG:
             cons = db.buscar_consolidacao(periodo) or {}
             cgf = float(cons.get("cgf") or 0)
             ret = float(cons.get("ret") or 0)
-            # Saldo de penalidade = despesas − receitas (planilha oficial
-            # "Conta Gráfica", linha "Saldo de penalidade"; mesma regra da tela
-            # de Conciliação). Antes somava receitas e despesas juntas.
+            # Saldo de penalidade = (despesas − receitas) líquido de PIS/COFINS
+            # (planilha oficial "Conta Gráfica", linha "Saldo de penalidade";
+            # mesma regra da tela de Conciliação). Antes somava receitas e
+            # despesas juntas.
             rp = sum(ServicosSCG._sinal_rp(i.get("categoria")) * float(i.get("valor") or 0)
-                     for i in (db.listar_concilia_itens(periodo) or []))
+                     for i in (db.listar_concilia_itens(periodo) or [])) * FATOR_PIS_COFINS
         rpv = cgr - cgf
         scg = rpv + ret + rp
         return {"cgr": cgr, "cgf": cgf, "rpv": rpv, "ret": ret, "rp": rp, "scg": scg}

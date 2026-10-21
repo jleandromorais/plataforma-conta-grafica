@@ -31,8 +31,9 @@ class TestGerarRelatorio:
         ]
         out = tmp_path / "out.xlsx"
         total_rec, total_desp = ExcelConcilia.gerar_relatorio(out, itens)
-        assert total_rec == 1500.0
-        assert total_desp == 200.0
+        # Totais líquidos de PIS/COFINS (9,25%), como na planilha oficial.
+        assert total_rec == pytest.approx(1500.0 * 0.9075)
+        assert total_desp == pytest.approx(200.0 * 0.9075)
 
     def test_layout_basico_estrutura(self, tmp_path):
         out = tmp_path / "x.xlsx"

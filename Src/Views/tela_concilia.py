@@ -190,7 +190,8 @@ class TelaConciliador(ctk.CTkFrame):
             self._ultimo_saldo_rp = saldo_despesa_menos_receita
             self._ultimos_itens_concilia = itens
 
-            self.log_message("--- RESUMO DA CONCILIAÇÃO ---")
+            # gerar_relatorio já devolve os totais líquidos de PIS/COFINS (padrão RP).
+            self.log_message("--- RESUMO DA CONCILIAÇÃO (líquido de PIS/COFINS 9,25%) ---")
             self.log_message(f"Total Receita: R$ {format_brl_plain(tot_rec)}")
             self.log_message(f"Total Despesa: R$ {format_brl_plain(tot_desp)}")
             self.log_message(f"Saldo (Despesa - Receita): R$ {format_brl_plain(saldo_despesa_menos_receita)}")

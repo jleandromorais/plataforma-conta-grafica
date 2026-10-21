@@ -2,6 +2,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from Src.common.excel_salvar import salvar_workbook
+from Src.Services.servicos_concilia import FATOR_PIS_COFINS
 from pathlib import Path
 
 class ExcelConcilia:
@@ -72,9 +73,11 @@ class ExcelConcilia:
                 if i.category == "Receita": total_rec += i.amount
                 elif i.category == "Despesa": total_desp += i.amount
 
-        # Rodapé com totais
+        # Rodapé com totais líquidos de PIS/COFINS (padrão RP da planilha oficial)
+        total_rec *= FATOR_PIS_COFINS
+        total_desp *= FATOR_PIS_COFINS
         ws.append([])
-        ws.append(["RESUMO FINAL", "", "", "", "", ""])
+        ws.append(["RESUMO FINAL (líquido de PIS/COFINS 9,25%)", "", "", "", "", ""])
         ws.append(["(+) RECEITAS", "", total_rec, "", "", ""])
         ws.append(["(-) DESPESAS", "", total_desp, "", "", ""])
         ws.append(["(=) SALDO", "", total_rec - total_desp, "", "", ""])

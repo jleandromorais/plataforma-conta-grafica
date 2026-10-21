@@ -32,10 +32,10 @@ def _item(cat, valor, status="OK"):
     return PdfItem(file_name="a.pdf", file_path="a.pdf", category=cat, amount=valor, status=status, method="x")
 
 
-def test_rp_e_despesas_menos_receitas():
+def test_rp_e_despesas_menos_receitas_liquido_de_pis_cofins():
     t = lote.totais([_item("Despesa", 100.0), _item("Receita", 30.0), _item("Despesa", -10.0)])  # -10 = cancelada
-    assert t["rp"] == pytest.approx(60.0)
-    assert t["total_receitas"] == pytest.approx(30.0)
+    assert t["rp"] == pytest.approx(60.0 * 0.9075)
+    assert t["total_receitas"] == pytest.approx(30.0 * 0.9075)
 
 
 def test_salvar_grava_rp_e_scg_dos_modulos_bate(client):
@@ -45,10 +45,10 @@ def test_salvar_grava_rp_e_scg_dos_modulos_bate(client):
     ]
     resp = client.post("/api/conciliacao/salvar", json={"periodo": "Abr/2026", "itens": itens})
     assert resp.status_code == 200
-    assert resp.json()["rp"] == pytest.approx(300.0)
+    assert resp.json()["rp"] == pytest.approx(300.0 * 0.9075)
     comp = client.get("/api/scg/comparar", params={"periodo": "Abr/2026"}).json()
-    assert comp["gravado"]["rp"] == pytest.approx(300.0)
-    assert comp["modulos"]["rp"] == pytest.approx(300.0)  # mesma regra nos dois lados
+    assert comp["gravado"]["rp"] == pytest.approx(300.0 * 0.9075)
+    assert comp["modulos"]["rp"] == pytest.approx(300.0 * 0.9075)  # mesma regra nos dois lados
     hist = {h["periodo"]: h for h in client.get("/api/conciliacao/historico").json()}
     assert hist["Abr/2026"]["rp_dos_itens"] == pytest.approx(hist["Abr/2026"]["rp_gravado"])
 
@@ -66,7 +66,8 @@ def test_relatorio(client):
 
 @pytest.mark.skipif(not (PASTA_DESP.exists() and PASTA_REC.exists()), reason="pastas reais de RP ausentes")
 def test_pastas_reais_de_janeiro_igual_ao_desktop(client):
-    """Mesmo resultado que a tela desktop lendo as pastas direto do disco.
+    """Mesmo resultado que a tela desktop lendo as pastas direto do disco, e
+    igual à coluna jan-26 da planilha oficial "Conta Gráfica" (Penalidades).
 
     (Os itens gravados em Jan/2026 somam menos: na época, 3 PDFs de despesa
     não foram lidos — ficaram com valor 0 e status REVISAR.)"""
@@ -80,4 +81,8 @@ def test_pastas_reais_de_janeiro_igual_ao_desktop(client):
     t = resp.json()["totais"]
     for k in ("total_despesas", "total_receitas", "rp"):
         assert t[k] == pytest.approx(esperado[k])
-    assert t["total_despesas"] == pytest.approx(197_656.14, abs=0.01)
+    # Planilha: PFP = 892.216,54; despesas = 86.214,11 + 14.306,72 + 89.541,95
+    # (Petrolina = 15.764,98 bruto); Saldo de penalidade = −702.153,76.
+    assert t["total_receitas"] == pytest.approx(892_216.54, abs=0.01)
+    assert t["total_despesas"] == pytest.approx(190_062.78, abs=0.01)
+    assert t["rp"] == pytest.approx(-702_153.76, abs=0.01)
