@@ -162,6 +162,38 @@ class TestProcessarArquivos:
         assert any("[1/2]" in l for l in logs)
         assert any("[2/2]" in l for l in logs)
 
+    def test_top_entra_como_receita_mesmo_na_pasta_de_despesas(self, tmp_path):
+        # fev-26: a subpasta "TOP Não Recup" foi guardada em Despesa, mas a
+        # planilha oficial lança TOP não recuperável em Receitas.
+        top = tmp_path / "Despesa" / "02 - fev26 TOP Não Recup" / "GERDAU - ND - TOP NREC 03864.pdf"
+        desk = tmp_path / "Desktop" / "ND_Penalidade - PETROLINA.pdf"
+        for a in (top, desk):
+            a.parent.mkdir(parents=True, exist_ok=True)
+            a.write_bytes(b"")
+        with patch(
+            "Src.Services.servicos_concilia.read_pdf_text",
+            return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
+        ):
+            itens = RegrasConcilia.processar_arquivos([top, desk], "Despesa", lambda _m: None, raiz=tmp_path)
+        assert {i.file_name: i.category for i in itens} == {
+            "GERDAU - ND - TOP NREC 03864.pdf": "Receita",
+            "ND_Penalidade - PETROLINA.pdf": "Despesa",  # "Desktop" não é TOP
+        }
+
+    def test_substituidos_e_duplicadas_ficam_de_fora(self, tmp_path):
+        atual = tmp_path / "2026.04.20 - KLABIN - NDTOPNREC03901 - Atualizada em 20.04.26.pdf"
+        antiga = tmp_path / "Substituídos" / "KLABIN - NDTOPNREC03901.pdf"
+        outra = tmp_path / "ALPEK - TOP.NREC - 4430_4313.pdf"
+        for a in (atual, antiga, outra):
+            a.parent.mkdir(parents=True, exist_ok=True)
+            a.write_bytes(b"")
+        with patch(
+            "Src.Services.servicos_concilia.read_pdf_text",
+            return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
+        ):
+            itens = RegrasConcilia.processar_arquivos([antiga, atual, outra], "Receita", lambda _m: None, raiz=tmp_path)
+        assert sorted(i.file_name for i in itens) == sorted([atual.name, outra.name])
+
 
 class TestPdfItemDataclass:
     def test_imutavel(self):

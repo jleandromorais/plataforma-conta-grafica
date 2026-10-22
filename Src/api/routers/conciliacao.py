@@ -39,7 +39,7 @@ async def processar(request: Request) -> ProcessarConciliacaoResponse:
     (caminho relativo no nome; ZIPs dentro das pastas também são lidos).
     NÃO grava nada."""
     form = await request.form(max_files=MAX_ARQUIVOS, max_fields=MAX_ARQUIVOS)
-    # Nome neutro: RegrasConcilia ignora caminhos que contenham "top".
+    # Nome neutro: RegrasConcilia classifica caminhos com "TOP" como receita.
     tmp = Path(tempfile.mkdtemp(prefix="concilia_"))
     try:
         pastas: dict[str, Path | None] = {}

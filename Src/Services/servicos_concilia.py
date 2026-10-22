@@ -24,6 +24,24 @@ def _sem_acento(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
 
 
+def eh_top(caminho: str | Path) -> bool:
+    """TOP não recuperável (pasta "TOP Não Recup", "NDTOPNREC...", "TOP.NREC...").
+    "top" como palavra isolada, para não pegar "Desktop"."""
+    return re.search(r"(?<![a-z])top(?![a-z])", _sem_acento(str(caminho)).lower()) is not None
+
+
+def _substituido(arq: Path) -> bool:
+    """Versões antigas guardadas em subpasta "Substituídos"/"substituídas"."""
+    return any("substitu" in _sem_acento(p).lower() for p in arq.parent.parts)
+
+
+def _numero_nd(nome: str) -> str | None:
+    """Número da ND para deduplicar original × atualizada: "NDPFP03882",
+    "ND - TOP NREC 03864", "NDTOPNREC03901", "TOP.NREC - 4430_4313"."""
+    m = re.search(r"(PFP|TOPNREC)(\d+)", re.sub(r"[^A-Z0-9]", "", _sem_acento(nome).upper()))
+    return m.group(0) if m else None
+
+
 # Padrão RP: a planilha oficial "Conta Gráfica" lança receitas e despesas de
 # penalidade líquidas de PIS/COFINS (9,25%) — ex.: "=15764.98*(1-0.0925)".
 # Os itens guardam o valor bruto da nota; totais e RP usam o líquido.
@@ -187,7 +205,8 @@ class RegrasConcilia:
         return 0.0, "Valor não identificado"
 
     @staticmethod
-    def processar_arquivos(arquivos: List[Path], categoria: str, log_callback) -> List[PdfItem]:
+    def processar_arquivos(arquivos: List[Path], categoria: str, log_callback,
+                           raiz: Path | None = None) -> List[PdfItem]:
         """
         Processa lista de arquivos PDF e extrai valores.
         
@@ -195,18 +214,25 @@ class RegrasConcilia:
             arquivos: Lista de caminhos dos PDFs
             categoria: "Receita" ou "Despesa"
             log_callback: Função para registrar log
+            raiz: Pasta escolhida; TOP/Substituídos são detectados só no
+                caminho dentro dela (o resto do caminho pode ter qualquer nome)
             
         Returns:
             Lista de PdfItem com os dados extraídos
         """
-        # Exclui arquivos em subpastas "TOP" (Take or Pay não recuperável é
-        # tratado à parte, fora deste fluxo), igual ao filtro já existente
-        # para pastas de versões substituídas.
-        arquivos = [a for a in arquivos if "top" not in _sem_acento(str(a)).lower()]
+        # TOP não recuperável entra no RP como RECEITA (planilha oficial, linha
+        # "TOP não recuperável" dentro de Receitas), mesmo quando a subpasta
+        # TOP foi guardada na pasta de despesas (caso de fev-26).
+        # Versões antigas em subpastas "Substituídos" ficam de fora.
+        def rel(arq: Path) -> Path:
+            return arq.relative_to(raiz) if raiz and arq.is_relative_to(raiz) else arq
 
-        # Deduplica por número de ND (ex: "NDPFP03882"): quando duas notas do
-        # mesmo número existem (original + retificada), mantém a que tem
-        # "atualiz"/"atualizado" no nome; se nenhuma tiver, mantém a primeira.
+        arquivos = [a for a in arquivos if not _substituido(rel(a))]
+
+        # Deduplica por número de ND (ex: "NDPFP03882", "NDTOPNREC03901"):
+        # quando duas notas do mesmo número existem (original + retificada),
+        # mantém a que tem "atualiz"/"atualizado" no nome; se nenhuma tiver,
+        # mantém a primeira.
         # Notas "cancelado" ficam de fora da dedupe: elas entram com valor
         # negativo (ver abaixo) e devem ser somadas junto com a atualizada,
         # não descartadas.
@@ -216,11 +242,10 @@ class RegrasConcilia:
             if "cancelado" in _sem_acento(arq.name).lower():
                 canceladas.append(arq)
                 continue
-            m = re.search(r'NDPFP\d+', arq.name, re.IGNORECASE)
-            if not m:
-                por_nd.setdefault(f"__sem_nd__{arq.name}", arq)
+            nd = _numero_nd(arq.name)
+            if not nd:
+                por_nd.setdefault(f"__sem_nd__{arq}", arq)
                 continue
-            nd = m.group(0).upper()
             existente = por_nd.get(nd)
             if existente is None:
                 por_nd[nd] = arq
@@ -264,7 +289,7 @@ class RegrasConcilia:
             item = PdfItem(
                 file_name=arq.name,
                 file_path=str(arq),
-                category=categoria,
+                category="Receita" if eh_top(rel(arq)) else categoria,
                 amount=valor,
                 status=status,
                 method=metodo_final

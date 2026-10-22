@@ -26,10 +26,10 @@ def processar(pasta_receitas: Path | None, pasta_despesas: Path | None,
     desp = pdfs_da_pasta(pasta_despesas)
     if rec:
         log("--- Receitas ---")
-        itens += RegrasConcilia.processar_arquivos(rec, "Receita", log)
+        itens += RegrasConcilia.processar_arquivos(rec, "Receita", log, raiz=pasta_receitas)
     if desp:
         log("--- Despesas ---")
-        itens += RegrasConcilia.processar_arquivos(desp, "Despesa", log)
+        itens += RegrasConcilia.processar_arquivos(desp, "Despesa", log, raiz=pasta_despesas)
     return itens
 
 

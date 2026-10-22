@@ -86,3 +86,35 @@ def test_pastas_reais_de_janeiro_igual_ao_desktop(client):
     assert t["total_receitas"] == pytest.approx(892_216.54, abs=0.01)
     assert t["total_despesas"] == pytest.approx(190_062.78, abs=0.01)
     assert t["rp"] == pytest.approx(-702_153.76, abs=0.01)
+
+
+RP_PASTAS = RAIZ / "SCG-26 - Copia" / "RP - Recuperação de Penalidades"
+MAR_REC = RP_PASTAS / "mar-26" / "(Receita) 03 mar-26 Penalidade Falha de Programação"
+MAR_DESP = RP_PASTAS / "mar-26" / "(Despesa)03 mar-26 Penalidade Falha de Programação"
+FEV_REC = RP_PASTAS / "fev-26" / "Receita 02 fev-26 Penalidade Falha de Programação (Receita)"
+FEV_DESP = RP_PASTAS / "fev-26" / "(penalidade) 02 fev-26 Penalidade Falha de Programação (Despesa)"
+
+
+@pytest.mark.skipif(not (MAR_REC.exists() and MAR_DESP.exists()), reason="pastas reais de RP ausentes")
+def test_marco_inclui_top_nao_recuperavel():
+    """Planilha oficial, mar-26: PFP 429.307,28 + TOP não recuperável
+    2.307.567,91 (receitas); Petrolina 19.160,79 (despesa);
+    Saldo de penalidade = −2.717.714,40."""
+    t = lote.totais(lote.processar(MAR_REC, MAR_DESP))
+    assert t["total_receitas"] == pytest.approx(429_307.28 + 2_307_567.91, abs=0.02)
+    assert t["total_despesas"] == pytest.approx(19_160.79, abs=0.01)
+    assert t["rp"] == pytest.approx(-2_717_714.40, abs=0.02)
+
+
+@pytest.mark.skipif(not (FEV_REC.exists() and FEV_DESP.exists()), reason="pastas reais de RP ausentes")
+def test_fevereiro_top_da_pasta_de_despesas_vira_receita():
+    """fev-26: o TOP está dentro da pasta de despesas, mas é receita.
+    Brutos: PFP 573.278,96 (GERDAU atualizada), TOP 4.566.792,73 (sem a
+    KLABIN de "Substituídos"), despesas TAG 504.297,99 + Petrolina 25.790,68.
+    A planilha oficial difere só na Petrolina, lançada lá como
+    "=25790.68*(0.0925)" em vez de "*(1-0.0925)"."""
+    itens = lote.processar(FEV_REC, FEV_DESP)
+    t = lote.totais(itens)
+    assert len(itens) == 29
+    assert t["total_receitas"] == pytest.approx((573_278.96 + 4_566_792.73) * 0.9075, abs=0.01)
+    assert t["total_despesas"] == pytest.approx((461_151.40 + 43_146.59 + 25_790.68) * 0.9075, abs=0.01)

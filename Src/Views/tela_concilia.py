@@ -169,10 +169,10 @@ class TelaConciliador(ctk.CTkFrame):
             itens = []
             if arquivos_rec:
                 self.log_message("--- Receitas ---")
-                itens += RegrasConcilia.processar_arquivos(arquivos_rec, "Receita", self.log_message)
+                itens += RegrasConcilia.processar_arquivos(arquivos_rec, "Receita", self.log_message, raiz=p_rec)
             if arquivos_desp:
                 self.log_message("--- Despesas ---")
-                itens += RegrasConcilia.processar_arquivos(arquivos_desp, "Despesa", self.log_message)
+                itens += RegrasConcilia.processar_arquivos(arquivos_desp, "Despesa", self.log_message, raiz=p_desp)
 
             if not itens:
                 self.log_message("Nenhum PDF processado.")
