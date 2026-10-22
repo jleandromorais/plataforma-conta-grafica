@@ -1038,7 +1038,8 @@ class TelaAuditoria(ctk.CTkFrame):
                 text_color=ui.COR_SUCESSO,
             )
 
-            import os, subprocess
+            import os
+            import subprocess
             os.startfile(destino)
 
         except Exception as e:
