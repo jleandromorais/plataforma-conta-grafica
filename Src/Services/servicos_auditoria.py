@@ -469,8 +469,23 @@ class RegrasAuditoria:
                 icms_r    = 0.0
                 icms_taxa = 0.0
             else:
-                icms_r = _find_brl(
-                    r'VALOR\s+DO\s+ICMS\s*[:\-]?\s*([\d.,]+)', txt_up)
+                # DACTE da TAG: "SITUAÇÃO TRIBUTÁRIA BASE DE CÁLCULO ALIQ. ICMS
+                # VALOR ICMS ..." e, na linha de baixo,
+                # "00 - Tributada integralmente 977.711,63 12,00 117.325,40".
+                for i, linha in enumerate(linhas[:-1]):
+                    lu = linha.upper()
+                    if 'BASE' in lu and 'ALIQ' in lu and 'ICMS' in lu:
+                        nums = re.findall(r'\d{1,3}(?:\.\d{3})*,\d{2}', linhas[i + 1])
+                        if len(nums) >= 3:
+                            try:
+                                icms_taxa = _parse_brl(nums[1]) / 100.0
+                                icms_r = _parse_brl(nums[2])
+                            except ValueError:
+                                icms_taxa = icms_r = 0.0
+                        break
+                if icms_r == 0.0:
+                    icms_r = _find_brl(
+                        r'VALOR\s+DO\s+ICMS\s*[:\-]?\s*([\d.,]+)', txt_up)
                 if icms_r == 0.0:
                     m_icms_val = re.search(
                         r'ICMS[^0-9]+([\d.,]+)\s+([\d.,]+)', txt_up)
@@ -483,7 +498,7 @@ class RegrasAuditoria:
                 # ICMS taxa: "% ICMS" ou "ALÍQUOTA ICMS"
                 m_taxa = re.search(
                     r'(?:ALIQ(?:UOTA)?\s*(?:DO\s*)?ICMS|%\s*ICMS)\s*[:\-]?\s*([\d,\.]+)', txt_up)
-                if m_taxa:
+                if m_taxa and icms_taxa == 0.0:
                     try:
                         icms_taxa = _parse_brl(m_taxa.group(1)) / 100.0
                     except ValueError:

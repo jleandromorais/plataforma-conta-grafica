@@ -246,6 +246,44 @@ class TestParseCTe:
         assert "erro" in RegrasAuditoria.parse_cte(f)
 
 
+# Trecho do DACTE da TAG (CT-e 4533, ago-26): a alíquota fica na linha de
+# baixo do cabeçalho "ALIQ. ICMS". Sem ela o CGR em PDF saía sem o ICMS.
+DACTE_TAG_TEXTO = """DACTE
+COMPONENTES DO VALOR DA PRESTAÇÃO DE SERVIÇO
+NOME VALOR VALOR TOTAL DO SERVIÇO
+CONGESTIONAMENT 0,00 977.711,63
+VALOR A RECEBER
+977.711,63
+INFORMAÇÕES RELATIVAS AO IMPOSTO
+SITUAÇÃO TRIBUTÁRIA BASE DE CÁLCULO ALIQ. ICMS VALOR ICMS % RED. BC. CALC.
+00 - Tributada integralmente 977.711,63 12,00 117.325,40
+Vencimento: 21-09-2026 Valor a Pagar: R$ 977.711,63
+"""
+
+
+class TestParsePdfDacte:
+    def test_aliquota_icms_na_linha_de_baixo(self, tmp_path, monkeypatch):
+        class Pagina:
+            def extract_text(self):
+                return DACTE_TAG_TEXTO
+
+        class Pdf:
+            pages = [Pagina()]
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr("Src.Services.servicos_auditoria.pdfplumber.open", lambda _p: Pdf())
+        f = tmp_path / "01025250001001_NF_4533_29260906248349001367570010000045331191734702.pdf"
+        f.write_bytes(b"%PDF")
+        d = RegrasAuditoria.parse_pdf_ocr(f)
+        assert d["tipo"] == "CT-e"
+        assert d["valor_total"] == pytest.approx(977_711.63)
+        assert d["icms_taxa"] == pytest.approx(0.12)
+        assert d["icms"] == pytest.approx(117_325.40)
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # XMLItem dataclass
 # ════════════════════════════════════════════════════════════════════════════
