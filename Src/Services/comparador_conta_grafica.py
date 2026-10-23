@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 import re
 import unicodedata
@@ -95,10 +95,22 @@ def _periodo_de_data(valor: Any) -> str:
     if pd.isna(valor):
         return ""
 
+    try:
+        return _periodo_de_data_bruto(valor)
+    except (ValueError, OverflowError):
+        # Ano fora de 2000–2099 (ex.: alíquota 0,12 lida como data de 1900) não é período.
+        return ""
+
+
+def _periodo_de_data_bruto(valor: Any) -> str:
     if isinstance(valor, (pd.Timestamp, datetime, date)):
         return normalizar_periodo(f"{int(valor.month):02d}/{valor.year}")
 
     if isinstance(valor, (int, float)):
+        # Só números no intervalo de datas seriais do Excel entre 2000 e 2099;
+        # volumes, valores e alíquotas não são datas.
+        if not 36526 <= float(valor) <= 73050:
+            return ""
         dt = pd.to_datetime(valor, errors="coerce", unit="D", origin="1899-12-30")
         if pd.notna(dt):
             return normalizar_periodo(f"{int(dt.month):02d}/{int(dt.year)}")
@@ -271,6 +283,14 @@ class ResultadoComparacaoNotas:
     sheets_excel: list[str]           # todas as abas na planilha carregada
     sheets_periodo_match: list[str]   # abas que corresponderam ao período
     total_linhas_periodo: int         # linhas encontradas para o período
+    # Preenchidos só pelo comparador do modelo Alexandre (comparador_modelo_alexandre.py)
+    modelo: str = "generico"
+    divergencias_valor: list[dict[str, Any]] = field(default_factory=list)  # nota nas duas, valores diferentes
+    por_empresa: list[dict[str, Any]] = field(default_factory=list)
+    cgr_auditoria: float | None = None
+    cgr_planilha_notas: float | None = None
+    cgr_planilha_conta_grafica: float | None = None
+    notas_mes_na_planilha: bool = True
 
 
 class ComparadorContaGrafica:

@@ -515,3 +515,87 @@ class ExcelAuditoria:
             for c in row:
                 c.border = _thin_border()
         ws_invalidas.freeze_panes = "A2"
+
+        if getattr(comparacao, "modelo", "generico") == "alexandre":
+            ExcelAuditoria._adicionar_sheet_valores(wb, comparacao)
+
+    @staticmethod
+    def _adicionar_sheet_valores(wb, comparacao):
+        """Aba do modelo Alexandre: CGR total, conferência por supridor e notas
+        com valores divergentes (presentes nos dois lados)."""
+        ws = wb.create_sheet("Divergencias de Valor", wb.sheetnames.index("Comparacao Conta Grafica"))
+        fill_header = PatternFill(start_color=_HEADER_BG, end_color=_HEADER_BG, fill_type="solid")
+        fill_erro = PatternFill(start_color="FADBD8", end_color="FADBD8", fill_type="solid")
+        fill_ok = PatternFill(start_color=_NFE_PAR, end_color=_NFE_PAR, fill_type="solid")
+
+        def titulo(texto):
+            ws.append([])
+            ws.append([texto])
+            c = ws.cell(ws.max_row, 1)
+            c.font = Font(name="Calibri", size=12, bold=True, color=_TITULO_BG)
+
+        def cabecalho(colunas):
+            ws.append(colunas)
+            for c in ws[ws.max_row]:
+                c.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+                c.fill = fill_header
+                c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                c.border = _thin_border()
+
+        def linha(valores, formatos, fill=None):
+            ws.append(valores)
+            for c, fmt in zip(ws[ws.max_row], formatos):
+                c.border = _thin_border()
+                if fmt:
+                    c.number_format = fmt
+                if fill:
+                    c.fill = fill
+
+        ws.append([f"CONFERENCIA COM O MODELO ALEXANDRE  –  Periodo: {comparacao.periodo}"])
+        ws.cell(1, 1).font = Font(name="Calibri", size=14, bold=True, color=_TITULO_BG)
+
+        titulo("CGR do mes")
+        cabecalho(["Fonte", "CGR (R$)", "Diferenca auditoria - fonte (R$)"])
+        aud = comparacao.cgr_auditoria or 0.0
+        linha(["Auditoria (notas lidas)", aud, None], [None, _FMT_MOEDA, _FMT_MOEDA])
+        for rotulo, valor in (("Planilha - soma das notas (aba NFs)", comparacao.cgr_planilha_notas),
+                              ("Planilha - aba Conta Grafica", comparacao.cgr_planilha_conta_grafica)):
+            if valor is None:
+                linha([rotulo, "nao tem este mes", None], [None, None, None])
+            else:
+                dif = aud - valor
+                linha([rotulo, valor, dif], [None, _FMT_MOEDA, _FMT_MOEDA], fill_ok if abs(dif) <= 1 else fill_erro)
+
+        if comparacao.por_empresa:
+            titulo("Conferencia por supridor")
+            cabecalho(["Supridor", "Notas auditoria", "Notas planilha", "CGR auditoria (R$)",
+                       "CGR planilha (R$)", "Diferenca (R$)", "Situacao"])
+            for e in comparacao.por_empresa:
+                linha([e["empresa"], e["qtd_auditoria"], e["qtd_planilha"], e["cgr_auditoria"],
+                       e["cgr_planilha"], e["diferenca"], "Confere" if e["confere"] else "DIVERGE"],
+                      [None, _FMT_INT, _FMT_INT, _FMT_MOEDA, _FMT_MOEDA, _FMT_MOEDA, None],
+                      fill_ok if e["confere"] else fill_erro)
+
+        titulo(f"Notas nas duas fontes com valores diferentes ({len(comparacao.divergencias_valor)})")
+        if not comparacao.divergencias_valor:
+            ws.append(["Nenhuma: todas as notas presentes nos dois lados batem em CGR, valor, volume e aliquota."
+                       if comparacao.notas_mes_na_planilha else "A planilha nao tem as notas deste mes."])
+        else:
+            cabecalho(["Supridor", "Tipo", "Nota", "Linha planilha", "O que diverge",
+                       "CGR auditoria", "CGR planilha", "Diferenca CGR",
+                       "Valor c/trib auditoria", "Valor c/trib planilha",
+                       "Volume auditoria", "Volume planilha", "Aliquota auditoria", "Aliquota planilha"])
+            for d in comparacao.divergencias_valor:
+                linha([d["empresa"], d["tipo"], d["numero"], d["linha_excel"], "; ".join(d["motivos"]),
+                       d["cgr_auditoria"], d["cgr_planilha"], d["diferenca_cgr"],
+                       d["valor_auditoria"], d["valor_planilha"], d["volume_auditoria"], d["volume_planilha"],
+                       d["aliquota_auditoria"], d["aliquota_planilha"]],
+                      [None, None, None, None, None, _FMT_MOEDA, _FMT_MOEDA, _FMT_MOEDA,
+                       _FMT_MOEDA, _FMT_MOEDA, _FMT_INT, _FMT_INT, None, None], fill_erro)
+
+        titulo("Avisos")
+        for a in comparacao.avisos or ["Sem avisos"]:
+            ws.append([a])
+
+        for col, largura in zip("ABCDEFGHIJKLMN", (36, 20, 20, 20, 30, 18, 18, 18, 20, 20, 16, 16, 14, 14)):
+            ws.column_dimensions[col].width = largura

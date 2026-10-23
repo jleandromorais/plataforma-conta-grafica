@@ -29,7 +29,6 @@ from Src.api.schemas.auditoria import (
     TotaisAuditoria,
 )
 from Src.Services import servicos_auditoria_lote as lote
-from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_auditoria import XMLItem
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
@@ -58,27 +57,25 @@ def _comparar(itens: list[XMLItem], planilha: Path | None, periodo: str,
               nome_planilha: str = "planilha", problemas: list[dict] | None = None):
     """Comparação opcional com a planilha da Conta Gráfica.
 
-    Planilha que não abre não derruba a auditoria: vira problema e a resposta
-    segue sem comparação.
+    Planilha que não abre (ou não dá para comparar) não derruba a auditoria:
+    vira problema e a resposta segue sem comparação.
     """
     if planilha is None:
         return None, "Envie a planilha da Conta Gráfica para comparar as notas."
     if not is_periodo_valido(periodo):
         return None, "Informe o mês/ano para comparar com a planilha."
     try:
-        df_excel = lote.carregar_planilha_comparacao(str(planilha))
+        return lote.comparar_com_planilha(itens, str(planilha), periodo), ""
     except Exception as e:  # noqa: BLE001 — qualquer falha de leitura vira mensagem, não 500
         if problemas is None:
             raise ValueError(f"Não consegui abrir a planilha de comparação {nome_planilha}. Salve como .xlsx e tente de novo.") from e
         problemas.append(lote.problema(
             nome_planilha, None, "erro", "planilha_comparacao_ilegivel",
-            "Não consegui abrir a planilha de comparação. A auditoria foi feita, mas sem comparação. "
-            "Salve a planilha como .xlsx e tente de novo.",
+            "Não consegui ler ou comparar a planilha. A auditoria foi feita, mas sem comparação. "
+            "Confira se é a planilha da Conta Gráfica em .xlsx e tente de novo.",
             lote.motivo_curto(f"{type(e).__name__}: {e}", planilha),
         ))
         return None, "A planilha de comparação não pôde ser aberta (veja os problemas)."
-    comp = ComparadorContaGrafica.comparar(resultados=itens, df_excel=df_excel, periodo=periodo)
-    return comp, ""
 
 
 @router.post("/processar", response_model=ProcessarAuditoriaResponse)
@@ -135,6 +132,13 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
                 abas_planilha=list(comp.sheets_excel),
                 abas_do_periodo=list(comp.sheets_periodo_match),
                 avisos=list(comp.avisos),
+                modelo=comp.modelo,
+                notas_mes_na_planilha=comp.notas_mes_na_planilha,
+                cgr_auditoria=comp.cgr_auditoria,
+                cgr_planilha_notas=comp.cgr_planilha_notas,
+                cgr_planilha_conta_grafica=comp.cgr_planilha_conta_grafica,
+                divergencias_valor=comp.divergencias_valor,
+                por_empresa=comp.por_empresa,
             ) if comp else None,
             aviso_comparacao=aviso,
             problemas=[ProblemaArquivo(**p) for p in problemas],

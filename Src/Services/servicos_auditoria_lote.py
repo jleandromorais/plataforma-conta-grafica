@@ -266,6 +266,22 @@ def carregar_planilha_comparacao(caminho: str):
     return pd.concat(frames, ignore_index=True, sort=False)
 
 
+def comparar_com_planilha(itens: list[XMLItem], caminho: str, periodo: str):
+    """Compara as notas auditadas com a planilha da Conta Gráfica.
+
+    Se for o modelo do Alexandre (aba "Custo do Gás Realizado - NFs"), compara
+    nota a nota com valores; senão usa o comparador genérico (só presença)."""
+    from Src.Services import comparador_modelo_alexandre as alexandre
+    from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
+
+    modelo = alexandre.ler_modelo(caminho)
+    if modelo is not None:
+        return alexandre.comparar(itens, modelo, periodo)
+    return ComparadorContaGrafica.comparar(
+        resultados=itens, df_excel=carregar_planilha_comparacao(caminho), periodo=periodo,
+    )
+
+
 def salvar(periodo: str, itens: list[XMLItem]) -> dict:
     """Grava o CGR líquido do período (consolidação → recalcula RPV) e
     substitui os itens auditados do período."""

@@ -53,6 +53,14 @@ class ComparacaoAuditoria(BaseModel):
     abas_planilha: list[str]
     abas_do_periodo: list[str]
     avisos: list[str]
+    # Modelo Alexandre: comparação valor a valor
+    modelo: str = "generico"            # "alexandre" | "generico"
+    notas_mes_na_planilha: bool = True  # False: a aba de NFs não tem o mês; só o total foi comparado
+    cgr_auditoria: float | None = None
+    cgr_planilha_notas: float | None = None
+    cgr_planilha_conta_grafica: float | None = None
+    divergencias_valor: list[dict[str, Any]] = []
+    por_empresa: list[dict[str, Any]] = []
 
 
 class ProcessarAuditoriaResponse(BaseModel):
