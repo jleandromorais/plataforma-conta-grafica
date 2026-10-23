@@ -262,7 +262,7 @@ def carregar_planilha_comparacao(caminho: str):
         df_tmp["__sheet_name__"] = str(nome_aba)
         frames.append(df_tmp)
     if not frames:
-        raise ValueError("A planilha selecionada não contém abas com dados.")
+        raise ValueError("A planilha de comparação não tem nenhuma aba com dados. Confira se escolheu o arquivo certo.")
     return pd.concat(frames, ignore_index=True, sort=False)
 
 
@@ -291,9 +291,9 @@ def salvar(periodo: str, itens: list[XMLItem]) -> dict:
     from Src.common.periodos import is_periodo_valido
 
     if not is_periodo_valido(periodo):
-        raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+        raise ValueError(f"Período inválido: “{periodo}”. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.")
     if not itens:
-        raise ValueError("Nenhuma nota auditada para salvar.")
+        raise ValueError("Não há notas auditadas na lista para salvar. Audite a pasta do mês primeiro.")
     cgr = calcular_totais(itens)["cgr_liquido"]
     with ServicosConsolidacao() as consolidacao:
         rpv = consolidacao.salvar_cgr(periodo, cgr)["rpv"]

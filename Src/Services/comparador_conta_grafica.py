@@ -215,7 +215,8 @@ def _escolher_coluna_nota(df: pd.DataFrame, notas_referencia: set[str] | None = 
 
     if not melhor_coluna:
         raise ValueError(
-            "Não foi possível identificar a coluna de número da nota fiscal na planilha selecionada."
+            "Não achei a coluna com o número da nota fiscal na planilha de comparação. Confira se é a planilha "
+            "da Conta Gráfica, com uma coluna de número da NF."
         )
     return melhor_coluna
 
@@ -301,11 +302,11 @@ class ComparadorContaGrafica:
         periodo: str,
     ) -> ResultadoComparacaoNotas:
         if not isinstance(df_excel, pd.DataFrame) or df_excel.empty:
-            raise ValueError("A planilha de Conta Gráfica está vazia ou inválida.")
+            raise ValueError("A planilha de Conta Gráfica está vazia ou inválida. Confira se escolheu o arquivo certo, em .xlsx.")
 
         periodo_norm = normalizar_periodo(periodo)
         if not periodo_norm:
-            raise ValueError("Período inválido. Use formato como Jan/2026 ou 01/2026.")
+            raise ValueError("Período inválido. Escreva o mês e o ano, por exemplo Jan/2026 ou 01/2026.")
 
         nossa_por_nota: dict[str, dict[str, Any]] = {}
         for item in resultados:
@@ -326,7 +327,8 @@ class ComparadorContaGrafica:
 
         notas_referencia = set(nossa_por_nota.keys())
         if not notas_referencia:
-            raise ValueError("A auditoria não retornou números de nota válidos para comparação.")
+            raise ValueError("A auditoria não retornou números de nota válidos para comparação. Confira se a pasta tem os XML das "
+                "notas e audite de novo.")
 
         usar_sheet_periodo = "__sheet_name__" in df_excel.columns
 

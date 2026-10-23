@@ -268,7 +268,7 @@ def _fmt_aliq(aliqs: set[float]) -> str:
 def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> ResultadoComparacaoNotas:
     periodo_norm = normalizar_periodo(periodo)
     if not periodo_norm:
-        raise ValueError("Período inválido. Use formato como Jan/2026 ou 01/2026.")
+        raise ValueError("Período inválido. Escreva o mês e o ano, por exemplo Jan/2026 ou 01/2026.")
 
     aud = _agrupar_auditoria(itens)
     cgr_auditoria = sum(g["cgr"] for g in aud.values())

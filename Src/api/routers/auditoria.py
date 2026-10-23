@@ -68,7 +68,8 @@ def _comparar(itens: list[XMLItem], planilha: Path | None, periodo: str,
         return lote.comparar_com_planilha(itens, str(planilha), periodo), ""
     except Exception as e:  # noqa: BLE001 — qualquer falha de leitura vira mensagem, não 500
         if problemas is None:
-            raise ValueError(f"Não consegui abrir a planilha de comparação {nome_planilha}. Salve como .xlsx e tente de novo.") from e
+            raise ValueError(f"Não consegui abrir a planilha de comparação “{nome_planilha}”. Abra no Excel, salve como .xlsx "
+                             "(sem senha) e tente de novo.") from e
         problemas.append(lote.problema(
             nome_planilha, None, "erro", "planilha_comparacao_ilegivel",
             "Não consegui ler ou comparar a planilha. A auditoria foi feita, mas sem comparação. "
@@ -97,7 +98,8 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
         base = descer_pasta_unica(envio)
         empresas_pasta = sorted(p.name for p in base.iterdir() if p.is_dir())
         if not empresas_pasta:
-            raise ValueError("Nenhuma subpasta de empresa encontrada. A pasta enviada deve ter uma subpasta por empresa.")
+            raise ValueError("A pasta enviada não tem subpastas de empresa. Escolha a pasta “pai” do mês, que tem uma subpasta "
+                             "por empresa (Petrobras, TAG, …) com os XML e PDF das notas.")
 
         problemas: list[dict] = []
         escolhidas = json.loads(str(form.get("empresas") or "[]")) or empresas_pasta
@@ -151,7 +153,7 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
 def salvar(payload: SalvarAuditoriaRequest) -> SalvarAuditoriaResponse:
     """Grava o CGR (recalculado aqui a partir das notas) e os itens do período."""
     if not is_periodo_valido(payload.periodo):
-        raise ValueError("Período inválido. Use o formato Jan/2026.")
+        raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
     return SalvarAuditoriaResponse(**lote.salvar(payload.periodo, [_item_da_api(i) for i in payload.itens]))
 
 
@@ -165,7 +167,7 @@ async def relatorio(request: Request) -> FileResponse:
     form = await request.form()
     itens = [_item_da_api(ItemAuditoria(**d)) for d in json.loads(str(form.get("itens") or "[]"))]
     if not itens:
-        raise ValueError("Nenhuma nota para gerar o relatório.")
+        raise ValueError("Não há notas na lista para gerar o relatório. Audite a pasta do mês primeiro.")
     periodo = str(form.get("periodo") or "")
     tmp = Path(tempfile.mkdtemp(prefix="auditoria_rel_"))
     planilha = gravar_arquivo(form, "planilha", tmp, "planilha")
