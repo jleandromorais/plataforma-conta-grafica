@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, field_validator
 
 from Src.common.precisao import arredondar_tarifa
@@ -31,7 +33,7 @@ class SRCalcularResponse(BaseModel):
 # ── SR trimestral (VP/VF/PR/SELIC/SR-anterior por mês) ──────────────────────
 
 class SRTrimestreCarregarRequest(BaseModel):
-    sessao_id: int
+    sessao_id: int = 0  # não usado: o VP vem do PMPV que cobre cada mês
     labels_meses: list[str]  # ex: ["Jan/2026", "Fev/2026", "Mar/2026"]
 
 
@@ -40,6 +42,7 @@ class SRTrimestreLinhaCarregada(BaseModel):
     vp: float
     vf: float
     pr: float
+    pr_origem: Literal["salvo", "estimado", "ausente"] = "salvo"
 
     _pr_4_casas = field_validator("pr")(lambda v: arredondar_tarifa(v))
 

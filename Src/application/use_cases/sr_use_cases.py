@@ -85,7 +85,8 @@ class SRUseCases:
     def carregar_vp_vf_pr(self, sessao_id: int, labels_meses: list[str]) -> list[dict[str, Any]]:
         """Para cada mês do trimestre, preenche VP (do PMPV que cobre aquele mês
         do calendário — ver `vp_do_mes`), VF (volume_final do CGF do período) e
-        PR (salvo em sr_resultados, com fallback calculado a partir de SCG/SR/VP).
+        PR (salvo em sr_resultados, com fallback calculado a partir de SCG/SR/VP;
+        `pr_origem` diz qual: "salvo", "estimado" ou "ausente").
         `sessao_id` fica na assinatura por compatibilidade; o VP não depende dela."""
         resultado = []
         servicos_cons = ServicosConsolidacao()
@@ -98,13 +99,15 @@ class SRUseCases:
 
                 pr_row = self.repo.buscar_sr(periodo)
                 pr = float((pr_row or {}).get("pr") or 0.0)
+                pr_origem = "salvo" if pr else "ausente"
                 if pr == 0.0 and vp > 0:
                     dados_cons = servicos_cons.buscar_consolidacao(periodo)
                     scg_m = float((dados_cons or {}).get("scg") or 0.0)
                     sr_m = float((pr_row or {}).get("sr") or 0.0)
                     pr = (scg_m + sr_m) / vp if vp else 0.0
+                    pr_origem = "estimado" if pr else "ausente"
 
-                resultado.append({"mes": periodo, "vp": vp, "vf": vf, "pr": pr})
+                resultado.append({"mes": periodo, "vp": vp, "vf": vf, "pr": pr, "pr_origem": pr_origem})
         finally:
             servicos_cons.fechar()
         return resultado
