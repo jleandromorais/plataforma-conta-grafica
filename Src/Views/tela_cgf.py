@@ -558,8 +558,8 @@ class TelaCGF(ctk.CTkFrame):
             self._carregar_pmpv_banco(silencioso=True)
         self.tabview.set("Resumo")
         self._log("Processamento concluído.")
-        # Auto-save: persiste CGF no banco imediatamente após calcular
-        self._auto_salvar_cgf()
+        # Sem auto-save: gravar sozinho no período do campo deixou o CGF de
+        # Mai/26 gravado em Jun/26. Só grava via "Salvar", com confirmação.
 
     def _carregar_pmpv_banco(self, silencioso: bool = False):
         periodo = self.entry_periodo.get()
@@ -598,108 +598,58 @@ class TelaCGF(ctk.CTkFrame):
         except Exception:
             logger.debug("Falha ao atualizar label VP na CGF", exc_info=True)
 
-    def _auto_salvar_cgf(self):
-        """Salva CGF automaticamente após calcular, sem diálogos."""
-        periodo = self.entry_periodo.get()
-        if not periodo or self.volume_final_cgf == 0.0:
-            return
+    def _pmpv_digitado(self) -> float:
         try:
-            valor_salvar = self.cgf_rs if self.cgf_rs > 0 else self.volume_final_cgf
-            self.servicos.salvar_cgf(periodo, valor_salvar)
-            resumo = self._ultimo_resultado_cgf or {}
-            with DatabasePMPV() as db:
-                db.salvar_cgf_resumo(
-                    periodo,
-                    resumo.get("volume_faturado", 0.0),
-                    resumo.get("volume_canceladas", 0.0),
-                    resumo.get("volume_devolucoes", 0.0),
-                    resumo.get("volume_consumo_proprio", 0.0),
-                    resumo.get("volume_final", self.volume_final_cgf),
-                )
-        except Exception:
-            logger.exception("Auto-save CGF resumo falhou para o período %s", periodo)
+            return float(self.pmpv_manual.get().replace(",", ".").strip())
+        except ValueError:
+            return 0.0
 
-    def _salvar_cgf_scg(self):
+    def _pmpv_para_gravar(self, periodo: str) -> float | None:
+        """PMPV válido para gravar o CGF, ou None (já avisou o usuário).
+        Sem PMPV não grava: antes gravava o volume em m³ no campo do CGF em R$."""
         if self.volume_final_cgf == 0.0:
             messagebox.showwarning("Aviso", "Execute o cálculo de volume antes de salvar.")
-            return
+            return None
+        pmpv = self._pmpv_digitado()
+        if pmpv <= 0:
+            messagebox.showwarning("PMPV não informado",
+                                   f"Informe ou carregue o PMPV de {periodo} antes de salvar o CGF.")
+            return None
+        return pmpv
 
-        if self.cgf_rs == 0.0:
-            resp = messagebox.askyesno(
-                "PMPV não informado",
-                "Deseja salvar apenas o volume (sem multiplicar pelo PMPV)?"
-            )
-            if not resp:
-                return
-            valor_salvar = self.volume_final_cgf
-        else:
-            valor_salvar = self.cgf_rs
-
+    def _salvar_cgf_scg(self):
         periodo = self.entry_periodo.get()
-
-        tipo_label = "Volume × PMPV" if self.cgf_rs > 0 else "Volume bruto"
+        pmpv = self._pmpv_para_gravar(periodo)
+        if pmpv is None:
+            return
         if not messagebox.askyesno(
             "Confirmar salvamento",
             f"Salvar CGF no banco de dados?\n\n"
             f"Período: {periodo}\n"
-            f"Tipo: {tipo_label}\n"
-            f"Valor: {valor_salvar:,.2f}\n"
+            f"CGF (Volume × PMPV): R$ {self.cgf_rs:,.2f}\n"
             f"Volume Final: {self.volume_final_cgf:,.4f} m³"
         ):
             return
 
         try:
-            rpv = self.servicos.salvar_cgf(periodo, valor_salvar)
-            resumo = self._ultimo_resultado_cgf
-            with DatabasePMPV() as db:
-                db.salvar_cgf_resumo(
-                    periodo,
-                    resumo.get("volume_faturado", 0.0),
-                    resumo.get("volume_canceladas", 0.0),
-                    resumo.get("volume_devolucoes", 0.0),
-                    resumo.get("volume_consumo_proprio", 0.0),
-                    resumo.get("volume_final", self.volume_final_cgf),
-                )
-            tipo = "R$ (Volume × PMPV)" if self.cgf_rs > 0 else "volume bruto (sem PMPV)"
+            dados = self.servicos.salvar_com_pmpv(periodo, self._ultimo_resultado_cgf, pmpv)
             messagebox.showinfo(
                 "CGF Salvo ✅",
                 f"Período: {periodo}\n"
-                f"CGF ({tipo}): {valor_salvar:,.2f}\n"
-                f"RPV = R$ {rpv:,.2f}"
+                f"CGF: R$ {dados['cgf_rs']:,.2f}\n"
+                f"RPV = R$ {dados['rpv']:,.2f}"
             )
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao gravar no BD: {e}")
 
     def _adicionar_excel_final(self):
-        if self.volume_final_cgf == 0.0:
-            messagebox.showwarning("Aviso", "Execute o cálculo de volume antes de adicionar ao Excel final.")
+        periodo = self.entry_periodo.get()
+        pmpv = self._pmpv_para_gravar(periodo)
+        if pmpv is None:
             return
 
-        if self.cgf_rs == 0.0:
-            resp = messagebox.askyesno(
-                "PMPV não informado",
-                "Deseja usar apenas o volume (sem PMPV) para salvar no módulo 9?"
-            )
-            if not resp:
-                return
-            valor_salvar = self.volume_final_cgf
-        else:
-            valor_salvar = self.cgf_rs
-
-        periodo = self.entry_periodo.get()
-
         try:
-            self.servicos.salvar_cgf(periodo, valor_salvar)
-            resumo = self._ultimo_resultado_cgf
-            with DatabasePMPV() as db:
-                db.salvar_cgf_resumo(
-                    periodo,
-                    resumo.get("volume_faturado", 0.0),
-                    resumo.get("volume_canceladas", 0.0),
-                    resumo.get("volume_devolucoes", 0.0),
-                    resumo.get("volume_consumo_proprio", 0.0),
-                    resumo.get("volume_final", self.volume_final_cgf),
-                )
+            self.servicos.salvar_com_pmpv(periodo, self._ultimo_resultado_cgf, pmpv)
 
             meta_execucao = registrar_execucao_excel_final(
                 etapa="CGF", periodo=periodo, parent=self
