@@ -75,3 +75,30 @@ def test_api_periodo_invalido(periodo):
     from Src.api.main import app
     with TestClient(app) as c:
         assert c.post("/api/nota-tecnica/gerar", params={"periodo": periodo}).status_code == 422
+
+
+SUP = [
+    {"empresa": "Petrobras", "pm": [1.758] * 3, "ptpl": [0.4983] * 3, "pg": [2.2563] * 3,
+     "volume": [29378700.0, 28431000.0, 29378700.0]},
+    {"empresa": "GALP", "pm": [2.1669] * 3, "ptpl": [0.4089] * 3, "pg": [2.5758] * 3,
+     "volume": [310000.0, 300000.0, 310000.0]},
+]
+
+
+def test_quadros_1_a_4_do_pmpv():
+    d = _dados()
+    d["supridores"] = SUP
+    d["supridores_anterior"] = [{**SUP[0], "pg": [2.2144] * 3}, {**SUP[1], "pg": [2.2386] * 3}]
+    texto = _texto(nt.montar(d))
+    assert "Quadro 1 - Preço do Gás praticado pelos Supridores" in texto
+    assert "01/08/2026 a 31/10/2026" in texto
+    assert "+1,89%" in texto and "+15,06%" in texto          # Quadro 2, como na NT 15/2026
+    assert "947.700" in texto and "28.431.000" in texto       # Quadro 3: QDC = volume ÷ dias
+    assert "196.723.186,92" in texto                          # Quadro 4: custo da Petrobras
+    assert "Sessão de PMPV" not in texto
+
+
+def test_sem_sessao_de_pmpv_avisa():
+    d = _dados()
+    d["supridores"] = None
+    assert "Sessão de PMPV de ago/26-out/26 não encontrada" in _texto(nt.montar(d))

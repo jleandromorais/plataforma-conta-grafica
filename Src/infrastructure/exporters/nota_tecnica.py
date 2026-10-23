@@ -145,23 +145,49 @@ def _sombra(celula, cor: str):
     tc.append(shd)
 
 
-def _tabela(doc, cabecalho: list[str], linhas: list[list[str]], destaque: set[int] = frozenset(), larguras=None):
+def _tabela(doc, cabecalho: list[str], linhas: list[list[str]], destaque: set[int] = frozenset(), larguras=None,
+            grupos: list[tuple[str, int]] | None = None, fonte: float = 9):
     """Tabela no padrão das NTs: cabeçalho cinza, 9 pt, valores à direita;
-    `destaque` = índices das linhas em negrito com fundo cinza (totais)."""
-    t = doc.add_table(rows=1 + len(linhas), cols=len(cabecalho))
+    `destaque` = índices das linhas em negrito com fundo cinza (totais);
+    `grupos` = linha de cabeçalho de cima, [(texto, nº de colunas)], mesclada;
+    grupo de 1 coluna ocupa as duas linhas do cabeçalho."""
+    topo = 1 if grupos else 0
+    t = doc.add_table(rows=topo + 1 + len(linhas), cols=len(cabecalho))
     t.style = "Table Grid"
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for i, linha in enumerate([cabecalho] + linhas):
-        total = i == 0 or (i - 1) in destaque
+    t.autofit = False
+    if larguras:
+        # Layout fixo (autofit=False): o Word segue a grade e a 1ª linha.
+        for col, w in zip(t._tbl.tblGrid.gridCol_lst, larguras):
+            col.w = Cm(w)
+    cobertas = set()
+    if grupos:
+        j = 0
+        for texto, span in grupos:
+            c = t.cell(0, j).merge(t.cell(0 if span > 1 else 1, j + span - 1))
+            if span == 1:
+                cobertas.add(j)
+            if larguras:
+                c.width = Cm(sum(larguras[j:j + span]))
+            c.text = ""
+            run = c.paragraphs[0].add_run(texto)
+            run.font.size, run.bold = Pt(fonte), True
+            c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            _sombra(c, _CINZA)
+            j += span
+    for i, linha in enumerate([cabecalho] + linhas, start=topo):
+        total = i <= topo or (i - topo - 1) in destaque
         for j, texto in enumerate(linha):
+            if i == topo and j in cobertas:
+                continue
             c = t.cell(i, j)
             c.text = ""
             p = c.paragraphs[0]
-            p.alignment = (WD_ALIGN_PARAGRAPH.CENTER if i == 0 or j == 1
+            p.alignment = (WD_ALIGN_PARAGRAPH.CENTER if i <= topo or j == 1
                            else WD_ALIGN_PARAGRAPH.LEFT if j == 0 else WD_ALIGN_PARAGRAPH.RIGHT)
             p.paragraph_format.space_after = Pt(0)
             r = p.add_run(texto)
-            r.font.size, r.bold = Pt(9), total
+            r.font.size, r.bold = Pt(fonte), total
             if total:
                 _sombra(c, _CINZA)
             if larguras:
@@ -170,8 +196,104 @@ def _tabela(doc, cabecalho: list[str], linhas: list[list[str]], destaque: set[in
     return t
 
 
+def _mesclar(t, linha: int, c0: int, c1: int, fonte: float = 8) -> None:
+    """Mescla as células [c0..c1] da linha mantendo o texto da última, em negrito
+    — como os totais que ocupam várias colunas na NT."""
+    texto = t.cell(linha, c1).text
+    c = t.cell(linha, c0).merge(t.cell(linha, c1))
+    for par in c.paragraphs[1:]:
+        par._p.getparent().remove(par._p)
+    p = c.paragraphs[0]
+    for run in list(p.runs):
+        run._r.getparent().remove(run._r)
+    run = p.add_run(texto)
+    run.font.size, run.bold = Pt(fonte), True
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+
 def _manual(doc, texto: str):
     _par(doc, ("manual", f"[{texto}]"))
+
+
+def _quadros_pmpv(doc, d: dict) -> None:
+    """Quadros 1 a 4 da NT a partir da sessão de PMPV do trimestre do PR."""
+    mp, sup, ant = d["meses_pr"], d.get("supridores"), d.get("supridores_anterior")
+    if not sup:
+        _manual(doc, f"Sessão de PMPV de {faixa(mp)} não encontrada: salve o PMPV do trimestre para gerar os "
+                     "Quadros 1 a 4.")
+        return
+    dias = [calendar.monthrange(_idx(m)[1], _idx(m)[0] + 1)[1] for m in mp]
+    sub = [curto(m) for m in mp]
+    _par(doc, "Para obter o valor do Preço Médio Ponderado de Venda (PMPV) é necessário identificar o custo unitário "
+              f"do gás atualizado, para o período de {por_extenso(mp)}, a ser cobrado pelos supridores à Copergás e "
+              "respectivos volumes contratuais para o período, conforme Quadro 1.")
+    _par(doc, "Registra-se que o Preço do Gás (PG) a ser repassado às tarifas é composto pelas parcelas Preço da "
+              "Molécula (PM), Parcela do Transporte (PT) e Parcela de Logística (PL) relativa ao suprimento de GNL "
+              "para as Redes Locais.")
+
+    # Quadro 1 — preço por supridor
+    _legenda(doc, f"Quadro 1 - Preço do Gás praticado pelos Supridores à Copergás – {mes_ano(mp[0])}-{mes_ano(mp[-1])}")
+    (i0, a0), (i1, a1) = _idx(mp[0]), _idx(mp[-1])
+    vig = f"01/{i0 + 1:02d}/{a0} a {dias[-1]}/{i1 + 1:02d}/{a1}"
+    linhas = [[vig if n == 0 else "", s["empresa"], _num(s["pm"][0], 4), _num(s["ptpl"][0], 4), _num(s["pg"][0], 4)]
+              for n, s in enumerate(sup)]
+    _tabela(doc, ["", "", "PM", "PT/PL", "PG"], linhas, larguras=[3.4, 5.2, 2.3, 2.3, 2.3],
+            grupos=[("Vigência", 1), ("Supridores", 1), ("VALOR (R$/m³)", 3)])
+
+    # Quadro 2 — variação contra o trimestre anterior
+    if ant:
+        mpa = d["meses_pr_anterior"]
+        pg_ant = {s["empresa"]: s["pg"][0] for s in ant}
+        _par(doc, "No Quadro 2, têm-se o custo unitário do gás por supridor atualizado para o trimestre de "
+                  f"{mes_ano(mp[0])} a {mes_ano(mp[-1])}, apresentando-os comparativamente aos valores do trimestre "
+                  f"de {mes_ano(mpa[0])} a {mes_ano(mpa[-1])} e respectivas variações.")
+        _legenda(doc, f"Quadro 2 – Variação do Preço do Gás praticado pelos Supridores à Copergás – "
+                      f"{faixa(mpa)} × {faixa(mp)}")
+        linhas = []
+        for s in sup:
+            a = pg_ant.get(s["empresa"])
+            var = "–"
+            if a:
+                v = (s["pg"][0] / a - 1) * 100
+                var = f"{'+' if v >= 0 else '-'}{_num(abs(v))}%"
+            linhas.append([s["empresa"], _num(a, 4) if a else "–", _num(s["pg"][0], 4), var])
+        _tabela(doc, ["", faixa(mpa), faixa(mp), "(%)"], linhas, larguras=[6.5, 3, 3, 2.5],
+                grupos=[("SUPRIDORES", 1), ("VALOR (R$/m³)", 2), ("VARIAÇÃO", 1)])
+
+    # Quadro 3 — QDC × dias = VP
+    _par(doc, "O Volume Prospectivo (VP) é obtido pelas Quantidades Diárias Contratuais (QDC) de cada supridor "
+              f"multiplicadas pelo número de dias do período de {por_extenso(mp)}, conforme apresentado no Quadro 3, "
+              "a seguir.")
+    _legenda(doc, f"Quadro 3 - Volume Contratado aos Supridores pela Copergás – {mes_ano(mp[0])}-{mes_ano(mp[-1])}")
+    tot = [sum(s["volume"][k] for s in sup) for k in range(3)]
+    linhas = [[s["empresa"]] + [_num(v / n, 0) for v, n in zip(s["volume"], dias)] + [str(n) for n in dias]
+              + [_num(v, 0) for v in s["volume"]] for s in sup]
+    linhas.append(["TOTAL"] + [_num(v / n, 0) for v, n in zip(tot, dias)] + ["–"] * 3 + [_num(v, 0) for v in tot])
+    linhas.append(["VP DO TRIMESTRE"] + [""] * 8 + [_num(sum(tot), 0)])
+    dias_cab = [m.split("/")[0] for m in sub]
+    q3 = _tabela(doc, [""] + sub + dias_cab + sub, linhas, destaque={len(sup), len(sup) + 1},
+            larguras=[2.5] + [1.55] * 3 + [0.85] * 3 + [1.85] * 3, fonte=8,
+            grupos=[("SUPRIDOR", 1), ("QDC (m³/dia)", 3), ("PERÍODO (dias)", 3), ("VOLUME PROSPECTIVO (m³)", 3)])
+    _mesclar(q3, len(q3.rows) - 1, 7, 9)
+
+    # Quadro 4 — custo × volume = PMPV
+    _legenda(doc, f"Quadro 4 - Preço Médio Ponderado de Venda (PMPV) – {mes_ano(mp[0])}-{mes_ano(mp[-1])}")
+    custo = [sum(pg * v for pg, v in zip(s["pg"], s["volume"])) for s in sup]
+    vol_total = sum(tot)
+    pmpv = round(sum(custo) / vol_total, 4) if vol_total else 0.0
+    linhas = [[s["empresa"]] + [_num(x, 4) for x in s["pg"]] + [_num(v, 0) for v in s["volume"]] + [_num(c)]
+              for s, c in zip(sup, custo)]
+    linhas.append(["TOTAL", "***", "***", "***", "", "", _num(vol_total, 0), _num(sum(custo))])
+    linhas.append(["PMPV (R$/m³)"] + [""] * 6 + [_num(pmpv, 4)])
+    q4 = _tabela(doc, [""] + sub + sub + [""], linhas, destaque={len(sup), len(sup) + 1},
+            larguras=[2.6] + [1.4] * 3 + [1.95] * 3 + [2.85], fonte=8,
+            grupos=[("SUPRIDOR", 1), ("CUSTO UNITÁRIO (R$/m³)", 3), ("VOLUME CONTRATADO (m³)", 3),
+                    ("CUSTO TOTAL (R$)", 1)])
+    _mesclar(q4, len(q4.rows) - 2, 4, 6)
+    _mesclar(q4, len(q4.rows) - 1, 1, 7)
+    if abs(pmpv - d["pv"]["pmpv"]) > 1e-4:
+        _manual(doc, f"Conferir: o PMPV dos Quadros 1 a 4 ({_num(pmpv, 4)}) difere do PMPV salvo no sistema "
+                     f"({_num(d['pv']['pmpv'], 4)}).")
 
 
 # ── Documento ─────────────────────────────────────────────────────────────────
@@ -244,8 +366,7 @@ def montar(d: dict) -> bytes:
                  "ou de preço por supridor).")
 
     _titulo(doc, "Preço Médio Ponderado de Venda", 1)
-    _manual(doc, "Quadros 1 a 4 (preço e volume contratado por supridor e cálculo do PMPV): incluir a partir da "
-                 "sessão de PMPV do trimestre.")
+    _quadros_pmpv(doc, d)
     _par(doc, f"Considerando os novos preços do gás a serem aplicados pelos supridores da Copergás no período de "
               f"{por_extenso(mp)}, a ARPE confirmou o Preço Médio Ponderado de Venda de R$ {_num(pv['pmpv'], 4)}/m³ "
               "para o período (", ("sigla", "PMPV", faixa(mp)), ").")
@@ -421,5 +542,32 @@ def dados_do_ciclo(meses_apurados: list[str]) -> dict:
         avisos.append(f"O PR salvo no módulo PR ({_num(pv['pr'], 4)}) difere do apurado ({_num(pr['pr'], 4)}); "
                       "a minuta usa o apurado — salve o PR na plataforma.")
     pv = {"pmpv": pv["pmpv"], "pr": pr["pr"], "pv": round(pv["pmpv"] + pr["pr"], 4), "avisos": avisos}
-    return {"meses_apurados": meses_apurados, "meses_pr": mp, "meses_pr_anterior": mp_ant,
+    return {"supridores": supridores_pmpv(mp), "supridores_anterior": supridores_pmpv(mp_ant),
+            "meses_apurados": meses_apurados, "meses_pr": mp, "meses_pr_anterior": mp_ant,
             "scg": scg, "sr": sr, "pr": pr, "pv": pv, "pv_anterior": pv_ant}
+
+
+def supridores_pmpv(meses_pr: list[str]) -> list[dict] | None:
+    """Preço e volume por supridor da sessão de PMPV mais recente do trimestre:
+    [{empresa, pm, ptpl, pg, volume}], cada um com 3 valores (um por mês)."""
+    from Src.application.use_cases.sr_use_cases import periodos_da_sessao
+    from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
+
+    repo = SqliteSRRepository()
+    try:
+        sessao = next((s for s in repo.listar_sessoes_id_nome()
+                       if periodos_da_sessao(s.get("nome", "")) == meses_pr), None)
+        if not sessao:
+            return None
+        por_empresa: dict[str, dict] = {}
+        for k in range(3):
+            for row in repo.carregar_dados_mes(sessao["id"], k + 1) or []:
+                e = por_empresa.setdefault(row["empresa"], {"empresa": row["empresa"], "pm": [0.0] * 3,
+                                                            "ptpl": [0.0] * 3, "pg": [0.0] * 3, "volume": [0.0] * 3})
+                pm = float(row.get("molecula") or 0.0)
+                ptpl = float(row.get("transporte") or 0.0) + float(row.get("logistica") or 0.0)
+                e["pm"][k], e["ptpl"][k], e["pg"][k] = pm, ptpl, round(pm + ptpl, 4)
+                e["volume"][k] = float(row.get("volume") or 0.0)
+        return list(por_empresa.values()) or None
+    finally:
+        repo.fechar()
