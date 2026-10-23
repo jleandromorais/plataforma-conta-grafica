@@ -11,6 +11,7 @@ matplotlib==3.11.0
 # Airflow provider (que pede SQLAlchemy 1.4). O app desktop usa sqlite3 puro.
 pandas>=2.2,<3.0
 openpyxl==3.1.5
+python-docx==1.2.0
 pdfplumber==0.11.9
 
 # Banco de dados
