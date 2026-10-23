@@ -18,7 +18,7 @@ async def gerar(periodo: str) -> Response:
     """Minuta da Nota Técnica do ciclo cujo trimestre civil apurado contém
     `periodo` (ex.: Jun/2026 → apura Abr–Jun/2026, PR de Ago–Out/2026)."""
     if not is_periodo_valido(periodo):
-        raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+        raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     meses = obter_periodos_trimestre(normalizar_periodo(periodo))
     conteudo = await run_in_threadpool(lambda: nota_tecnica.montar(nota_tecnica.dados_do_ciclo(meses)))
     mp = nota_tecnica.meses_do_pr(meses)

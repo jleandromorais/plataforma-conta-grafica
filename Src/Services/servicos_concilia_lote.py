@@ -51,7 +51,7 @@ def salvar(periodo: str, itens: list[PdfItem]) -> dict:
     from Src.common.periodos import is_periodo_valido
 
     if not is_periodo_valido(periodo):
-        raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+        raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     if not itens:
         raise ValueError("Nenhum PDF conciliado para salvar.")
     rp = totais(itens)["rp"]

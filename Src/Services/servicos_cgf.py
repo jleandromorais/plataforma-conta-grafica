@@ -301,7 +301,7 @@ class ServicosCGF:
         mostra "—" e pede o valor.
         """
         if not is_periodo_valido(periodo):
-            raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+            raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
         if pmpv and pmpv > 0:
             origem, valor = "manual", pmpv
         else:
@@ -319,7 +319,7 @@ class ServicosCGF:
         CGF em R$, e esse número entrava no RPV/SCG como se fosse dinheiro.
         """
         if not is_periodo_valido(periodo):
-            raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+            raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
         if not pmpv or pmpv <= 0:
             raise ValueError(f"Sem PMPV para {periodo}: calcule e salve o PMPV antes de salvar o CGF.")
         volume_final = float(resumo.get("volume_final") or 0.0)

@@ -40,7 +40,7 @@ def buscar_periodo(
     formato mês/ano (ex: 'Jan/2026'), igual ao caso resolvido em SR."""
     dados = servico.buscar_dados_periodo(periodo)
     if not dados:
-        raise HTTPException(status_code=404, detail=f"Período '{periodo}' não encontrado")
+        raise HTTPException(status_code=404, detail=f"Ainda não há SCG gravado para {periodo}. Salve o SCG deste mês na tela SCG.")
     return SCGPeriodo(periodo=periodo, **dados)
 
 
@@ -75,7 +75,7 @@ def salvar(
 ) -> SCGPeriodo:
     """Grava CGR/CGF/RET/RP escolhidos e recalcula RPV e SCG."""
     if not is_periodo_valido(payload.periodo):
-        raise ValueError(f"Período inválido: {payload.periodo!r}. Use o formato Jan/2026.")
+        raise ValueError(f'O período “{payload.periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     dados = servico.salvar_e_calcular(payload.periodo, payload.cgr, payload.cgf, payload.ret, payload.rp)
     return SCGPeriodo(periodo=payload.periodo, **{k: dados[k] for k in ("cgr", "cgf", "rpv", "ret", "rp", "scg")})
 

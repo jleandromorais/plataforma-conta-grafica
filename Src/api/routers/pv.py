@@ -40,7 +40,7 @@ def buscar_periodo(
     formato mês/ano (ex: 'Jan/2026'), igual ao caso resolvido em SR."""
     dados = servico.buscar_dados_periodo(periodo)
     if not dados:
-        raise HTTPException(status_code=404, detail=f"Período '{periodo}' não encontrado")
+        raise HTTPException(status_code=404, detail=f"Ainda não há PV salvo para {periodo}. Salve o PV deste trimestre na tela PV.")
     return PVResultado(**dados)
 
 

@@ -72,7 +72,7 @@ async def gerar_geral() -> FileResponse:
 def trimestre(periodo: str) -> TrimestreExcelFinal:
     """Quais meses entram no Excel Final gerado para `periodo`."""
     if not is_periodo_valido(periodo):
-        raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+        raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     norm = normalizar_periodo(periodo)
     return TrimestreExcelFinal(periodo=norm, meses=obter_periodos_trimestre(norm))
 
@@ -81,7 +81,7 @@ def trimestre(periodo: str) -> TrimestreExcelFinal:
 async def gerar(periodo: str) -> FileResponse:
     """Gera o Excel Final do período e devolve o arquivo para download."""
     if not is_periodo_valido(periodo):
-        raise ValueError(f"Período inválido: {periodo!r}. Use o formato Jan/2026.")
+        raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     norm = normalizar_periodo(periodo)
     tmp = Path(tempfile.mkdtemp(prefix="excel_final_"))
     nome = f"Excel_Final_ContaGrafica_{norm.replace('/', '-')}.xlsx"

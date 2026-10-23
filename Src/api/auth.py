@@ -127,19 +127,20 @@ def criar_token(usuario: dict) -> str:
 
 
 def usuario_atual(cred: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> dict:
-    erro = HTTPException(
-        status.HTTP_401_UNAUTHORIZED, "Sessão expirada. Entre novamente.",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    def erro(motivo: str) -> HTTPException:
+        return HTTPException(status.HTTP_401_UNAUTHORIZED, motivo, headers={"WWW-Authenticate": "Bearer"})
+
     if cred is None:
-        raise erro
+        raise erro("Você não está conectado. Entre com seu e-mail e senha.")
     try:
         dados = jwt.decode(cred.credentials, _segredo(), algorithms=["HS256"])
         uid = int(dados["sub"])
+    except jwt.ExpiredSignatureError:
+        raise erro("Sua sessão expirou (por segurança, o acesso vale algumas horas). Entre novamente.")
     except (jwt.PyJWTError, KeyError, ValueError):
-        raise erro
+        raise erro("Seu acesso não é mais válido (o sistema pode ter sido atualizado). Entre novamente.")
     with _conn() as c:
         row = c.execute("SELECT id, nome, email FROM usuarios WHERE id=?", (uid,)).fetchone()
     if not row:
-        raise erro
+        raise erro("Seu usuário não foi encontrado. Entre novamente ou peça um novo cadastro ao administrador.")
     return dict(row)

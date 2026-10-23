@@ -33,7 +33,7 @@ def buscar_vp_vf(
 ) -> SRVpVfResponse:
     dados = servico.buscar_vp_vf(sessao_id)
     if not dados:
-        raise HTTPException(status_code=404, detail=f"Sessão '{sessao_id}' não encontrada")
+        raise HTTPException(status_code=404, detail=f"A sessão de PMPV nº {sessao_id} não existe mais. Recarregue a lista de sessões e escolha outra.")
     return SRVpVfResponse(**dados)
 
 
@@ -85,5 +85,5 @@ def buscar_trimestre(
     como query string — path param quebraria com as barras do formato mês/ano."""
     linhas = uc.repo.buscar_sr_trimestre(label)
     if not linhas:
-        raise HTTPException(status_code=404, detail=f"Trimestre '{label}' não encontrado")
+        raise HTTPException(status_code=404, detail=f"Ainda não há SR salvo para {label.replace('_', ' a ')}. Salve o SR deste trimestre na tela SR.")
     return linhas
