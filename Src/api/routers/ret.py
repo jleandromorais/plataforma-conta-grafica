@@ -45,7 +45,8 @@ async def processar(request: Request) -> ProcessarRETResponse:
         envio = tmp / raiz
         envio.mkdir()
         if not gravar_envio(form, envio, {".pdf"}):
-            raise ValueError("Nenhum PDF na pasta enviada.")
+            raise ValueError("A pasta enviada não tem nenhum PDF. Escolha a pasta com os PDFs das NDs e faturas "
+                             "de transporte do mês.")
         base = descer_pasta_unica(envio)
         docs, lidos, ignorados = await run_in_threadpool(lote_ret.processar_pasta, base)
         for d in docs:
@@ -67,7 +68,7 @@ async def processar(request: Request) -> ProcessarRETResponse:
 def salvar(payload: SalvarRETRequest) -> list[RETSalvo]:
     """Grava o RET de cada mês (recalculado aqui) e os documentos do mês."""
     if not payload.documentos:
-        raise ValueError("Nenhum documento para salvar.")
+        raise ValueError("Não há documentos na lista para salvar. Processe a pasta do mês primeiro.")
     docs = [d.model_dump() for d in payload.documentos]
     grupos = lote_ret.agrupar_por_mes(docs, periodo_padrao=payload.periodo_padrao)
     return [RETSalvo(**s) for s in lote_ret.salvar_meses(grupos)]

@@ -78,7 +78,7 @@ def relatorio(payload: SalvarConciliacaoRequest) -> FileResponse:
     """Relatório Excel da conciliação (o mesmo layout detalhado do desktop)."""
     itens = [_item_da_api(i) for i in payload.itens]
     if not itens:
-        raise ValueError("Nenhum item para gerar o relatório.")
+        raise ValueError("Não há notas na lista para gerar o relatório. Processe as pastas de receitas e despesas primeiro.")
     tmp = Path(tempfile.mkdtemp(prefix="concilia_rel_"))
     nome = f"Conciliacao_{payload.periodo.replace('/', '-') or 'sem-periodo'}.xlsx"
     ExcelConcilia.gerar_relatorio(tmp / nome, itens, layout_bonito=True)
