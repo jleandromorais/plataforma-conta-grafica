@@ -31,6 +31,8 @@ from Src.infrastructure.exporters.excel_styles import (
     fill as _fill, font as _font, border as _border,
     align as _align, to_float as _to_float,
 )
+from Src.infrastructure.exporters.excel_sheets import arpe as _arpe
+from Src.infrastructure.exporters.excel_sheets import sheet_resultados_nt as _resultados_nt
 from Src.infrastructure.exporters.excel_sheets import (
     sheet_sr as _sheet_sr_fn,
     sheet_pr as _sheet_pr_fn,
@@ -133,6 +135,7 @@ _MESES_FULL: dict[str, str] = {
 
 # Ordem numérica de cada abreviatura
 _MES_ORD: dict[str, int] = {ab: i for i, ab in enumerate(_MESES_FULL, 1)}
+_ABREVS: list[str] = list(_MESES_FULL)
 
 # Janelas de meses válidos por módulo (abreviaturas PT-BR)
 _MESES_PMPV = {"Fev", "Mar", "Abr"}   # Fevereiro a Abril
@@ -340,13 +343,20 @@ class ExcelConsolidado:
         # (todos os anos/trimestres); o agrupamento em banners dentro da aba
         # respeita a grade civil (Jan-Mar, Abr-Jun, Jul-Set, Out-Dez) via
         # _agrupar_em_trimestres, nunca misturando meses de blocos diferentes.
-        meses_ret   = _periodos_tabela("ret_itens")         # RET — sem restrição
-        meses_audit = _periodos_tabela("auditoria_itens")   # Auditoria/CGR — sem restrição
-        meses_cgf   = _periodos_tabela("cgf_resumo")        # CGF — sem restrição
-        meses_conc  = _periodos_tabela("concilia_itens")
+        # Com o trimestre informado (o que a plataforma sempre faz), cada aba
+        # mostra só os 3 meses dele; sem trimestre, todos os meses do banco.
+        modo_trimestre = len(meses) == 3 and all(is_periodo_valido(m) for m in meses)
+        filtro = meses if modo_trimestre else None
+        meses_ret   = _periodos_tabela("ret_itens", filtro_periodos=filtro)
+        meses_audit = _periodos_tabela("auditoria_itens", filtro_periodos=filtro)
+        meses_cgf   = _periodos_tabela("cgf_resumo", filtro_periodos=filtro)
+        meses_conc  = _periodos_tabela("concilia_itens", filtro_periodos=filtro)
 
         # Labels de cada módulo para o título da aba
         def _label(ms): return "  ·  ".join(ms) if ms else label_trimestre
+
+        def _normalizar(p):
+            return p if p and _mes_valido(p) else None
 
         # Buscar dados de cada módulo nos seus próprios períodos
         audit_itens = []
@@ -368,7 +378,7 @@ class ExcelConsolidado:
                 cgf_lista.append(resumo)
 
         # Fallback CGF: se não encontrou nada pelos períodos, tenta tudo
-        if not cgf_lista:
+        if not cgf_lista and not modo_trimestre:
             cgf_lista = db.listar_cgf_resumos()
 
         # CGF de referência = último mês com dados
@@ -377,26 +387,25 @@ class ExcelConsolidado:
         # PMPV: usa os próprios meses do trimestre informado (sem filtro fixo de abreviatura)
         meses_pmpv = meses if meses else []
 
-        # ── Sheets na ordem ideal: Dashboard primeiro, módulos por trimestre, fechamento
-        ExcelConsolidado._sheet_dashboard(
-            wb, cons, cons_periodos, pr if periodo else (pr_lista[0] if pr_lista else None),
-            pv if periodo else (pv_lista[0] if pv_lista else None),
-            sr if periodo else (sr_lista[0] if sr_lista else None),
-            label_trimestre,
-        )
-        ExcelConsolidado._sheet_resumo(wb, cons, cons_periodos, pmpv_sessoes, cgf_lista, sr_lista, pr_lista, pv_lista, label_trimestre)
-        ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes, meses_pmpv)
+        # Visual ARPE: resultados no formato dos Quadros da Nota Técnica
+        # (um bloco por trimestre civil, o mais recente primeiro) e depois os
+        # detalhes de cada módulo. Sem Dashboard/Resumo: o usuário não usa.
+        if modo_trimestre:
+            trimestres = [meses]
+        else:
+            com_dados = sorted({_normalizar(r.get("periodo")) for r in cons_periodos} - {None}, key=_ord)
+            trimestres = [_trimestre_civil_de(g[0]) for g in _agrupar_em_trimestres(com_dados)][::-1]
+        for tri in trimestres:
+            ExcelConsolidado._sheets_resultado_nt(wb, db, tri)
         ExcelConsolidado._sheet_auditoria(wb, audit_itens, _label(meses_audit), meses_audit)
+        ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf, db)
         ExcelConsolidado._sheet_ret(wb, ret_itens, _label(meses_ret), meses_ret)
         ExcelConsolidado._sheet_concilia(wb, conc_itens, _label(meses_conc))
-        ExcelConsolidado._sheet_cgf(wb, cgf_lista, _label(meses_cgf), meses_cgf, db)
-        ExcelConsolidado._sheet_rpv(wb, cons_periodos, meses_audit, meses_cgf, db, periodo)
-        ExcelConsolidado._sheet_scg_mensal(wb, db, cons, cons_periodos, sr if periodo else sr_lista, periodo)
-        ExcelConsolidado._sheet_scg_trimestral(wb, db)
-        ExcelConsolidado._sheet_sr(wb, sr if periodo else sr_lista, periodo)
-        ExcelConsolidado._sheet_pr(wb, pr if periodo else pr_lista, periodo)
-        ExcelConsolidado._sheet_pv(wb, pv if periodo else pv_lista, periodo)
+        ExcelConsolidado._sheet_pmpv(wb, db, pmpv_sessoes, meses_pmpv)
         ExcelConsolidado._sheet_progresso(wb, execucoes, periodo)
+        for ws in wb.worksheets:
+            if ws.title not in ("SCG", "SR", "PR", "PV"):
+                _arpe.aplicar_tema(ws)
 
         # A mensagem ao usuário é exibida por quem chamou (ou pelo tratador
         # global de erros da janela principal) — aqui só levanta o erro.
@@ -415,6 +424,35 @@ class ExcelConsolidado:
             pass
 
         return final
+
+    @staticmethod
+    def _sheets_resultado_nt(wb, db: DatabasePMPV, meses: list[str]) -> None:
+        """SCG, SR, PR e PV do trimestre civil `meses`, como os Quadros da NT.
+        O PR/PV são os do trimestre do PR que este trimestre alimenta
+        (Jan–Mar → Mai–Jul)."""
+        from Src.Services.servicos_pr import ServicosPR
+        from Src.Services.servicos_pv import ServicosPV
+
+        scg = [{"periodo": m, **(db.buscar_consolidacao(m) or {})} for m in meses]
+        sr = db.buscar_sr_trimestre(f"{meses[0]}_{meses[-1]}") or []
+        selic = {r["mes"]: float(r.get("selic_mensal") or 0.0) for r in sr}
+
+        ultimo, ano = meses[-1].split("/")
+        base = int(ano) * 12 + _ABREVS.index(ultimo) + 2
+        meses_pr = [f"{_ABREVS[(base + k) % 12]}/{(base + k) // 12}" for k in range(3)]
+        label_pr = next(lb for lb, ms in TRIMESTRES_FISCAIS_ABREVS if ms[0] == meses_pr[0].split("/")[0])
+
+        servico_pr = ServicosPR()
+        try:
+            pr = servico_pr.apurar_trimestre(meses_pr)
+            pv = ServicosPV(servico_pr._repo).buscar_trimestre(label_pr, int(meses_pr[0].split("/")[1]))
+        finally:
+            servico_pr._repo.fechar()
+
+        _resultados_nt.sheet_scg(wb, meses, scg, selic)
+        _resultados_nt.sheet_sr(wb, meses, sr)
+        _resultados_nt.sheet_pr(wb, pr)
+        _resultados_nt.sheet_pv(wb, pv, meses_pr)
 
     # ── Sheet 1: Resumo Executivo ────────────────────────────────────────────
 

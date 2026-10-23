@@ -47,8 +47,8 @@ def test_aba_scg_mensal_usa_o_valor_gravado(client):
     saía um SCG de −R$ 78 mi, diferente da aba Dashboard do mesmo arquivo."""
     client.post("/api/scg/salvar", json={"periodo": "Jul/2025", "cgr": 84_500_000.0, "cgf": 79_200_000.0, "ret": 1_120_000.0, "rp": -320_000.0})
     resp = client.post("/api/excel-final/gerar", params={"periodo": "Jul/2025"})
-    ws = openpyxl.load_workbook(io.BytesIO(resp.content), data_only=True)["🧾 SCG Mensal"]
+    ws = openpyxl.load_workbook(io.BytesIO(resp.content), data_only=True)["SCG"]
     linhas = [r for r in ws.iter_rows(values_only=True)]
-    meses = next(r for r in linhas if r and r[0] == "DADOS")[2:-1]
-    scg = next(r for r in linhas if r and isinstance(r[0], str) and r[0].startswith("SCG"))[2:-1]
-    assert dict(zip(meses, scg))["Jul/2025"] == pytest.approx(84_500_000 - 79_200_000 + 1_120_000 - 320_000)
+    meses = next(r for r in linhas if r and r[0] == "DESCRIÇÃO")[2:-1]
+    scg = next(r for r in linhas if r and r[0] == "SCG = RPV + RET + RP")[2:-1]
+    assert dict(zip(meses, scg))["jul/25"] == pytest.approx(84_500_000 - 79_200_000 + 1_120_000 - 320_000)
