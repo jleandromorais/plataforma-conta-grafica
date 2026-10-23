@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import PRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
 
@@ -82,7 +83,8 @@ class ServicosPV:
         por_mes = {p: self._repo.buscar_pmpv_mensal(p) for p in periodos}
         com_valor = [(p, float(v)) for p, v in por_mes.items() if v is not None]
         sem_valor = [p for p, v in por_mes.items() if v is None]
-        pmpv = com_valor[0][1] if com_valor else 0.0
+        # 4 casas, como a planilha (o PMPV mensal fica gravado sem arredondar).
+        pmpv = arredondar_tarifa(com_valor[0][1]) if com_valor else 0.0
         if not com_valor:
             avisos.append(f"PMPV de {chave} não foi salvo: salve o PMPV do trimestre ou digite o valor.")
         else:
@@ -105,7 +107,7 @@ class ServicosPV:
                 "rode o módulo PR do trimestre ou digite o valor."
             )
 
-        pv = self.calcular_pv(pmpv, pr)
+        pv = arredondar_tarifa(self.calcular_pv(pmpv, pr))
         salvo = None
         pv_row = self._repo.buscar_pv(chave)
         if pv_row and pv_row.get("pv") is not None:

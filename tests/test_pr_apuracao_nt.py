@@ -89,3 +89,14 @@ def test_api_apurar(monkeypatch):
         r = c.post("/api/pr/apurar", json={"periodos": ["Mai/2026", "Jun/2026", "Jul/2026"]})
     assert r.status_code == 200, r.text
     assert r.json()["pr"] == -0.0001
+
+
+def test_pv_trimestre_usa_pmpv_em_4_casas():
+    from Src.Services.servicos_pv import ServicosPV
+    repo = MagicMock()
+    repo.buscar_pmpv_mensal.return_value = 2.282982647346896  # como está gravado no banco
+    repo.buscar_pr.return_value = {"pr": -0.0001}
+    repo.buscar_pv.return_value = None
+    r = ServicosPV(repo).buscar_trimestre("Mai - Jul", 2026)
+    assert r["pmpv"] == 2.283
+    assert r["pv"] == 2.2829
