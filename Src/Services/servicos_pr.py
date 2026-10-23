@@ -1,7 +1,21 @@
 from __future__ import annotations
 
+from Src.application.use_cases.sr_use_cases import vp_do_mes
+from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import PRRepository
-from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
+from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository, SqliteSRRepository
+from Src.Services.servicos_consolidacao import ServicosConsolidacao
+
+_MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+def meses_apurados_do_pr(meses_pr: list[str]) -> list[str]:
+    """Trimestre civil cujo SCG/SR entra no PR (planilha "Q7, Q8 e Q9 PR-PV"):
+    os 3 meses que terminam 2 meses antes do 1º mês do PR. PR Mai–Jul/26 →
+    Jan–Mar/26; PR Fev–Abr/26 → Out–Dez/25."""
+    mes, ano = meses_pr[0].split("/")
+    base = int(ano) * 12 + _MESES.index(mes)
+    return [f"{_MESES[(base - k) % 12]}/{(base - k) // 12}" for k in (4, 3, 2)]
 
 
 class ServicosPR:
@@ -152,12 +166,63 @@ class ServicosPR:
             "meses_sem_vp": meses_sem_vp,  # lista de períodos sem VP para aviso na UI
         }
 
+    @staticmethod
+    def apurar_pr_nt(meses: list[dict], vps: list[float], pmpv: float) -> dict:
+        """PR da Nota Técnica: ROUND((Σ SCG×(1+SELIC acum) + Σ SR com SELIC) / VP; 4).
+
+        `meses`: os 3 meses do trimestre civil apurado, cada um com `scg`,
+        `selic` (% acumulada até o fim do trimestre, a mesma do SR) e `sr`
+        (SR do mês já com SELIC). `vps`: VP de cada mês do PR."""
+        detalhe = [{**m, "scg_selic": m["scg"] * (1 + m["selic"] / 100)} for m in meses]
+        scg_selic = sum(m["scg_selic"] for m in detalhe)
+        sr = sum(m["sr"] for m in detalhe)
+        vp = sum(vps)
+        saldo = scg_selic + sr
+        pr = arredondar_tarifa(saldo / vp) if vp else 0.0
+        return {"meses": detalhe, "scg_selic": scg_selic, "sr": sr, "saldo_total": saldo,
+                "vp": vp, "pr": pr, "pmpv": pmpv, "pv": arredondar_tarifa(pmpv + pr) if pmpv else 0.0}
+
+    def apurar_trimestre(self, meses_pr: list[str]) -> dict:
+        """Lê do banco o que o PR de `meses_pr` precisa e aplica `apurar_pr_nt`:
+        SCG da consolidação e SELIC/SR do SR salvo do trimestre civil apurado,
+        VP do PMPV de cada mês do PR. `pendencias` diz o que falta."""
+        apurados = meses_apurados_do_pr(meses_pr)
+        label_sr = f"{apurados[0]}_{apurados[-1]}"
+        pendencias = []
+        repo_sr = SqliteSRRepository()
+        cons = ServicosConsolidacao()
+        try:
+            sr_salvo = {r["mes"]: r for r in (repo_sr.buscar_sr_trimestre(label_sr) or [])}
+            if not sr_salvo:
+                pendencias.append(f"Salve o SR de {apurados[0]} a {apurados[-1]} na tela SR.")
+            meses = []
+            for p in apurados:
+                dados = cons.buscar_consolidacao(p)
+                if not dados:
+                    pendencias.append(f"Sem SCG gravado para {p}.")
+                linha = sr_salvo.get(p) or {}
+                meses.append({"periodo": p, "scg": float((dados or {}).get("scg") or 0.0),
+                              "selic": float(linha.get("selic_mensal") or 0.0),
+                              "sr": float(linha.get("sr_selic") or 0.0)})
+            vps = [float(vp_do_mes(repo_sr, p) or 0.0) for p in meses_pr]
+        finally:
+            repo_sr.fechar()
+            cons.fechar()
+        for p, vp in zip(meses_pr, vps):
+            if not vp:
+                pendencias.append(f"Sem VP para {p}: salve o PMPV deste trimestre.")
+        pmpv = float(self._repo.buscar_pmpv_mensal(meses_pr[0]) or 0.0)
+        if not pmpv:
+            pendencias.append(f"Sem PMPV para {meses_pr[0]}.")
+        return {**self.apurar_pr_nt(meses, vps, pmpv), "meses_pr": meses_pr,
+                "meses_apurados": apurados, "vps": vps, "pendencias": pendencias}
+
     def salvar_valores(self, periodo: str, scg: float, sr: float, vp: float) -> float:
         """Calcula e persiste o PR final para o período."""
         scg = scg or 0.0
         sr = sr or 0.0
         vp = vp or 0.0
-        pr = self.calcular_pr(scg, sr, vp)
+        pr = arredondar_tarifa(self.calcular_pr(scg, sr, vp))  # ROUND(...;4), como a planilha
         self._repo.salvar_pr(periodo, scg, sr, vp, pr)
         return pr
 

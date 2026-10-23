@@ -50,6 +50,16 @@ def buscar_trimestral(
     return servico.buscar_dados_trimestral(payload.periodos)
 
 
+@router.post("/apurar")
+def apurar(
+    payload: PRTrimestralRequest,
+    servico: ServicosPR = Depends(get_servicos_pr),
+) -> dict:
+    """PR da Nota Técnica para os 3 meses do PR em `periodos` (ex.: Mai–Jul/2026):
+    SCG e SR com SELIC do trimestre civil apurado (Jan–Mar/2026) ÷ VP."""
+    return servico.apurar_trimestre(payload.periodos)
+
+
 @router.post("/salvar", response_model=PRSalvarResponse)
 def salvar(
     payload: PRSalvarRequest,
