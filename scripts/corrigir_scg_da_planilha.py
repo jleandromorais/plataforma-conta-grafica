@@ -4,7 +4,8 @@
 Só grava os meses que diferem da planilha (> R$ 1); meses certos ficam
 como estão. Apaga Out/2026, registro lixo sem CGR/CGF.
 
-Sem --aplicar só mostra o que mudaria.
+Sem --aplicar só mostra o que mudaria. --diagnostico compara o CGR/RP que
+os módulos calculam com a planilha (só leitura).
 
     # banco local (este computador)
     python scripts/corrigir_scg_da_planilha.py --local [--aplicar]
@@ -59,6 +60,9 @@ class Local:
     def gravado(self, p):
         return self.s.buscar_dados_periodo(p)
 
+    def modulos(self, p):
+        return self.s.buscar_dados_fontes(p)
+
     def salvar(self, p, v):
         return self.s.salvar_e_calcular(p, v["cgr"], v["cgf"], v["ret"], v["rp"])
 
@@ -82,6 +86,11 @@ class Api:
         r.raise_for_status()
         return r.json()
 
+    def modulos(self, p):
+        r = self.http.get(f"{self.url}/scg/comparar", params={"periodo": p}, timeout=30)
+        r.raise_for_status()
+        return r.json()["modulos"]
+
     def salvar(self, p, v):
         r = self.http.post(f"{self.url}/scg/salvar", json={"periodo": p, **v}, timeout=30)
         r.raise_for_status()
@@ -100,6 +109,8 @@ def main():
     ap.add_argument("--planilha", type=Path,
                     default=next(iter(glob.glob(str(RAIZ / "Novo modelo Alexandre*.xlsx"))), None))
     ap.add_argument("--aplicar", action="store_true")
+    ap.add_argument("--diagnostico", action="store_true",
+                    help="só compara CGR/RP calculados pelos módulos com a planilha")
     a = ap.parse_args()
     if a.api and not a.email:
         ap.error("--api exige --email")
@@ -107,6 +118,16 @@ def main():
     planilha = valores_planilha(a.planilha)
     banco = Local() if a.local else Api(a.api, a.email)
     acao = "GRAVADO" if a.aplicar else "mudaria"
+
+    if a.diagnostico:
+        # CGR (Auditoria) e RP (Conciliação) são os únicos recalculados dos
+        # itens; CGF e RET os módulos leem do gravado.
+        for p, plan in planilha.items():
+            mod = banco.modulos(p)
+            print(f"{p}: " + "; ".join(
+                f"{k} módulo {mod[k]:,.2f} | planilha {plan[k]:,.2f} | dif {mod[k] - plan[k]:,.2f}"
+                for k in ("cgr", "rp")))
+        return
 
     for p, novo in planilha.items():
         atual = banco.gravado(p) or {}
