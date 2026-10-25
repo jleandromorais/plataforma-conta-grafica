@@ -292,6 +292,10 @@ class ResultadoComparacaoNotas:
     cgr_planilha_notas: float | None = None
     cgr_planilha_conta_grafica: float | None = None
     notas_mes_na_planilha: bool = True
+    # Preenchidos pelo registro (comparacao_registro.py) e pelos comparadores de modelo
+    tipo: str = "generico"          # "por_nota" | "por_supridor" | "generico" — a tela escolhe o layout por aqui
+    modelo_rotulo: str = ""         # nome para mostrar ("Modelo NT")
+    fontes_cgr: list[dict[str, Any]] = field(default_factory=list)   # [{"rotulo", "valor"|None}] para comparar com o CGR das notas
 
 
 class ComparadorContaGrafica:

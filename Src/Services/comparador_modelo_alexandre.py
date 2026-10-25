@@ -18,7 +18,6 @@ diverge: presença, CGR (s/tributos), valor c/tributos, volume e alíquota.
 from __future__ import annotations
 
 import re
-import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -26,7 +25,9 @@ from typing import Any
 
 from Src.common.periodos import normalizar_periodo
 from Src.Services.comparador_conta_grafica import ResultadoComparacaoNotas, _normalizar_numero_nota
+from Src.Services import explicador_diferencas as exp
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
+from Src.Services.supridores import supridor_canonico, token as _token  # noqa: F401 — supridor_canonico é usado por quem importa deste módulo
 
 ABA_NOTAS = "custodogasrealizadonfs"
 ABA_CONTA = "contagrafica"
@@ -35,38 +36,6 @@ ABA_CONTA = "contagrafica"
 TOL_VALOR = 1.00      # R$
 TOL_VOLUME = 1.0      # m³
 TOL_ALIQUOTA = 0.0005
-
-# Nome canônico do supridor. A primeira palavra-chave encontrada no nome
-# (pasta da auditoria ou coluna "Supridor" da planilha) define o grupo.
-_SUPRIDORES = (
-    ("brava", "Brava"), ("3r", "Brava"),
-    ("eneva", "Eneva"),
-    ("galp", "Galp"),
-    ("gnllink", "GNLink"), ("gnlink", "GNLink"), ("gnl", "GNLink"),
-    ("orizon", "Orizon"),
-    ("petroreconcavo", "Petrorecôncavo"),
-    ("petrobras", "Petrobras"),
-    ("mastergas", "Mastergás"),
-    ("shell", "Shell"),
-    ("tag", "TAG"),
-    ("cegas", "Cegás"),
-    ("sergas", "Sergás"),
-    ("vector", "GNC Vector"),
-)
-
-
-def _token(texto: Any) -> str:
-    limpo = unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9]", "", limpo.lower())
-
-
-def supridor_canonico(nome: Any) -> str:
-    tok = _token(nome)
-    for chave, canon in _SUPRIDORES:
-        if chave in tok:
-            return canon
-    return str(nome or "").strip() or "?"
-
 
 def _num(v: Any) -> float | None:
     if isinstance(v, bool):
@@ -107,6 +76,8 @@ class NotaPlanilha:
 class ModeloAlexandre:
     notas: dict[str, list[NotaPlanilha]] = field(default_factory=dict)   # período → notas
     cgr_conta_grafica: dict[str, float] = field(default_factory=dict)   # período → CGR da aba Conta Gráfica
+    aba_notas: str = "Custo do Gás Realizado - NFs"   # como a aba (ou abas) das notas é chamada nas mensagens
+    aba_cgr: str = "Conta Gráfica"
 
     @property
     def periodos_com_notas(self) -> list[str]:
@@ -213,7 +184,7 @@ def _agrupar_auditoria(itens: list[XMLItem]) -> dict[tuple[str, str], dict]:
         g = out.setdefault(_chave(it.empresa, numero_norm), {
             "empresa": supridor_canonico(it.empresa), "empresa_pasta": it.empresa, "tipo": it.tipo,
             "numero": str(it.numero), "numero_normalizado": numero_norm,
-            "cgr": 0.0, "valor_com_tributos": 0.0, "volume": 0.0, "aliquotas": set(), "qtd": 0,
+            "cgr": 0.0, "valor_com_tributos": 0.0, "volume": 0.0, "aliquotas": set(), "qtd": 0, "ocr": False,
         })
         g["cgr"] += sinal * RegrasAuditoria.calcular_s_tributos(it.valor_total, it.icms_taxa)
         g["valor_com_tributos"] += sinal * float(it.valor_total)
@@ -221,6 +192,7 @@ def _agrupar_auditoria(itens: list[XMLItem]) -> dict[tuple[str, str], dict]:
         if it.icms_taxa:
             g["aliquotas"].add(round(float(it.icms_taxa), 4))
         g["qtd"] += 1
+        g["ocr"] = g["ocr"] or it.status == "OCR"
     return out
 
 
@@ -239,6 +211,22 @@ def _agrupar_planilha(notas: list[NotaPlanilha]) -> dict[tuple[str, str], dict]:
         if n.aliquota_icms:
             g["aliquotas"].add(round(n.aliquota_icms, 4))
     return out
+
+
+def _casar_numero_ilegivel(aud: dict, pla: dict, avisos: list[str]) -> None:
+    """Nota lida por OCR sem número (vira "0") casa, pelo valor, com a nota da planilha do mesmo
+    supridor que ficou sem par. Assim ela não aparece como "falta" nos dois lados."""
+    sobra_pla = [k for k in pla if k not in aud]
+    for k in [k for k in aud if k not in pla and not k[1].strip("0")]:
+        for k2 in sobra_pla:
+            if k2[0] == k[0] and abs(aud[k]["cgr"] - pla[k2]["cgr"]) <= TOL_VALOR:
+                g = aud.pop(k)
+                avisos.append(f"{g['empresa']}: nota lida por OCR sem número ({_brl(g['cgr'])}) casada pelo valor com a nota "
+                              f"{pla[k2]['numero']} da planilha. Confira o PDF.")
+                g["numero"], g["numero_normalizado"] = pla[k2]["numero"], k2[1]
+                aud[k2] = g
+                sobra_pla.remove(k2)
+                break
 
 
 def _divergencias_da_nota(aud: dict, pla: dict) -> list[str]:
@@ -261,6 +249,23 @@ def _divergencias_da_nota(aud: dict, pla: dict) -> list[str]:
     return motivos
 
 
+def _explicar_nota(a: dict, p: dict, motivos: list[str]) -> str:
+    """Frase com os dois lados de cada campo que diverge (e a pista do OCR, quando a nota veio de PDF)."""
+    partes = []
+    if "CGR (s/ tributos)" in motivos:
+        partes.append(f"CGR {_brl(a['cgr'])} nas notas × {_brl(p['cgr'])} na planilha")
+    if "valor c/ tributos" in motivos:
+        partes.append(f"valor c/ tributos {_brl(a['valor_com_tributos'])} × {_brl(p['valor_com_tributos'])}")
+    if "volume" in motivos:
+        partes.append(f"volume {exp.n(a['volume'])} m³ × {exp.n(p['volume'])} m³")
+    if "alíquota ICMS" in motivos:
+        partes.append(f"alíquota ICMS {_fmt_aliq(a['aliquotas'])} × {_fmt_aliq(p['aliquotas'])}")
+    texto = "; ".join(partes)
+    if a.get("ocr") and partes:
+        texto += ". A nota veio de PDF (OCR): o OCR pode ter lido o valor errado, confira no arquivo."
+    return texto
+
+
 def _fmt_aliq(aliqs: set[float]) -> str:
     return ", ".join(f"{a * 100:g}%" for a in sorted(aliqs))
 
@@ -280,26 +285,29 @@ def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> Res
         meses = modelo.periodos_com_notas
         ultimo = meses[-1] if meses else "—"
         avisos.append(
-            f"A aba 'Custo do Gás Realizado - NFs' não tem as notas de {periodo_norm} "
-            f"(as notas detalhadas vão até {ultimo}). Comparei só o CGR total com a aba 'Conta Gráfica'."
+            f"A aba '{modelo.aba_notas}' não tem as notas de {periodo_norm} "
+            f"(as notas detalhadas vão até {ultimo}). Comparei só o CGR total com a aba '{modelo.aba_cgr}'."
         )
         if cgr_conta is None:
-            avisos.append(f"A aba 'Conta Gráfica' também não tem CGR para {periodo_norm}.")
-        _aviso_total(avisos, "aba 'Conta Gráfica'", cgr_auditoria, cgr_conta)
+            avisos.append(f"A aba '{modelo.aba_cgr}' também não tem CGR para {periodo_norm}.")
+        _aviso_total(avisos, f"aba '{modelo.aba_cgr}'", cgr_auditoria, cgr_conta)
         return ResultadoComparacaoNotas(
             periodo=periodo_norm, coluna_nota_excel="B (Nota Fiscal)", coluna_periodo_excel=None,
             total_nossa_base=len(aud), total_conta_grafica=0, qtd_em_ambas=0,
             notas_apenas_nossa=[], notas_apenas_conta_grafica=[], linhas_sem_numero_excel=[],
-            avisos=avisos, sheets_excel=["Custo do Gás Realizado - NFs", "Conta Gráfica"],
-            sheets_periodo_match=["Conta Gráfica"] if cgr_conta is not None else [],
+            avisos=avisos, sheets_excel=[modelo.aba_notas, modelo.aba_cgr],
+            sheets_periodo_match=[modelo.aba_cgr] if cgr_conta is not None else [],
             total_linhas_periodo=0,
             modelo="alexandre", cgr_auditoria=cgr_auditoria, cgr_planilha_notas=None,
             cgr_planilha_conta_grafica=cgr_conta, notas_mes_na_planilha=False,
+            fontes_cgr=[{"rotulo": f"Soma das notas ({modelo.aba_notas})", "valor": None},
+                        {"rotulo": f"Aba {modelo.aba_cgr}", "valor": cgr_conta}],
         )
 
     pla = _agrupar_planilha(notas_mes)
     cgr_planilha = sum(g["cgr"] for g in pla.values())
 
+    _casar_numero_ilegivel(aud, pla, avisos)
     apenas_aud = [k for k in aud if k not in pla]
     apenas_pla = [k for k in pla if k not in aud]
     ambas = [k for k in aud if k in pla]
@@ -319,6 +327,7 @@ def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> Res
                 "valor_planilha": round(p["valor_com_tributos"], 2),
                 "volume_auditoria": round(a["volume"], 2), "volume_planilha": round(p["volume"], 2),
                 "aliquota_auditoria": _fmt_aliq(a["aliquotas"]), "aliquota_planilha": _fmt_aliq(p["aliquotas"]),
+                "explicacao": _explicar_nota(a, p, motivos),
             })
     divergencias.sort(key=lambda d: -abs(d["diferenca_cgr"]))
 
@@ -337,7 +346,7 @@ def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> Res
                          "Compra s/tributos": pla[k]["cgr"]}}
         for k in apenas_pla), key=lambda d: -abs(d["cgr_planilha"]))
 
-    por_empresa = _resumo_por_empresa(aud, pla)
+    por_empresa = _resumo_por_empresa(aud, pla, itens, apenas_aud, apenas_pla)
 
     if aud and len(ambas) < len(aud) / 2:
         sugerido = _mes_mais_provavel(aud, modelo)
@@ -350,7 +359,7 @@ def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> Res
     _aviso_total(avisos, "notas da planilha", cgr_auditoria, cgr_planilha)
     if cgr_conta is not None and abs(cgr_conta - cgr_planilha) > TOL_VALOR:
         avisos.append(
-            f"Na própria planilha, o CGR da aba 'Conta Gráfica' ({_brl(cgr_conta)}) difere da soma das "
+            f"Na própria planilha, o CGR da aba '{modelo.aba_cgr}' ({_brl(cgr_conta)}) difere da soma das "
             f"notas de {periodo_norm} ({_brl(cgr_planilha)}) em {_brl(cgr_conta - cgr_planilha)}."
         )
 
@@ -359,12 +368,14 @@ def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> Res
         total_nossa_base=len(aud), total_conta_grafica=len(pla), qtd_em_ambas=len(ambas),
         notas_apenas_nossa=notas_apenas_nossa, notas_apenas_conta_grafica=notas_apenas_planilha,
         linhas_sem_numero_excel=[], avisos=avisos,
-        sheets_excel=["Custo do Gás Realizado - NFs", "Conta Gráfica"],
-        sheets_periodo_match=[f"Custo do Gás Realizado - NFs ({periodo_norm})"],
+        sheets_excel=[modelo.aba_notas, modelo.aba_cgr],
+        sheets_periodo_match=[f"{modelo.aba_notas} ({periodo_norm})"],
         total_linhas_periodo=len(notas_mes),
         modelo="alexandre", divergencias_valor=divergencias, por_empresa=por_empresa,
         cgr_auditoria=cgr_auditoria, cgr_planilha_notas=cgr_planilha,
         cgr_planilha_conta_grafica=cgr_conta, notas_mes_na_planilha=True,
+        fontes_cgr=[{"rotulo": f"Soma das notas ({modelo.aba_notas})", "valor": cgr_planilha},
+                    {"rotulo": f"Aba {modelo.aba_cgr}", "valor": cgr_conta}],
     )
 
 
@@ -378,39 +389,48 @@ def _mes_mais_provavel(aud: dict, modelo: ModeloAlexandre) -> tuple[str, int] | 
     return melhor if melhor and melhor[1] > 0 else None
 
 
-def _resumo_por_empresa(aud: dict, pla: dict) -> list[dict[str, Any]]:
+def _resumo_por_empresa(aud: dict, pla: dict, itens: list[XMLItem], apenas_aud: list, apenas_pla: list) -> list[dict[str, Any]]:
+    """Conferência por supridor, com volume e o porquê de cada diferença."""
     acc: dict[str, dict[str, Any]] = defaultdict(lambda: {
         "qtd_auditoria": 0, "qtd_planilha": 0, "cgr_auditoria": 0.0, "cgr_planilha": 0.0,
+        "volume_auditoria": 0.0, "volume_planilha": 0.0,
     })
     for g in aud.values():
         acc[g["empresa"]]["qtd_auditoria"] += 1
         acc[g["empresa"]]["cgr_auditoria"] += g["cgr"]
+        acc[g["empresa"]]["volume_auditoria"] += g["volume"]
     for g in pla.values():
         acc[g["empresa"]]["qtd_planilha"] += 1
         acc[g["empresa"]]["cgr_planilha"] += g["cgr"]
+        acc[g["empresa"]]["volume_planilha"] += g["volume"]
+
+    notas_por_supridor = exp.agrupar_por_supridor(itens)
+    faltando_aud: dict[str, list[dict]] = defaultdict(list)
+    faltando_pla: dict[str, list[dict]] = defaultdict(list)
+    for k in apenas_aud:
+        faltando_aud[k[0]].append({"numero": aud[k]["numero"], "cgr": aud[k]["cgr"]})
+    for k in apenas_pla:
+        faltando_pla[k[0]].append({"numero": pla[k]["numero"], "cgr": pla[k]["cgr"]})
+
     linhas = []
     for empresa, v in acc.items():
         dif = v["cgr_auditoria"] - v["cgr_planilha"]
+        dif_vol = v["volume_auditoria"] - v["volume_planilha"]
+        confere = abs(dif) <= TOL_VALOR and v["qtd_auditoria"] == v["qtd_planilha"]
+        explicacoes: list[str] = []
+        if not confere:
+            explicacoes, explica_tudo = exp.explicar_notas_faltando(
+                faltando_aud.get(empresa, []), faltando_pla.get(empresa, []), "planilha", dif)
+            if abs(dif) > TOL_VALOR and not explica_tudo:
+                explicacoes += exp.explicar_cgr(
+                    empresa, notas_por_supridor.get(empresa, []), v["cgr_auditoria"], v["cgr_planilha"] if v["qtd_planilha"] else None,
+                    v["volume_auditoria"], v["volume_planilha"] or None, "planilha")
         linhas.append({"empresa": empresa, **{k: (round(x, 2) if isinstance(x, float) else x) for k, x in v.items()},
-                       "diferenca": round(dif, 2), "confere": abs(dif) <= TOL_VALOR and v["qtd_auditoria"] == v["qtd_planilha"]})
+                       "diferenca": round(dif, 2), "diferenca_volume": round(dif_vol, 2),
+                       "confere": confere, "explicacoes": explicacoes})
     linhas.sort(key=lambda r: (r["confere"], -abs(r["diferenca"])))
     return linhas
 
 
-def _brl(v: float) -> str:
-    txt = f"{abs(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"{'-' if v < 0 else ''}R$ {txt}"
-
-
-def _aviso_total(avisos: list[str], fonte: str, auditoria: float, planilha: float | None) -> None:
-    if planilha is None:
-        return
-    dif = auditoria - planilha
-    if abs(dif) <= TOL_VALOR:
-        avisos.append(f"CGR confere com a planilha ({fonte}): {_brl(auditoria)}.")
-        return
-    pct = f" ({dif / planilha * 100:+.2f}%)" if planilha else ""
-    avisos.append(
-        f"CGR DIVERGENTE: auditoria {_brl(auditoria)} × planilha ({fonte}) {_brl(planilha)} "
-        f"→ diferença de {_brl(dif)}{pct}."
-    )
+_brl = exp.brl
+_aviso_total = exp.aviso_total

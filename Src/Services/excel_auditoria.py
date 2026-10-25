@@ -516,9 +516,10 @@ class ExcelAuditoria:
                 c.border = _thin_border()
         ws_invalidas.freeze_panes = "A2"
 
-        if getattr(comparacao, "modelo", "generico") == "alexandre":
+        tipo = getattr(comparacao, "tipo", "generico")
+        if tipo == "por_nota":
             ExcelAuditoria._adicionar_sheet_valores(wb, comparacao)
-        elif getattr(comparacao, "modelo", "generico") == "nt":
+        elif tipo == "por_supridor":
             ExcelAuditoria._adicionar_sheet_nt(wb, comparacao)
 
     @staticmethod

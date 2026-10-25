@@ -54,7 +54,10 @@ class ComparacaoAuditoria(BaseModel):
     abas_do_periodo: list[str]
     avisos: list[str]
     # Modelo Alexandre: comparação valor a valor
-    modelo: str = "generico"            # "alexandre" | "generico"
+    modelo: str = "generico"            # "alexandre" | "nt" | "generico"
+    modelo_rotulo: str = ""             # "Modelo NT" — para mostrar
+    tipo: str = "generico"              # "por_nota" | "por_supridor" | "generico" — define o layout da tela
+    fontes_cgr: list[dict[str, Any]] = []   # [{"rotulo", "valor"|None}]: CGR das fontes da planilha, a comparar com o das notas
     notas_mes_na_planilha: bool = True  # False: a aba de NFs não tem o mês; só o total foi comparado
     cgr_auditoria: float | None = None
     cgr_planilha_notas: float | None = None
