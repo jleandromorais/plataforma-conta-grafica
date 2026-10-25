@@ -194,3 +194,19 @@ class TestComparar:
         )
         assert resultado.avisos
         assert any("auditoria" in a.lower() or "coincidiu" in a.lower() for a in resultado.avisos)
+
+    def test_linha_da_planilha_com_data_vazia_serializa_em_json(self):
+        # Data vazia vira NaT no pandas; o NaT quebrava a resposta da API com
+        # "'float' object cannot be interpreted as an integer".
+        import pydantic_core
+
+        df = pd.DataFrame({
+            "Numero Nota Fiscal": ["999"],
+            "Periodo": ["jan/26"],
+            "Vencimento": [pd.NaT],
+            "Valor": [float("nan")],
+        })
+        resultado = ComparadorContaGrafica.comparar([_mk_item("123")], df, "Jan/2026")
+        [nota] = resultado.notas_apenas_conta_grafica
+        assert nota["dados_linha"]["Vencimento"] is None
+        pydantic_core.to_json(resultado.notas_apenas_conta_grafica)

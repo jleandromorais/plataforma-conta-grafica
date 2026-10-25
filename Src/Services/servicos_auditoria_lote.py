@@ -272,11 +272,15 @@ def comparar_com_planilha(itens: list[XMLItem], caminho: str, periodo: str):
     Se for o modelo do Alexandre (aba "Custo do Gás Realizado - NFs"), compara
     nota a nota com valores; senão usa o comparador genérico (só presença)."""
     from Src.Services import comparador_modelo_alexandre as alexandre
+    from Src.Services import comparador_modelo_nt as comparador_nt
     from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
 
     modelo = alexandre.ler_modelo(caminho)
     if modelo is not None:
         return alexandre.comparar(itens, modelo, periodo)
+    nt = comparador_nt.ler_modelo(caminho)
+    if nt is not None:
+        return comparador_nt.comparar(itens, nt, periodo)
     return ComparadorContaGrafica.comparar(
         resultados=itens, df_excel=carregar_planilha_comparacao(caminho), periodo=periodo,
     )

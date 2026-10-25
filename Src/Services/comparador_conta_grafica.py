@@ -424,7 +424,8 @@ class ComparadorContaGrafica:
             for col_name, val in row.items():
                 if str(col_name).startswith("__"):
                     continue
-                dados_linha[str(col_name)] = None if (isinstance(val, float) and pd.isna(val)) else val
+                # NaN e NaT (data vazia) viram None: o NaT não serializa em JSON.
+                dados_linha[str(col_name)] = None if (pd.api.types.is_scalar(val) and pd.isna(val)) else val
 
             conta_por_nota[nota_norm] = {
                 "linha_excel": int(idx) + 2,
