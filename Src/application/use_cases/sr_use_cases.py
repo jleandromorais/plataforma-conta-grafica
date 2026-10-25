@@ -71,6 +71,21 @@ def vp_do_mes(repo: SRRepository, periodo: str) -> float:
     return 0.0
 
 
+_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+def chave_pr_do_mes(periodo: str) -> str:
+    """Chave sob a qual a tela PR grava o PR do trimestre que contém o mês.
+
+    Os PRs vão de Nov–Jan, Fev–Abr, Mai–Jul e Ago–Out; a chave é "Ago - Out/2026"
+    (o ano é o do último mês do trimestre). Jul/2026 → "Mai - Jul/2026"."""
+    mes, ano = normalizar_periodo(periodo).split("/")
+    i = _ABREV.index(mes)
+    inicio = i - ((i + 2) % 3)                       # mês de início do trimestre do PR (pode ser < 0: Nov/Dez do ano anterior)
+    fim = inicio + 2
+    return f"{_ABREV[inicio % 12]} - {_ABREV[fim % 12]}/{int(ano) + (fim // 12 - i // 12)}"
+
+
 class SRUseCases:
     def __init__(self, repo: SRRepository | None = None):
         self.repo = repo or SqliteSRRepository()
@@ -85,8 +100,8 @@ class SRUseCases:
     def carregar_vp_vf_pr(self, sessao_id: int, labels_meses: list[str]) -> list[dict[str, Any]]:
         """Para cada mês do trimestre, preenche VP (do PMPV que cobre aquele mês
         do calendário — ver `vp_do_mes`), VF (volume_final do CGF do período) e
-        PR (salvo em sr_resultados, com fallback calculado a partir de SCG/SR/VP;
-        `pr_origem` diz qual: "salvo", "estimado" ou "ausente").
+        PR (1º o salvo no próprio SR; 2º o PR do trimestre salvo na tela PR; 3º estimado
+        a partir de SCG/SR/VP; `pr_origem` diz qual: "salvo", "estimado" ou "ausente").
         `sessao_id` fica na assinatura por compatibilidade; o VP não depende dela."""
         resultado = []
         servicos_cons = ServicosConsolidacao()
@@ -100,6 +115,10 @@ class SRUseCases:
                 pr_row = self.repo.buscar_sr(periodo)
                 pr = float((pr_row or {}).get("pr") or 0.0)
                 pr_origem = "salvo" if pr else "ausente"
+                if pr == 0.0:
+                    pr_tela = self.repo.buscar_pr(chave_pr_do_mes(periodo))
+                    pr = float((pr_tela or {}).get("pr") or 0.0)
+                    pr_origem = "salvo" if pr else "ausente"
                 if pr == 0.0 and vp > 0:
                     dados_cons = servicos_cons.buscar_consolidacao(periodo)
                     scg_m = float((dados_cons or {}).get("scg") or 0.0)
