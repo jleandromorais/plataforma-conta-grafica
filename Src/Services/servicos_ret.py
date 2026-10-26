@@ -29,6 +29,14 @@ _MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
                 "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
 
+def _normalizar_milhar(texto: str) -> str:
+    """Junta número quebrado pelo PDF: "1 .335,86" → "1.335,86", "6 .139.849,00" → "6.139.849,00".
+
+    Alguns PDFs (Galp, PetroReconcavo) soltam um espaço antes do separador de milhar; sem isso
+    o valor era lido só pelo pedaço depois do espaço (R$ 2.080,29 virava 1.402,60)."""
+    return re.sub(r"(?<=\d)[ 	 ]+(?=[.,]\d{2,3}(?!\d))", "", texto)
+
+
 def _split_path_parts(caminho: str) -> list[str]:
     """Quebra o caminho em partes usando tanto os separadores do SO atual quanto '\\'."""
     partes = re.split(r'[\\/]', caminho)
@@ -192,6 +200,7 @@ class RegrasRET:
         try:
             texto_completo, metodo = read_pdf_text(Path(caminho_pdf), lang="eng")
             if metodo == "OCR": dados["ocr_usado"] = True
+            texto_completo = _normalizar_milhar(texto_completo)
 
             nd_match = re.search(r'ND\s*[:\-]?\s*(\d+)', texto_completo, re.IGNORECASE)
             if nd_match: dados['numero_nd'] = nd_match.group(1)
@@ -235,8 +244,8 @@ class RegrasRET:
                 # intermediário (ex: só o líquido), então priorizamos o valor bruto
                 # explicitamente rotulado como "com tributos".
                 valor_total_tributos_match = re.search(
-                    r'Valor\s+Total[^\n]{0,40}?com\s+tributos[^\n]{0,60}?'
-                    r'R\$\s*((?:\d{4,}|\d{1,3}(?:[.\s]\d{3})*)(?:,\d{2})?)',
+                    r'Valor\s+Total[^\n]{0,40}?com\s+tributos[^\d\n]{0,20}?'
+                    r'((?:\d{4,}|\d{1,3}(?:[.\s]\d{3})*)(?:,\d{2})?)',
                     texto_completo, re.IGNORECASE,
                 )
                 if valor_total_tributos_match:
