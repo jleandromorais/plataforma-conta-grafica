@@ -16,7 +16,13 @@ from Src.Services.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConc
 
 
 def pdfs_da_pasta(pasta: Path | None) -> list[Path]:
-    return sorted(pasta.rglob("*.pdf"), key=str) + sorted(pasta.rglob("*.PDF"), key=str) if pasta and pasta.exists() else []
+    """Todos os PDFs da pasta (e subpastas), cada um uma vez só.
+
+    No Windows `*.pdf` e `*.PDF` casam os mesmos arquivos; juntar as duas listas dobrava tudo, e as
+    notas "cancelado" (que ficam fora da deduplicação por ND) entravam negativas duas vezes."""
+    if not pasta or not pasta.exists():
+        return []
+    return sorted((p for p in pasta.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf"), key=str)
 
 
 STATUS_JA_NO_RET = "JA_NO_RET"

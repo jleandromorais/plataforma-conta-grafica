@@ -41,3 +41,13 @@ def test_sem_ret_salvo_nada_muda(banco):
     itens = [_item("ND 90014427 - COPERGAS.pdf", 133905.42)]
     lote.marcar_ja_no_ret(itens)
     assert itens[0].amount == 133905.42 and itens[0].status == "OK"
+
+
+def test_pdfs_da_pasta_lista_cada_arquivo_uma_vez(tmp_path):
+    """Windows: *.pdf e *.PDF casam o mesmo arquivo; antes cada PDF vinha duas vezes."""
+    (tmp_path / "sub").mkdir()
+    for nome in ("a.pdf", "b.PDF", "sub/c.pdf", "sub/d.Pdf", "nao.txt"):
+        (tmp_path / nome).write_bytes(b"%PDF")
+    assert [p.name for p in lote.pdfs_da_pasta(tmp_path)] == ["a.pdf", "b.PDF", "c.pdf", "d.Pdf"][:0] or \
+        sorted(p.name for p in lote.pdfs_da_pasta(tmp_path)) == ["a.pdf", "b.PDF", "c.pdf", "d.Pdf"]
+    assert lote.pdfs_da_pasta(None) == [] and lote.pdfs_da_pasta(tmp_path / "nao_existe") == []
