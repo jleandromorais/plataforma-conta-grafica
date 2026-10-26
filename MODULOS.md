@@ -91,7 +91,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 ---
 
-### 2.4 RET — Remuneração por Eficiência Técnica
+### 2.4 RET — Recuperação de Encargos de Transporte
 
 | Artefato | Caminho atual |
 |---|---|
@@ -105,7 +105,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 ---
 
-### 2.5 RP — Receita de Parcela (input mensal)
+### 2.5 RP — Recuperação das Penalidades (input mensal)
 
 | Artefato | Caminho atual |
 |---|---|

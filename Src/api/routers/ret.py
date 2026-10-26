@@ -19,6 +19,7 @@ from Src.api.schemas.ret import (
     SalvarRETRequest,
 )
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_envio
+from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services import servicos_ret_lote as lote_ret
 from Src.Services.servicos_ret import PIS_COFINS_RATE, RegrasRET
 
@@ -59,6 +60,7 @@ async def processar(request: Request) -> ProcessarRETResponse:
             pis_cofins_rate=PIS_COFINS_RATE,
             meses=[_resumo_mes(p, ds) for p, ds in sorted(grupos.items())],
             documentos=[DocumentoRET(**d) for d in docs],
+            ocr_disponivel=OCR_ENABLED,
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

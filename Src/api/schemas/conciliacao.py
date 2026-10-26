@@ -23,6 +23,7 @@ class ProcessarConciliacaoResponse(BaseModel):
     itens: list[ItemConciliacao]
     totais: TotaisConciliacao
     logs: list[str]
+    ocr_disponivel: bool = True   # False: PDF de imagem (escaneado) não é lido neste computador
 
 
 class SalvarConciliacaoRequest(BaseModel):

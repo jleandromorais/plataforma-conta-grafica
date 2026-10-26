@@ -21,6 +21,7 @@ from Src.api.schemas.conciliacao import (
     TotaisConciliacao,
 )
 from Src.api.uploads import MAX_ARQUIVOS, gravar_envio
+from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services import servicos_concilia_lote as lote_concilia
 from Src.Services.excel_concilia import ExcelConcilia
 from Src.Services.servicos_concilia import PdfItem
@@ -62,6 +63,7 @@ async def processar(request: Request) -> ProcessarConciliacaoResponse:
             ],
             totais=TotaisConciliacao(**lote_concilia.totais(itens)),
             logs=logs,
+            ocr_disponivel=OCR_ENABLED,
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
