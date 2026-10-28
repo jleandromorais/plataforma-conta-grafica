@@ -67,7 +67,9 @@ def test_pasta_real_do_trimestre_por_mes(client):
     assert obtido == pytest.approx(esperado)
     # valores conferidos contra a planilha oficial (Excel Final, aba RET)
     assert obtido["Jan/2026"] == pytest.approx(1_760_685.43, abs=0.01)
-    assert obtido["Fev/2026"] == pytest.approx(549_420.99, abs=0.01)
+    # Fev: 458.580,09 na planilha Conta Gráfica (linha 42). O 549.420,99 antigo vinha da leitura
+    # errada dos PDFs com número quebrado ("1 .335,86"), corrigida em 3353905.
+    assert obtido["Fev/2026"] == pytest.approx(458_580.09, abs=0.01)
     assert obtido["Mar/2026"] == pytest.approx(640_451.24, abs=0.01)
 
     salvos = client.post("/api/ret/salvar", json={"documentos": r["documentos"]}).json()
