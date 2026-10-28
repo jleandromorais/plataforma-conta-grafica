@@ -516,8 +516,47 @@ class ExcelAuditoria:
                 c.border = _thin_border()
         ws_invalidas.freeze_panes = "A2"
 
-        if getattr(comparacao, "modelo", "generico") == "alexandre":
+        tipo = getattr(comparacao, "tipo", "generico")
+        if tipo == "por_nota":
             ExcelAuditoria._adicionar_sheet_valores(wb, comparacao)
+        elif tipo == "por_supridor":
+            ExcelAuditoria._adicionar_sheet_nt(wb, comparacao)
+
+    @staticmethod
+    def _adicionar_sheet_nt(wb, comparacao):
+        """Aba do modelo NT: volume e CGR por supridor × NT, com o porquê de cada diferença."""
+        ws = wb.create_sheet("Diferencas NT", wb.sheetnames.index("Comparacao Conta Grafica"))
+        fill_header = PatternFill(start_color=_HEADER_BG, end_color=_HEADER_BG, fill_type="solid")
+        fill_erro = PatternFill(start_color="FADBD8", end_color="FADBD8", fill_type="solid")
+        fill_ok = PatternFill(start_color=_NFE_PAR, end_color=_NFE_PAR, fill_type="solid")
+
+        ws.append([f"CONFERENCIA COM A NOTA TECNICA (NT)  –  Periodo: {comparacao.periodo}"])
+        ws.cell(1, 1).font = Font(name="Calibri", size=14, bold=True, color=_TITULO_BG)
+        ws.append([])
+        ws.append(["Supridor", "Volume notas (m3)", "Volume NT (m3)", "Dif. volume (m3)", "CGR notas (R$)",
+                   "CGR NT (R$)", "Dif. CGR (R$)", "Situacao", "Por que difere"])
+        for c in ws[ws.max_row]:
+            c.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+            c.fill = fill_header
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            c.border = _thin_border()
+        for e in comparacao.por_empresa:
+            ws.append([e["empresa"], e["volume_auditoria"], e["volume_planilha"], e["diferenca_volume"],
+                       e["cgr_auditoria"], e["cgr_planilha"], e["diferenca"],
+                       "Confere" if e["confere"] else "DIVERGE", "\n".join(e.get("explicacoes") or [])])
+            for c, fmt in zip(ws[ws.max_row], (None, _FMT_INT, _FMT_INT, _FMT_INT, _FMT_MOEDA, _FMT_MOEDA, _FMT_MOEDA, None, None)):
+                c.border = _thin_border()
+                c.fill = fill_ok if e["confere"] else fill_erro
+                c.alignment = Alignment(vertical="top", wrap_text=True)
+                if fmt:
+                    c.number_format = fmt
+        ws.append([])
+        ws.append(["Avisos"])
+        ws.cell(ws.max_row, 1).font = Font(name="Calibri", size=12, bold=True, color=_TITULO_BG)
+        for a in comparacao.avisos or ["Sem avisos"]:
+            ws.append([a])
+        for col, largura in zip("ABCDEFGHI", (24, 18, 18, 16, 20, 20, 18, 12, 90)):
+            ws.column_dimensions[col].width = largura
 
     @staticmethod
     def _adicionar_sheet_valores(wb, comparacao):

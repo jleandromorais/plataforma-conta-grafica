@@ -37,6 +37,7 @@ class ProcessarRETResponse(BaseModel):
     pis_cofins_rate: float
     meses: list[RETMes]
     documentos: list[DocumentoRET]
+    ocr_disponivel: bool = True   # False: PDF de imagem (escaneado) não é lido neste computador
 
 
 class SalvarRETRequest(BaseModel):

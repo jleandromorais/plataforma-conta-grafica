@@ -163,3 +163,52 @@ class TestCalcularRET:
         assert r["eat_bruto"] == 0.0
         assert r["ret"] == 0.0
         assert r["pis_cofins_rate"] == 0.0925
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PDFs com o número quebrado por espaço ("1 .335,86") — conferidos com a planilha Jan–Set/26
+# ════════════════════════════════════════════════════════════════════════════
+
+TEXTO_GALP_ND82 = """GALP ENERGIA BRASIL S.A
+NOTA DE DÉBITO 82/2026
+DATA: 08/04/2026
+Descrição:
+VALOR
+(R$)
+Encargo de Capacidade Não Utilizada 1.402,60
+Encargo de Custo Fixo 677,69
+VALOR TOTAL DO DOCUMENTO 2 .080,29
+Dados Bancário:
+Banco: 341 – Banco Itaú 15/04/2026
+"""
+
+TEXTO_GALP_ND007 = """GALP ENERGIA BRASIL S.A
+NOTA DE DÉBITO Nº 007/2026
+Penalidade de Variação 0,00
+Encargo de Capacidade Não Utilizada 657,97
+Encargo de Custo Fixo 677,89
+VALOR TOTAL DO DOCUMENTO 1 .335,86
+"""
+
+TEXTO_PETRORECONCAVO = """Nº 90009873
+NOTA DE DÉBITO
+Valor Total da Fatura #REF!
+Unidade de Medida: m³
+Quantidade: 6 .139.849,00
+Preço unitário sem tributos (R$) 0,0058
+Valor Líquido (sem tributos) (R$): 35.474,95
+PIS e COFINS (R$): 3.615,90
+Preço unitário com tributos (R$): 0,0064
+Valor Total (com tributos) (R$): 39.090,86
+"""
+
+
+@pytest.mark.parametrize("texto, esperado", [
+    (TEXTO_GALP_ND82, 2080.29),         # lia só o pedaço depois do espaço (1.402,60)
+    (TEXTO_GALP_ND007, 1335.86),        # lia 677,89
+    (TEXTO_PETRORECONCAVO, 39090.86),   # lia a quantidade (139.849,00) como valor
+])
+def test_valor_total_de_pdf_com_numero_quebrado_por_espaco(monkeypatch, texto, esperado):
+    monkeypatch.setattr("Src.Services.servicos_ret.read_pdf_text", lambda *a, **k: (texto, "TEXTO"))
+    dados = RegrasRET.extrair_dados_pdf(r"C:\RET\EAT fev26\EAT\ND 000 - COPERGAS.pdf")
+    assert dados["valor_total"] == pytest.approx(esperado)

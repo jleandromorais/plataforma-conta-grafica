@@ -137,6 +137,9 @@ class SqliteSRRepository(SRRepository):
     def buscar_sr(self, periodo: str):
         return self.db.buscar_sr(periodo)
 
+    def buscar_pr(self, periodo: str):
+        return self.db.buscar_pr(periodo)
+
     def salvar_sr_trimestre(self, trimestre: str, meses):
         self.db.salvar_sr_trimestre(trimestre, meses)
 

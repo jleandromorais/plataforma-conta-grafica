@@ -292,6 +292,10 @@ class ResultadoComparacaoNotas:
     cgr_planilha_notas: float | None = None
     cgr_planilha_conta_grafica: float | None = None
     notas_mes_na_planilha: bool = True
+    # Preenchidos pelo registro (comparacao_registro.py) e pelos comparadores de modelo
+    tipo: str = "generico"          # "por_nota" | "por_supridor" | "generico" — a tela escolhe o layout por aqui
+    modelo_rotulo: str = ""         # nome para mostrar ("Modelo NT")
+    fontes_cgr: list[dict[str, Any]] = field(default_factory=list)   # [{"rotulo", "valor"|None}] para comparar com o CGR das notas
 
 
 class ComparadorContaGrafica:
@@ -424,7 +428,8 @@ class ComparadorContaGrafica:
             for col_name, val in row.items():
                 if str(col_name).startswith("__"):
                     continue
-                dados_linha[str(col_name)] = None if (isinstance(val, float) and pd.isna(val)) else val
+                # NaN e NaT (data vazia) viram None: o NaT não serializa em JSON.
+                dados_linha[str(col_name)] = None if (pd.api.types.is_scalar(val) and pd.isna(val)) else val
 
             conta_por_nota[nota_norm] = {
                 "linha_excel": int(idx) + 2,

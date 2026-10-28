@@ -8,6 +8,7 @@ e do que a tela desktop grava. Notas "cancelado" entram negativas
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -15,7 +16,39 @@ from Src.Services.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConc
 
 
 def pdfs_da_pasta(pasta: Path | None) -> list[Path]:
-    return sorted(pasta.rglob("*.pdf"), key=str) + sorted(pasta.rglob("*.PDF"), key=str) if pasta and pasta.exists() else []
+    """Todos os PDFs da pasta (e subpastas), cada um uma vez só.
+
+    No Windows `*.pdf` e `*.PDF` casam os mesmos arquivos; juntar as duas listas dobrava tudo, e as
+    notas "cancelado" (que ficam fora da deduplicação por ND) entravam negativas duas vezes."""
+    if not pasta or not pasta.exists():
+        return []
+    return sorted((p for p in pasta.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf"), key=str)
+
+
+STATUS_JA_NO_RET = "JA_NO_RET"
+
+
+def marcar_ja_no_ret(itens: list[PdfItem], log: Callable[[str], None] | None = None) -> None:
+    """Despesa que já foi contada no RET (mesmo PDF, mesmo valor) não entra de novo no RP.
+
+    A ND do encargo de transporte às vezes é guardada também na pasta de penalidades (ex.: ND
+    90014427 em jul/26); o Excel a conta só no RET. O item vira valor 0 com status JA_NO_RET —
+    só acontece se o RET desse documento já estiver salvo."""
+    from Src.Database.database import DatabasePMPV
+
+    try:
+        with DatabasePMPV() as db:
+            no_ret = {
+                (Path(str(r.get("arquivo") or "")).name.lower(), round(float(r.get("valor_total") or 0), 2))
+                for p in db.listar_periodos_ret() for r in (db.listar_ret_itens(p) or [])
+            }
+    except Exception:  # noqa: BLE001 — sem banco/RET salvo, segue como antes
+        return
+    for pos, i in enumerate(itens):
+        if i.category == "Despesa" and i.amount and (i.file_name.lower(), round(i.amount, 2)) in no_ret:
+            if log:
+                log(f"{i.file_name}: já está no RET ({i.amount:,.2f}) — fora do RP para não contar duas vezes.")
+            itens[pos] = replace(i, amount=0.0, status=STATUS_JA_NO_RET, method=f"{i.method} · já no RET")
 
 
 def processar(pasta_receitas: Path | None, pasta_despesas: Path | None,
@@ -30,6 +63,7 @@ def processar(pasta_receitas: Path | None, pasta_despesas: Path | None,
     if desp:
         log("--- Despesas ---")
         itens += RegrasConcilia.processar_arquivos(desp, "Despesa", log, raiz=pasta_despesas)
+    marcar_ja_no_ret(itens, log)
     return itens
 
 
@@ -40,7 +74,7 @@ def totais(itens: list[PdfItem]) -> dict:
         "total_receitas": receitas,
         "total_despesas": despesas,
         "rp": despesas - receitas,
-        "qtd_revisar": sum(1 for i in itens if i.status != "OK"),
+        "qtd_revisar": sum(1 for i in itens if i.status not in ("OK", STATUS_JA_NO_RET)),
     }
 
 
