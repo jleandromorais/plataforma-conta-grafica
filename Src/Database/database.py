@@ -48,7 +48,12 @@ class DatabasePMPV:
         self._criar_tabelas()
 
     def _conectar(self):
-        self.conn = sqlite3.connect(self.db_path)
+        # Na API, cada request tem sua conexão, mas o FastAPI abre a dependência numa
+        # thread do pool e roda o endpoint em outra: sem check_same_thread=False o
+        # SQLite recusa ("objects created in a thread...") quando há várias
+        # requisições ao mesmo tempo (ex.: Painel do Ciclo). A conexão nunca é usada
+        # por duas requisições em paralelo.
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         # WAL melhora concorrência e reduz risco de corrupção/"database is locked"
         # em disco local — mas não funciona em pasta de rede (Z:, \\servidor),
