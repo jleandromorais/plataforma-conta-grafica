@@ -82,3 +82,10 @@ class SRTrimestreSalvarRequest(BaseModel):
 
 class SRTrimestreSalvarResponse(BaseModel):
     total: float
+
+
+class SRSelicResponse(BaseModel):
+    disponivel: bool  # False: o trimestre ainda não fechou (ver fecha_em)
+    valores: dict[str, float]  # {"Jan/2026": 3.411174, ...} — % acumulada até o fim do trimestre
+    fecha_em: str  # último dia do trimestre, aaaa-mm-dd
+    fonte: str

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from Src.api.deps import get_servicos_sr, get_sr_use_cases
 from Src.api.schemas.sr import (
     SRCalcularRequest,
     SRCalcularResponse,
+    SRSelicResponse,
     SRSessao,
     SRTrimestreCalcularRequest,
     SRTrimestreCalcularResponse,
@@ -16,6 +17,7 @@ from Src.api.schemas.sr import (
     SRVpVfResponse,
 )
 from Src.application.use_cases.sr_use_cases import SRUseCases
+from Src.Services import servicos_selic
 from Src.Services.servicos_sr import ServicosSR
 
 router = APIRouter(prefix="/sr", tags=["SR"])
@@ -74,6 +76,15 @@ def salvar_trimestre(
         [l.model_dump() for l in payload.linhas],
     )
     return SRTrimestreSalvarResponse(total=total)
+
+
+@router.get("/selic", response_model=SRSelicResponse)
+def selic(meses: list[str] = Query(..., description="Os 3 meses do trimestre civil, ex.: Jan/2026")) -> SRSelicResponse:
+    """SELIC acumulada de cada mês até o fim do trimestre, calculada com os dados do Banco Central."""
+    try:
+        return SRSelicResponse(**servicos_selic.selic_do_trimestre(meses, buscar=servicos_selic.buscar_bcb))
+    except servicos_selic.SelicIndisponivel as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/trimestre", response_model=list[dict])
