@@ -13,12 +13,12 @@
 
   <p>
     <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
+    <img src="https://img.shields.io/badge/API-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/>
+    <img src="https://img.shields.io/badge/Deploy-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" alt="Railway"/>
     <img src="https://img.shields.io/badge/UI-CustomTkinter-2B2B2B?style=for-the-badge&logo=python&logoColor=white" alt="CustomTkinter"/>
-    <img src="https://img.shields.io/badge/SQLite-Local-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite"/>
-    <img src="https://img.shields.io/badge/PostgreSQL-DataWarehouse-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
+    <img src="https://img.shields.io/badge/SQLite-Local_e_nuvem-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite"/>
     <img src="https://img.shields.io/badge/Airflow-descontinuado-inactive?style=for-the-badge&logo=apacheairflow&logoColor=white" alt="Airflow"/>
-    <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/>
-    <img src="https://img.shields.io/badge/pytest-29_arquivos-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest"/>
+    <img src="https://img.shields.io/badge/pytest-51_arquivos-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest"/>
   </p>
 
   <br/>
@@ -28,6 +28,7 @@
     <a href="#️-screenshots">Screenshots</a> &nbsp;•&nbsp;
     <a href="#-módulos">Módulos</a> &nbsp;•&nbsp;
     <a href="#-arquitetura">Arquitetura</a> &nbsp;•&nbsp;
+    <a href="#-api-web">API web</a> &nbsp;•&nbsp;
     <a href="#-instalação">Instalação</a> &nbsp;•&nbsp;
     <a href="#-backend">Backend</a> &nbsp;•&nbsp;
     <a href="#-testes">Testes</a> &nbsp;•&nbsp;
@@ -39,17 +40,24 @@
 
 ## 📋 Visão Geral
 
-Aplicação **desktop Windows** para apuração completa de Conta Gráfica do mercado regulado de gás, composta por **11 telas especializadas** que calculam e consolidam os componentes financeiros — PMPV, CGR, CGF, RET, RP, RPV, SR, PR, PV e SCG — em um único relatório Excel unificado.
+Sistema para apuração completa de Conta Gráfica do mercado regulado de gás: calcula e consolida PMPV, CGR, CGF, RET, RP, RPV, SCG, SR, PR e PV, gera o **Excel Final** no visual da ARPE e a **minuta da Nota Técnica** (Word, Quadros 1–8 e Anexo A).
 
-`Src/Services/*` é a **fonte única de verdade dos cálculos**. A antiga stack de backend (Apache Airflow + PostgreSQL) foi **descontinuada e arquivada** em `_arquivado/backend/` por duplicar — e divergir de — esses cálculos; ver seção [Backend](#-backend).
+O mesmo código roda de duas formas:
+
+| | Como roda | Para quem |
+|---|---|---|
+| 🌐 **Web** | **API FastAPI** (`Src/api`) no **Railway** + site React ([PlataformaGrafica-Frontend-](https://github.com/jleandromorais/PlataformaGrafica-Frontend-)) na **Vercel**, com login | uso diário, sem instalar nada |
+| 🖥️ **Desktop** | app Windows em CustomTkinter (`main.py`, `Src/Views`) | uso local / legado |
+
+`Src/Services/*` é a **fonte única de verdade dos cálculos**: a API e o desktop chamam os mesmos serviços. A antiga stack Apache Airflow + PostgreSQL foi **descontinuada e arquivada** em `_arquivado/backend/` por duplicar — e divergir de — esses cálculos; ver seção [Backend antigo](#-backend).
 
 <br/>
 
 <div align="center">
 
-| 📁 Arquivos Python (Src) | 🖥️ Telas UI | ⚙️ Serviços | 🗄️ Tabelas | 🧪 Arquivos de teste |
-|:-:|:-:|:-:|:-:|:-:|
-| **49** | **11** | **15** | **16** | **29** |
+| 📁 Arquivos Python (Src) | 🌐 Grupos de rotas da API | 🖥️ Telas desktop | ⚙️ Serviços | 🗄️ Tabelas | 🧪 Arquivos de teste |
+|:-:|:-:|:-:|:-:|:-:|:-:|
+| **104** | **15** | **10** | **25** | **18** | **51** |
 
 </div>
 
@@ -84,7 +92,7 @@ Aplicação **desktop Windows** para apuração completa de Conta Gráfica do me
 
 ## 🧩 Módulos
 
-A aplicação é composta por 11 telas que operam em sequência até a geração do relatório final:
+As etapas operam em sequência até as entregas do ciclo (Excel Final e minuta da Nota Técnica). As fórmulas são as da Nota Técnica da ARPE:
 
 <br/>
 
@@ -144,9 +152,9 @@ A aplicação é composta por 11 telas que operam em sequência até a geração
     <tr>
       <td align="center"><strong>7</strong></td>
       <td>💹 <strong>SR</strong></td>
-      <td><code>SR = (VP − VF) × PR</code></td>
-      <td>Sessões PMPV</td>
-      <td>Receita Suplementar</td>
+      <td><code>SR = (VP − VF) × PR × (1 + SELIC acumulada)</code><br/><sub>por mês do trimestre civil; SELIC buscada no Banco Central (Quadro 6)</sub></td>
+      <td>VP do PMPV, VF do CGF, PR salvo</td>
+      <td>Saldo Remanescente</td>
     </tr>
     <tr>
       <td align="center"><strong>8</strong></td>
@@ -158,9 +166,9 @@ A aplicação é composta por 11 telas que operam em sequência até a geração
     <tr>
       <td align="center"><strong>9</strong></td>
       <td>💰 <strong>PR</strong></td>
-      <td><code>PR = (SGR + SR) / VP</code></td>
-      <td>SCG (SGR) e SR</td>
-      <td>Preço regulatório (R$/m³)</td>
+      <td><code>PR = ROUND((Σ SCG × (1 + SELIC) + Σ SR com SELIC) ÷ VP; 4)</code><br/><sub>trimestre civil apurado → trimestre do PR 2 meses depois (Quadro 7)</sub></td>
+      <td>SCG, SR e VP do PMPV</td>
+      <td>Parcela de Recuperação (R$/m³)</td>
     </tr>
     <tr>
       <td align="center"><strong>10</strong></td>
@@ -174,12 +182,21 @@ A aplicação é composta por 11 telas que operam em sequência até a geração
       <td>📤 <strong>Excel Final</strong></td>
       <td>Consolidação de todas as etapas</td>
       <td>Banco de dados</td>
-      <td>Arquivo <code>.xlsx</code> unificado</td>
+      <td>Arquivo <code>.xlsx</code> no visual da ARPE (SCG, SR, PR, PV, Auditoria, CGF, RET, Conciliação, PMPV, Progresso)</td>
+    </tr>
+    <tr>
+      <td align="center"><strong>12</strong></td>
+      <td>📝 <strong>Nota Técnica</strong></td>
+      <td>Minuta com capa, seções 1–5, Quadros 1–8 e Anexo A; partes manuais em amarelo</td>
+      <td>Resultados do ciclo</td>
+      <td>Arquivo <code>.docx</code> (<code>POST /api/nota-tecnica/gerar</code>)</td>
     </tr>
   </tbody>
 </table>
 
-> **Dashboard Resumo** (`Src/Views/dashboard_resumo.py`) é uma tela adicional que apresenta uma visão consolidada dos resultados por período, sem participar do fluxo de cálculo.
+> **Painel do Ciclo** (só no site): mostra as 8 etapas do trimestre com ✅/⚠/◌ e o motivo de cada pendência; o "Fazer agora" abre cada tela já no período certo. Também lê a pasta do ciclo (ex.: `SCG-26`) e reconhece, pelo nome, a etapa e o mês de cada arquivo.
+>
+> **Dashboard Resumo** (`Src/Views/dashboard_resumo.py`) é uma tela adicional do desktop com visão consolidada por período, sem participar do fluxo de cálculo.
 
 ### Fluxo de operação
 
@@ -202,17 +219,20 @@ A aplicação é composta por 11 telas que operam em sequência até a geração
         │                      │                        │
         └──────────────────────┼────────────────────────┘
                                │
-                      ┌────────▼────────┐
-                      │  PR (SGR+SR)/VP │
-                      │  PV = PMPV + PR │
-                      └────────┬────────┘
+                      ┌────────▼──────────┐
+                      │ PR (SCG+SR)·SELIC │
+                      │       ÷ VP        │
+                      │  PV = PMPV + PR   │
+                      └────────┬──────────┘
                                │
-                      ┌────────▼────────┐
-                      │   Excel Final   │
-                      └─────────────────┘
+                   ┌───────────▼────────────┐
+                   │ Excel Final + minuta NT│
+                   └────────────────────────┘
 ```
 
-> **Passo a passo:** abra o app → processe cada módulo para o período desejado (ex: `Dez/2025`) → clique em **"Adicionar ao Excel Final"** em cada tela → gere o relatório consolidado na tela Excel Final.
+> **Passo a passo (site):** abra o **Painel do Ciclo** → escolha o trimestre → siga as etapas em ordem pelo botão **"Fazer agora"** → baixe o Excel Final e a minuta da Nota Técnica.
+>
+> **Passo a passo (desktop):** processe cada módulo para o período desejado (ex: `Dez/2025`) → clique em **"Adicionar ao Excel Final"** em cada tela → gere o relatório consolidado na tela Excel Final.
 >
 > ⚠️ **Duas grades de trimestre distintas coexistem no sistema:** SCG/CGR/CGF/RET/RP/SR usam o trimestre civil (Jan–Mar, Abr–Jun, Jul–Set, Out–Dez); PMPV/PR/PV usam o trimestre fiscal do setor (Nov–Jan, Fev–Abr, Mai–Jul, Ago–Out). Não confundir as duas ao processar períodos.
 
@@ -223,24 +243,25 @@ A aplicação é composta por 11 telas que operam em sequência até a geração
 O projeto segue **Clean Architecture** com quatro camadas bem definidas:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Views (CustomTkinter)                      │
-│      PMPV · Auditoria · CGF · RET · Concilia · RPV · SR · SCG  │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────┐
-│                           Services                              │
-│          Regras de negócio, cálculos, formatação BRL            │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────┐
+┌──────────────────────────────┐   ┌──────────────────────────────┐
+│  Site React (Vercel)         │   │  Views (CustomTkinter)       │
+│  repositório Front_end       │   │  app desktop Windows         │
+└──────────────┬───────────────┘   └──────────────┬───────────────┘
+               │ HTTPS + login (JWT)              │
+┌──────────────▼───────────────┐                  │
+│  API FastAPI (Src/api)       │                  │
+│  routers · schemas · auth    │                  │
+└──────────────┬───────────────┘                  │
+               └────────────────┬─────────────────┘
+┌───────────────────────────────▼─────────────────────────────────┐
+│              Services (fonte única dos cálculos)                │
+│   PMPV · CGR · CGF · RET · RP · RPV · SCG · SR · PR · PV · SELIC│
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+┌───────────────────────────────▼─────────────────────────────────┐
 │                    Infrastructure / Database                    │
-│      SQLite (local) · Exportadores Excel · OCR / Gemini API     │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────┐
-│                     Backend (opcional)                          │
-│        Airflow DAGs → ETL → PostgreSQL → Relatórios             │
+│  SQLite · Excel Final (visual ARPE) · Nota Técnica (.docx)      │
+│  OCR (Tesseract / Gemini) · SELIC do Banco Central (SGS 11)     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -250,13 +271,15 @@ O projeto segue **Clean Architecture** com quatro camadas bem definidas:
 plataforma-conta-grafica/
 │
 ├── main.py                          # Entry point da aplicação desktop
-├── start.py                         # Bootstrap automático da stack Docker
-├── docker-compose.yml               # 5 serviços orquestrados
-├── requirements.txt                 # Dependências Python
+├── Dockerfile                       # Imagem da API (Railway): python -m Src.api.serve
+├── requirements.txt                 # Dependências do desktop
+├── requirements-api.txt             # Dependências da API web
+├── DEPLOY.md                        # Como publicar a API (variáveis, volume /data)
 │
-├── Src/                             # Aplicação desktop
-│   ├── main_dashboard.py            # Janela principal (PlataformaFinanceira)
-│   ├── Views/                       # 11 telas CustomTkinter
+├── Src/
+│   ├── api/                         # API FastAPI: main.py, routers/, schemas/, auth.py, errors.py, serve.py
+│   ├── main_dashboard.py            # Janela principal do desktop (PlataformaFinanceira)
+│   ├── Views/                       # 10 telas CustomTkinter
 │   ├── Services/                    # Regras de negócio por módulo (fonte única de cálculo)
 │   ├── Database/                    # Persistência SQLite (DatabasePMPV)
 │   ├── application/                 # Casos de uso (Clean Architecture)
@@ -270,8 +293,10 @@ plataforma-conta-grafica/
 │
 ├── _arquivado/backend/              # Stack Airflow + PostgreSQL DESCONTINUADA (ver seção Backend)
 │
-└── tests/                           # Suite de testes automatizados (pytest, 29 arquivos)
+└── tests/                           # Suite de testes automatizados (pytest, 51 arquivos)
 ```
+
+> A lista completa abaixo é de jul/2026 (só o desktop). Desde então entraram `Src/api/`, os serviços `servicos_selic.py`, `servicos_*_lote.py`, os comparadores da Auditoria e os exportadores `nota_tecnica.py` e `excel_sheets/arpe.py`.
 
 <details>
 <summary><strong>Ver estrutura completa de arquivos</strong></summary>
@@ -384,6 +409,45 @@ plataforma-conta-grafica/
 
 ---
 
+## 🌐 API web
+
+API **FastAPI** em `Src/api`, usada pelo site React. Todas as rotas ficam em `/api` e, menos `/api/auth/*`, exigem login (token JWT).
+
+| Grupo | Exemplos | O que faz |
+|---|---|---|
+| `auth` | `POST /api/auth/login`, `/cadastro`, `GET /me` | Login e contas |
+| `pmpv` | `POST /api/pmpv/calcular`, `/importar-memoria`, `/salvar` | PMPV e VP do trimestre |
+| `auditoria`, `cgf`, `ret`, `conciliacao` | `POST /processar`, `/salvar`, `GET /historico` | Etapas que leem arquivos (planilhas, XML, PDF) |
+| `rpv`, `scg` | `GET /api/scg/comparar`, `POST /salvar` | Consolidação por mês |
+| `sr` | `POST /api/sr/trimestre/calcular`, `GET /api/sr/selic?meses=Jan/2026&meses=Fev/2026&meses=Mar/2026` | SR do trimestre e **SELIC acumulada do Banco Central** |
+| `pr`, `pv` | `POST /api/pr/apurar`, `GET /api/pv/trimestre` | Quadros 7 e 8 |
+| `excel_final`, `nota_tecnica` | `POST /api/excel-final/gerar`, `POST /api/nota-tecnica/gerar` | Entregas do ciclo |
+
+Documentação interativa: `http://localhost:8080/docs` com a API rodando.
+
+**Erros:** a API responde em português, dizendo o que fazer (`ValueError` → 422, banco travado → 503, erro inesperado → 500 com um `codigo` que aparece no log).
+
+**SELIC:** `Src/Services/servicos_selic.py` usa a série SGS **11** (fator diário) do Banco Central — a mesma conta das planilhas da ARPE. A série 4390 não serve (só 2 casas). Trimestre ainda aberto não recebe SELIC parcial; se o BC não responder, a tela do SR pede para digitar à mão.
+
+### Rodar a API no seu computador
+
+```powershell
+# a partir da pasta Plataforma/ (backend + site juntos, com uma CÓPIA do banco):
+.\iniciar_web.bat
+
+# ou só a API:
+$env:PLATAFORMA_DB = "C:\caminho\para\pmpv_data.db"
+python -m uvicorn Src.api.main:app --port 8080
+```
+
+### Produção (Railway)
+
+- A imagem roda `python -m Src.api.serve`. O banco fica no **volume persistente** `/data/pmpv_data.db`: um deploy troca o programa, **não** o banco. Na primeira subida, se o arquivo não existir, ele é criado (`serve.py`); se existir, é usado como está.
+- Variáveis: `JWT_SECRET`, `CORS_ORIGINS` (URL do site na Vercel), `PERMITIR_CADASTRO`, `PLATAFORMA_DB`. Detalhes em [DEPLOY.md](DEPLOY.md).
+- **Deploy = push na `main`.** O trabalho é feito numa branch (`feat/...`) e vai para a `main` quando aprovado.
+
+---
+
 ## 🚀 Instalação
 
 ### Pré-requisitos
@@ -417,19 +481,14 @@ pyinstaller --noconfirm --clean --windowed --name PlataformaFinanceira main.py
 ### Executar
 
 ```powershell
-# Aplicação desktop (standalone, sem Docker)
+# Aplicação desktop
 python main.py
 
-# Backend com Docker (Airflow + PostgreSQL)
-python start.py        # inicialização automática
-# ou manualmente:
-docker-compose up -d
+# API web (ver seção "API web"); dependências: pip install -r requirements-api.txt
+python -m uvicorn Src.api.main:app --port 8080
 ```
 
-| Serviço | Endereço | Credenciais |
-|---------|----------|-------------|
-| Airflow Web UI | http://localhost:8080 | `airflow` / `airflow` |
-| PostgreSQL | `localhost:5432` | `postgres` / `admin` |
+> O antigo `start.py` / `docker-compose.yml` sobe a stack Airflow + PostgreSQL **descontinuada**; não é mais necessário.
 
 ---
 
@@ -448,13 +507,15 @@ A persistência local usa **SQLite** (`pmpv_data.db`) com as seguintes tabelas p
 | `concilia_itens` | Itens de conciliação receita/despesa (RP) |
 | `cgf_resumo` | Resumo de volumes faturados por período |
 | `sr_resultados` | Resultados SR por período |
-| `sr_trimestre` | Resultados SR agregados por trimestre fiscal |
-| `pr_resultados` | Resultados PR — `PR = (SGR + SR) / VP` |
+| `sr_trimestre` | SR do trimestre civil, mês a mês (VP, VF, PR, SELIC, SR com SELIC) |
+| `vp_mensal` | Volume Prospectivo (VP) por mês |
+| `pr_resultados` | Resultados PR (Quadro 7 da NT) |
 | `pv_resultados` | Resultados PV — `PV = PMPV + PR` |
 | `consolidacao` | Consolidação final (CGR, CGF, RPV, RET, RP, SCG) |
 | `excel_final_sessoes` | Sessões de exportação Excel |
 | `excel_final_execucoes` | Log de execuções de exportação |
 | `config` | Configurações gerais da aplicação |
+| `usuarios`, `auth_config` | Contas do site e segredo do login (só a API usa) |
 
 #### Normalização automática de períodos
 
@@ -469,6 +530,8 @@ DEZ/25   →   Dez/2025
 ---
 
 ## ⚙️ Backend
+
+> ℹ️ O backend em uso hoje é a **API FastAPI** — ver [API web](#-api-web). Esta seção descreve a stack antiga.
 
 > ⚠️ **DESCONTINUADO (jun/2026).** Esta stack (Airflow + PostgreSQL) foi **arquivada** em
 > `_arquivado/backend/` por duplicar — e divergir de — os cálculos oficiais em `Src/Services/*`.
@@ -549,19 +612,32 @@ python -m pytest -m unit
 python -m pytest -m integration
 ```
 
+São **598 testes em 51 arquivos** (out/2026). Os que usam pastas reais de notas (`SCG-26 - Copia`) são pulados quando a pasta não existe. Destaques recentes:
+
+| Arquivo de Teste | Cobertura |
+|------------------|-----------|
+| `test_selic.py` | SELIC acumulada igual às planilhas ARPE (Jul/25–Mar/26), BC fora do ar, trimestre aberto |
+| `test_pr_apuracao_nt.py` | PR e PV como no Quadro 7/8 da Nota Técnica |
+| `test_nota_tecnica.py` | Minuta da Nota Técnica (.docx) |
+| `test_excel_final_arpe.py` | Excel Final no visual da ARPE |
+| `test_api_erros.py` | Mensagens de erro em português, sem caminho de arquivo nem traceback |
+| `test_database_threads.py` | Conexão SQLite usada por outra thread (várias requisições juntas) |
+
+Lista original (jul/2026):
+
 | Arquivo de Teste | Cobertura |
 |------------------|-----------|
 | `test_database.py` | Persistência SQLite, normalização de períodos, exclusão em cascata |
 | `test_servicos_consolidacao.py` | Regras de consolidação SCG |
 | `test_servicos_cgf.py` | Cálculos de volume CGF |
-| `test_servicos_pr.py` | Regras de negócio PR (`PR = (SGR + SR) / VP`) |
+| `test_servicos_pr.py` | Regras de negócio PR |
 | `test_servicos_pv.py` | Regras de negócio PV (`PV = PMPV + PR`) |
 | `test_servicos_rpv.py` | Cálculo de RPV (`RPV = CGR − CGF`) |
 | `test_servicos_scg.py` | Cálculo de SCG (`SCG = RPV + RET + RP`) |
 | `test_servicos_auditoria.py` | Regras de auditoria XML (CGR) |
 | `test_servicos_concilia.py` | Regras de conciliação RP |
 | `test_servicos_ret.py` | Classificação e cálculo de RET |
-| `test_servicos_sr.py` | Cálculo de SR (`SR = (VP − VF) × PR`) |
+| `test_servicos_sr.py` | Cálculo de SR (`SR = (VP − VF) × PR × (1 + SELIC)`) |
 | `test_pmpv_use_cases.py` | Casos de uso PMPV |
 | `test_regras_pmpv.py` | Regras de negócio PMPV |
 | `test_comparador_conta_grafica.py` | Comparação/matching de períodos e itens de conta gráfica |
@@ -614,7 +690,25 @@ python -m pytest -m integration
 </details>
 
 <details>
-<summary><strong>Docker não sobe</strong></summary>
+<summary><strong>Site mostra "sem conexão com o servidor"</strong></summary>
+
+1. Confira se a API está no ar (`/docs` abre?)
+2. Se só acontece com várias telas/consultas ao mesmo tempo, verifique se a versão tem a correção `a1e7976` (conexão SQLite entre threads)
+3. Em "Detalhes técnicos" da mensagem aparece a rota que falhou; com um `codigo`, procure-o no log da API
+
+</details>
+
+<details>
+<summary><strong>SELIC não veio sozinha na tela do SR</strong></summary>
+
+1. Trimestre ainda aberto: a SELIC só fecha no último dia do trimestre — a tela avisa a data
+2. "Não foi possível buscar a SELIC no Banco Central": o site do BC não respondeu; clique em "Tentar de novo" ou digite à mão
+3. Campo já preenchido não é trocado sozinho; use "Usar a SELIC do Banco Central" se a tela apontar diferença
+
+</details>
+
+<details>
+<summary><strong>Docker não sobe (stack antiga)</strong></summary>
 
 1. Verifique se o Docker Desktop está rodando
 2. Libere as portas `5432` e `8080`
@@ -643,6 +737,9 @@ python -m pytest -m integration
    test(consolidacao): cobrir cenário de exclusão em cascata
    ```
 5. Abra um Pull Request com contexto funcional e técnico
+6. Ao juntar na `main`, o Railway publica sozinho: faça backup do volume antes (Railway → Volumes → Backups)
+
+> As specs (BMAD) de cada história ficam anexadas ao cartão correspondente no Trello do projeto.
 
 ---
 
@@ -656,6 +753,8 @@ python -m pytest -m integration
 
   ![Python](https://img.shields.io/badge/feito_com-Python-3776AB?style=flat-square&logo=python&logoColor=white)
   &nbsp;
-  ![Windows](https://img.shields.io/badge/plataforma-Windows-0078D6?style=flat-square&logo=windows&logoColor=white)
+  ![Windows](https://img.shields.io/badge/desktop-Windows-0078D6?style=flat-square&logo=windows&logoColor=white)
+  &nbsp;
+  ![Web](https://img.shields.io/badge/web-Railway_+_Vercel-0B0D0E?style=flat-square&logo=railway&logoColor=white)
 
 </div>
