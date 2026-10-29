@@ -1,0 +1,907 @@
+{
+ "quando": "2026-10-29T10:31:42",
+ "passos": [
+  {
+   "tipo": "mover",
+   "de": "RPV - Recuperação do Preço de Venda/CGR/06 jun",
+   "para": "RPV - Recuperação do Preço de Venda/CGR/06 jun-26 NFs",
+   "motivo": "1. NFs de junho: falta o ano no nome"
+  },
+  {
+   "tipo": "mover",
+   "de": "RPV - Recuperação do Preço de Venda/CGR/09 -nf",
+   "para": "RPV - Recuperação do Preço de Venda/CGR/09 set-26 NFs",
+   "motivo": "2. NFs de setembro sem mês no nome"
+  },
+  {
+   "tipo": "mover",
+   "de": "RPV - Recuperação do Preço de Venda/CGR/57. Setembro 2026",
+   "para": "_substituídos (cópias e originais)/duplicados/CGR - 57. Setembro 2026",
+   "motivo": "3. Cópia idêntica de 09 -nf"
+  },
+  {
+   "tipo": "mover",
+   "de": "RP - Recuperação de Penalidades/abr-26/07 jul-26 NFs.zip",
+   "para": "_substituídos (cópias e originais)/zips originais/07 jul-26 NFs.zip",
+   "motivo": "4. Zip com o mês de julho inteiro estava no RP de abril (extraído por etapa abaixo)"
+  },
+  {
+   "tipo": "mover",
+   "de": "RP - Recuperação de Penalidades/abr-26/09 Set-26 NFs.zip",
+   "para": "RPV - Recuperação do Preço de Venda/CGR/09 set-26 NFs.zip",
+   "motivo": "5. Zip das NFs de setembro estava no RP de abril"
+  },
+  {
+   "tipo": "mover",
+   "de": "RPV - Recuperação do Preço de Venda/CGR/56. Agosto 2026",
+   "para": "RP - Recuperação de Penalidades/ago-26",
+   "motivo": "6. Penalidades de agosto estavam no CGR"
+  },
+  {
+   "tipo": "mover",
+   "de": "RPV - Recuperação do Preço de Venda/CGF/total mensal 04-2026 CGR.zip",
+   "para": "RPV - Recuperação do Preço de Venda/CGF/total mensal 04-2026.zip",
+   "motivo": "7. Zip do CGF de abril com nome confuso"
+  },
+  {
+   "tipo": "mover",
+   "de": "RPV - Recuperação do Preço de Venda/CGF/total mensal 05-2026 CGR.zip",
+   "para": "RPV - Recuperação do Preço de Venda/CGF/total mensal 05-2026.zip",
+   "motivo": "7. Zip do CGF de maio com nome confuso"
+  },
+  {
+   "tipo": "mover",
+   "de": "RP - Recuperação de Penalidades/abr-26/Conta Gráfica e Apuração de Custos (até set26) corrigida20.10.26.xlsx",
+   "para": "_Referências/Conta Gráfica e Apuração de Custos (até set26) corrigida20.10.26.xlsx",
+   "motivo": "+. Documento de trabalho, não é dado de abril"
+  },
+  {
+   "tipo": "mover",
+   "de": "RP - Recuperação de Penalidades/abr-26/Excel_Final_ContaGrafica_Geral.xlsx",
+   "para": "_Referências/Excel_Final_ContaGrafica_Geral.xlsx",
+   "motivo": "+. Documento de trabalho, não é dado de abril"
+  },
+  {
+   "tipo": "mover",
+   "de": "RP - Recuperação de Penalidades/abr-26/Novo modelo Alexandre Conta gráfica  - Calculador - rev9 - com cálculo da PR e PMPV.xlsx",
+   "para": "_Referências/Novo modelo Alexandre Conta gráfica  - Calculador - rev9 - com cálculo da PR e PMPV.xlsx",
+   "motivo": "+. Documento de trabalho, não é dado de abril"
+  },
+  {
+   "tipo": "mover",
+   "de": "RP - Recuperação de Penalidades/abr-26/NT_15_2026 -DadosNT-Repasse_Copergas AGO-OUT-2026 - 29jul26.xlsx",
+   "para": "_Referências/NT_15_2026 -DadosNT-Repasse_Copergas AGO-OUT-2026 - 29jul26.xlsx",
+   "motivo": "+. Documento de trabalho, não é dado de abril"
+  },
+  {
+   "tipo": "mover",
+   "de": "RP - Recuperação de Penalidades/abr-26/NT_15_2026-Repasse_Copergas AGO-OUT-2026 - 30jul26.docx",
+   "para": "_Referências/NT_15_2026-Repasse_Copergas AGO-OUT-2026 - 30jul26.docx",
+   "motivo": "+. Documento de trabalho, não é dado de abril"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RET - Recuperação de Encargos de Transporte/RET-jan-mar-26/EAT 07 jul26/COPERGÁS_CPA1377PE1-S2026-COM_CONGEST_543350.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RET - Recuperação de Encargos de Transporte/RET-jan-mar-26/EAT 07 jul26/COPERGÁS_CPA1378PE2-S2026-COM_CONGEST_543347.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RET - Recuperação de Encargos de Transporte/RET-jan-mar-26/EAT 07 jul26/COPERGÁS_CPA1378PE2-S2026-COM_SOP_545234.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RET - Recuperação de Encargos de Transporte/RET-jan-mar-26/EAT 07 jul26/ND 190-2026 - COPERGAS - Ref 06-2026.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RET - Recuperação de Encargos de Transporte/RET-jan-mar-26/EAT 07 jul26/ND 90014427 - COPERGAS.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Brava/NF 724.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/ENEVA/26260704423567002760550010000000781292918419-nfe-ret.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/ENEVA/26260704423567002841550010000000361235798747-nfe-ret.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/ENEVA/DANFE 36.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/ENEVA/DANFE 78.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GALP/33260816974249000138550020000016871278049037-procNFe.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GALP/33260816974249000138550020000016871278049037.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/GNLINK - Devolução.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_206_COPERGAS - CONSUMIDA.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_206_COPERGAS - CONSUMIDA.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_373_COPERGÁS - CONSUMIDA.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_373_COPERGÁS - CONSUMIDA.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_386_COPERGÁS - EM CONSUMO.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_386_COPERGÁS - EM CONSUMO.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_399_COPERGAS - A CONSUMIR EM AGOSTO.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/GNLINK/NF_399_COPERGAS - A CONSUMIR EM AGOSTO.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/NF 724.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Orizon/26260849909303000110550010000001771368311465.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Orizon/DANFE 177 - COMPANHIA PERNAMBUCANA DE GAS COPERGAS_1170.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Petrobras/000012729 NF.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Petrobras/000012730 NF.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Petrobras/000436444 NF.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Petrobras/000436445 NF.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Petrobras/000436446 NF.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/PetroReconcavo/24260703342704000483550010000106861444937854-nfe.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/PetroReconcavo/24260703342704000483550010000106871600551293-nfe.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/PetroReconcavo/NF 10686 - COPERGAS.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/PetroReconcavo/NF 10687 - COPERGAS.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/Sergás/28260786809043000138550550001407311000000015.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15635_32260806248349000476570010000156351074929687.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15636_32260806248349000476570010000156361941445382.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15639_32260806248349000476570010000156391708117833.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15640_32260806248349000476570010000156401387730928.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15641_32260806248349000476570010000156411978824450.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15642_32260806248349000476570010000156421557315572.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15643_32260806248349000476570010000156431864210252.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15644_32260806248349000476570010000156441295085405.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15649_32260806248349000476570010000156491705703371.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15656_32260806248349000476570010000156561658927714.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15657_32260806248349000476570010000156571603570390.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15658_32260806248349000476570010000156581585233747.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15661_32260806248349000476570010000156611853407759.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_15666_32260806248349000476570010000156661958558230.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38936_33260806248349000204570010000389361732698236.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38937_33260806248349000204570010000389371894743544.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38943_33260806248349000204570010000389431960186803.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38944_33260806248349000204570010000389441875597729.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38945_33260806248349000204570010000389451404976603.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38946_33260806248349000204570010000389461932846502.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38947_33260806248349000204570010000389471087713432.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38948_33260806248349000204570010000389481239512423.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38949_33260806248349000204570010000389491858410760.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38953_33260806248349000204570010000389531526381177.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38954_33260806248349000204570010000389541367457546.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38955_33260806248349000204570010000389551508848250.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38960_33260806248349000204570010000389601094326602.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38961_33260806248349000204570010000389611807742515.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38962_33260806248349000204570010000389621135245177.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38965_33260806248349000204570010000389651587071098.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38966_33260806248349000204570010000389661000620246.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38973_33260806248349000204570010000389731020663328.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38978_33260806248349000204570010000389781467453145.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38979_33260806248349000204570010000389791622332196.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38980_33260806248349000204570010000389801148620387.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38981_33260806248349000204570010000389811476167007.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38982_33260806248349000204570010000389821934787895.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_38983_33260806248349000204570010000389831637460228.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4489_29260806248349001367570010000044891914681510.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4490_29260806248349001367570010000044901329352622.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4491_29260806248349001367570010000044911851617257.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4492_29260806248349001367570010000044921748032532.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4493_29260806248349001367570010000044931594172213.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4494_29260806248349001367570010000044941486696921.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4495_29260806248349001367570010000044951799937895.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4496_29260806248349001367570010000044961786746473.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4497_29260806248349001367570010000044971552751982.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4498_29260806248349001367570010000044981186213037.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4499_29260806248349001367570010000044991881910970.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_4500_29260806248349001367570010000045001955594890.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5832_29260806248349003815570010000058321825523267.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5833_29260806248349003815570010000058331969681592.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5834_29260806248349003815570010000058341406869770.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5835_29260806248349003815570010000058351543878019.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5836_29260806248349003815570010000058361890373036.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5837_29260806248349003815570010000058371246567030.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5838_29260806248349003815570010000058381526589260.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5839_29260806248349003815570010000058391129033084.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5840_29260806248349003815570010000058401896702646.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_5841_29260806248349003815570010000058411530282004.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9944_24260806248349001600570010000099441437285648.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9945_24260806248349001600570010000099451379199699.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9946_24260806248349001600570010000099461732790808.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9947_24260806248349001600570010000099471248261034.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9948_24260806248349001600570010000099481379770622.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9949_24260806248349001600570010000099491379679754.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9950_24260806248349001600570010000099501884627430.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9951_24260806248349001600570010000099511019368356.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9952_24260806248349001600570010000099521896282918.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9953_24260806248349001600570010000099531810477992.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9954_24260806248349001600570010000099541291468146.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/01025250001001_NF_9955_24260806248349001600570010000099551881894833.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15635_32260806248349000476570010000156351074929687.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15636_32260806248349000476570010000156361941445382.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15639_32260806248349000476570010000156391708117833.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15640_32260806248349000476570010000156401387730928.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15641_32260806248349000476570010000156411978824450.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15642_32260806248349000476570010000156421557315572.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15643_32260806248349000476570010000156431864210252.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15644_32260806248349000476570010000156441295085405.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15649_32260806248349000476570010000156491705703371.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15656_32260806248349000476570010000156561658927714.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15657_32260806248349000476570010000156571603570390.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15658_32260806248349000476570010000156581585233747.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15661_32260806248349000476570010000156611853407759.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_15666_32260806248349000476570010000156661958558230.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38936_33260806248349000204570010000389361732698236.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38937_33260806248349000204570010000389371894743544.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38943_33260806248349000204570010000389431960186803.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38944_33260806248349000204570010000389441875597729.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38945_33260806248349000204570010000389451404976603.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38946_33260806248349000204570010000389461932846502.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38947_33260806248349000204570010000389471087713432.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38948_33260806248349000204570010000389481239512423.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38949_33260806248349000204570010000389491858410760.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38953_33260806248349000204570010000389531526381177.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38954_33260806248349000204570010000389541367457546.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38955_33260806248349000204570010000389551508848250.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38960_33260806248349000204570010000389601094326602.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38961_33260806248349000204570010000389611807742515.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38962_33260806248349000204570010000389621135245177.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38965_33260806248349000204570010000389651587071098.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38966_33260806248349000204570010000389661000620246.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38973_33260806248349000204570010000389731020663328.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38978_33260806248349000204570010000389781467453145.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38979_33260806248349000204570010000389791622332196.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38980_33260806248349000204570010000389801148620387.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38981_33260806248349000204570010000389811476167007.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38982_33260806248349000204570010000389821934787895.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_38983_33260806248349000204570010000389831637460228.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4489_29260806248349001367570010000044891914681510.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4490_29260806248349001367570010000044901329352622.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4491_29260806248349001367570010000044911851617257.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4492_29260806248349001367570010000044921748032532.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4493_29260806248349001367570010000044931594172213.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4494_29260806248349001367570010000044941486696921.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4495_29260806248349001367570010000044951799937895.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4496_29260806248349001367570010000044961786746473.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4497_29260806248349001367570010000044971552751982.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4498_29260806248349001367570010000044981186213037.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4499_29260806248349001367570010000044991881910970.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_4500_29260806248349001367570010000045001955594890.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5832_29260806248349003815570010000058321825523267.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5833_29260806248349003815570010000058331969681592.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5834_29260806248349003815570010000058341406869770.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5835_29260806248349003815570010000058351543878019.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5836_29260806248349003815570010000058361890373036.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5837_29260806248349003815570010000058371246567030.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5838_29260806248349003815570010000058381526589260.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5839_29260806248349003815570010000058391129033084.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5840_29260806248349003815570010000058401896702646.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_5841_29260806248349003815570010000058411530282004.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9944_24260806248349001600570010000099441437285648.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9945_24260806248349001600570010000099451379199699.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9946_24260806248349001600570010000099461732790808.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9947_24260806248349001600570010000099471248261034.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9948_24260806248349001600570010000099481379770622.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9949_24260806248349001600570010000099491379679754.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9950_24260806248349001600570010000099501884627430.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9951_24260806248349001600570010000099511019368356.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9952_24260806248349001600570010000099521896282918.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9953_24260806248349001600570010000099531810477992.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9954_24260806248349001600570010000099541291468146.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RPV - Recuperação do Preço de Venda/CGR/07 jul-26 NFs/TAG/CTE_XML/01025250001001_NF_9955_24260806248349001600570010000099551881894833.xml"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Despesa)/COPERGÁS_CPA1377PE1-S2026-COM_VARIAÇÃO_544199.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Despesa)/COPERGÁS_CPA1378PE2-S2026-COM_VARIAÇÃO_544200.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Despesa)/ND 90014427 - COPERGAS.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Despesa)/ND Petrolina_Penalidade QDC a menor & a maior - .pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/ALPEK - NDPFP04067.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/ALPEK - TOP - 4492_4331 - NREC.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/AMBEV - NDPFP04058.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/CBA - NDPFP04059.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/CERVEJARIA PETROPOLIS - NDPFP04060.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/DURATEX (DEXCO) - NDPFP04061.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/Emissão de NC Copergás Petrolina falha de fornecimento.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/Estorno de PFP contabilizada em Junho.2026 - (CBVP NDPFP04028 (CANCELADO)).pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/FIAT (STELLANTIS AUTOMOVEIS) - NDPFP04062.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/GERDAU - NDPFP04064.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/INDORAMA (M&G POLÍMEROS) - NDPFP04066.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/INDORAMA FIBRAS - NDPFP04065.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/INGREDION - NDPFP04068.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/KLABIN - TOP - 4490_4329 - NREC.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/KLABIN S.A - NDPFP04070.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/MDIAS BRANCO - NDPFP04072.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/MONDELEZ - NDPFP04075.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/NISSIN - NDPFP04074.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/NISSIN - TOP.NREC - 4518_4333.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/ORIZON BIOMETANO - 05 2026 - ND04053.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/ORIZON BIOMETANO - 06 2026 - ND04054.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/OWENS - NDPFP04071.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/OWENS VITÓRIA - NDPFP04073.pdf"
+  },
+  {
+   "tipo": "extraido",
+   "arquivo": "RP - Recuperação de Penalidades/jul-26/Penalidade (Receita)/VETRUS - NDPFP04069.pdf"
+  }
+ ]
+}
