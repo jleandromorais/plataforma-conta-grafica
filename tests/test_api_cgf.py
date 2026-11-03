@@ -220,3 +220,34 @@ def test_cgf_usa_pmpv_com_4_casas_como_o_desktop(client):
     pmpv_banco = 2.282982647346896
     cgf = client.post("/api/cgf/salvar", json={**payload, "periodo": "Mai/2026", "pmpv": pmpv_banco}).json()["cgf_rs"]
     assert cgf == pytest.approx(r["volume_final"] * float(f"{pmpv_banco:.4f}"))
+
+
+# CGF da planilha oficial (rev9 do Alexandre, aba BASE): volume final com 2 casas
+# × PMPV com 4 casas. Jun, Ago e Set ficavam 1 centavo fora com o volume bruto.
+PLANILHA_REV9 = [
+    ("Jan/2026", 41805735.0, 2.1154, 88435851.82),
+    ("Fev/2026", 39940613.0, 1.9988, 79833297.26),
+    ("Mar/2026", 44979282.33039879, 1.9988, 89904589.52),
+    ("Abr/2026", 42078110.63, 1.9988, 84105727.53),
+    ("Mai/2026", 45564265.79, 2.283, 104023218.80),
+    ("Jun/2026", 43730399.2768, 2.283, 99836501.56),   # volume bruto, com 4 casas
+    ("Jul/2026", 43909249.06, 2.283, 100244815.60),
+    ("Ago/2026", 43947586.6, 2.3597, 103703120.10),
+    ("Set/2026", 39419521.7549, 2.3597, 93018245.47),  # volume bruto, com 4 casas
+]
+
+
+@pytest.mark.parametrize("periodo,volume,pmpv,esperado", PLANILHA_REV9)
+def test_calcular_cgf_rs_bate_com_a_planilha(periodo, volume, pmpv, esperado):
+    r = ServicosCGF().calcular_cgf_rs(periodo, volume, pmpv)
+    assert round(r["cgf_rs"], 2) == esperado
+    assert r["volume_final"] == round(volume, 2)
+
+
+def test_salvar_arredonda_volume_como_a_planilha(client):
+    payload = {"volume_faturado": 43731032.0, "volume_canceladas": 0.0, "volume_devolucoes": 632.7232,
+               "volume_consumo_proprio": 0.0, "volume_final": 43730399.2768}
+    r = client.post("/api/cgf/salvar", json={**payload, "periodo": "Jun/2026", "pmpv": 2.283}).json()
+    assert round(r["cgf_rs"], 2) == 99836501.56
+    resumo = next(h for h in client.get("/api/cgf/historico").json() if h["periodo"] == "Jun/2026")
+    assert resumo["volume_final"] == 43730399.28
