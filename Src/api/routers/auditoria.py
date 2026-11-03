@@ -21,6 +21,7 @@ from Src.api.schemas.comum import ProblemaArquivo
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_arquivo, gravar_envio
 from Src.api.schemas.auditoria import (
     ComparacaoAuditoria,
+    DiferencasAuditoriaResponse,
     HistoricoAuditoriaLinha,
     ItemAuditoria,
     ProcessarAuditoriaResponse,
@@ -29,6 +30,7 @@ from Src.api.schemas.auditoria import (
     TotaisAuditoria,
 )
 from Src.Services import servicos_auditoria_lote as lote
+from Src.Services.diferencas_auditoria import comparar_com_gravado
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_auditoria import XMLItem
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
@@ -158,6 +160,20 @@ def salvar(payload: SalvarAuditoriaRequest) -> SalvarAuditoriaResponse:
     if not is_periodo_valido(payload.periodo):
         raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
     return SalvarAuditoriaResponse(**lote.salvar(payload.periodo, [_item_da_api(i) for i in payload.itens]))
+
+
+@router.post("/diferencas", response_model=DiferencasAuditoriaResponse)
+def diferencas(payload: SalvarAuditoriaRequest) -> DiferencasAuditoriaResponse:
+    """Onde as notas recém-auditadas diferem das gravadas no mês. Não grava nada."""
+    if not is_periodo_valido(payload.periodo):
+        raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
+    from Src.Database.database import DatabasePMPV
+
+    with DatabasePMPV() as db:
+        gravados = db.listar_auditoria_itens(payload.periodo) or []
+        cgr = (db.buscar_consolidacao(payload.periodo) or {}).get("cgr")
+    itens = [_item_da_api(i) for i in payload.itens]
+    return DiferencasAuditoriaResponse(**comparar_com_gravado(itens, gravados, float(cgr) if cgr is not None else None))
 
 
 @router.post("/relatorio")
