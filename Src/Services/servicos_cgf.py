@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 from Src.Database.database import DatabasePMPV
 from Src.common.periodos import is_periodo_valido
-from Src.common.precisao import arredondar_tarifa
+from Src.common.precisao import arredondar_tarifa, arredondar_volume
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePMPVRepository
 
@@ -308,9 +308,10 @@ class ServicosCGF:
             valor = self.buscar_pmpv(periodo) or 0.0
             origem = "banco" if valor > 0 else "ausente"
         valor = arredondar_tarifa(valor) if valor > 0 else 0.0
-        cgf_rs = float(volume_final) * valor if valor > 0 else None
+        volume_final = arredondar_volume(volume_final)
+        cgf_rs = volume_final * valor if valor > 0 else None
         return {"periodo": periodo, "pmpv": valor, "pmpv_origem": origem,
-                "volume_final": float(volume_final), "cgf_rs": cgf_rs}
+                "volume_final": volume_final, "cgf_rs": cgf_rs}
 
     def salvar_com_pmpv(self, periodo: str, resumo: dict, pmpv: float) -> dict:
         """Grava o CGF em R$ (volume final × PMPV) e o resumo de volumes.
@@ -322,7 +323,7 @@ class ServicosCGF:
             raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
         if not pmpv or pmpv <= 0:
             raise ValueError(f"Sem PMPV para {periodo}: calcule e salve o PMPV antes de salvar o CGF.")
-        volume_final = float(resumo.get("volume_final") or 0.0)
+        volume_final = arredondar_volume(resumo.get("volume_final"))
         if volume_final == 0.0:
             raise ValueError("Volume final zerado: processe as planilhas de NF antes de salvar.")
         # PMPV com 4 casas, como a tela desktop (e o histórico gravado) usa.

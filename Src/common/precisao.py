@@ -12,3 +12,12 @@ CASAS_TARIFA = 4
 def arredondar_tarifa(valor: float) -> float:
     """PMPV/PR (R$/m³) na precisão usada nos cálculos: 4 casas."""
     return round(float(valor or 0.0), CASAS_TARIFA)
+
+
+CASAS_VOLUME = 2
+
+
+def arredondar_volume(valor: float) -> float:
+    """Volume final (m³) com 2 casas, como a planilha oficial (rev9) multiplica
+    pelo PMPV. Com todas as casas, Jun/Ago/Set de 2026 saíam 1 centavo fora."""
+    return round(float(valor or 0.0), CASAS_VOLUME)
