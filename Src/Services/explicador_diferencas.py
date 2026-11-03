@@ -27,8 +27,14 @@ def n(v: float, casas: int = 0) -> str:
     return f"{v:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+MENOS = "−"  # sinal de menos tipográfico: não quebra de linha antes do número
+
+
 def brl(v: float) -> str:
-    return f"{'-' if v < 0 else ''}R$ {n(abs(v), 2)}"
+    """Texto para avisos da tela: "−R$ 1.234,56" com espaço inseparável, para
+    o valor nunca quebrar de linha com o "−" sozinho."""
+    sinal = MENOS if v < 0 else ""
+    return f"{sinal}R$ {n(abs(v), 2)}"
 
 
 def aviso_total(avisos: list[str], fonte: str, auditoria: float, referencia: float | None) -> None:
