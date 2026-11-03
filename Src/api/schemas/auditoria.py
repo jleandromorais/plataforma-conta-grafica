@@ -94,3 +94,32 @@ class HistoricoAuditoriaLinha(BaseModel):
     cgr_gravado: float
     data_atualizacao: str
     periodo_valido: bool = True  # False: período inválido gravado (ex.: "Teste2")
+
+
+class DiferencaNota(BaseModel):
+    empresa: str
+    tipo: str
+    numero: str
+    situacao: str           # "so_no_gravado" | "so_no_processado" | "valor_diferente"
+    gravado: float
+    processado: float
+    diferenca: float
+    ocr: bool
+
+
+class DiferencaEmpresa(BaseModel):
+    empresa: str
+    gravado: float
+    processado: float
+    diferenca: float
+
+
+class DiferencasAuditoriaResponse(BaseModel):
+    tem_notas_gravadas: bool
+    cgr_gravado_notas: float
+    cgr_processado: float
+    diferenca: float
+    por_empresa: list[DiferencaEmpresa]
+    notas: list[DiferencaNota]
+    qtd_notas_diferentes: int
+    resumo: list[str]
