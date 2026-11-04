@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
+from Src.api.schemas.pr import PRAutomatico
 from Src.common.precisao import arredondar_tarifa
 
 
@@ -82,6 +83,7 @@ class SRTrimestreSalvarRequest(BaseModel):
 
 class SRTrimestreSalvarResponse(BaseModel):
     total: float
+    pr_automatico: PRAutomatico | None = None  # PR e PV do trimestre, regravados junto
 
 
 class SRSelicResponse(BaseModel):

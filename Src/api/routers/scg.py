@@ -9,8 +9,10 @@ from Src.api.schemas.scg import (
     SCGComparacao,
     SCGHistoricoLinha,
     SCGPeriodo,
+    SCGSalvoResponse,
     SCGValores,
 )
+from Src.Services import servicos_pr_automatico
 from Src.Services.servicos_scg import ServicosSCG
 from Src.common.periodos import is_periodo_valido
 
@@ -68,16 +70,20 @@ def historico(servico: ServicosSCG = Depends(get_servicos_scg)) -> list[SCGHisto
     ]
 
 
-@router.post("/salvar", response_model=SCGPeriodo)
+@router.post("/salvar", response_model=SCGSalvoResponse)
 def salvar(
     payload: SalvarManualRequest,
     servico: ServicosSCG = Depends(get_servicos_scg),
-) -> SCGPeriodo:
-    """Grava CGR/CGF/RET/RP escolhidos e recalcula RPV e SCG."""
+) -> SCGSalvoResponse:
+    """Grava CGR/CGF/RET/RP escolhidos, recalcula RPV e SCG e regrava o PR e o PV
+    do trimestre que usa este mês (servicos_pr_automatico)."""
     if not is_periodo_valido(payload.periodo):
         raise ValueError(f'O período “{payload.periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     dados = servico.salvar_e_calcular(payload.periodo, payload.cgr, payload.cgf, payload.ret, payload.rp)
-    return SCGPeriodo(periodo=payload.periodo, **{k: dados[k] for k in ("cgr", "cgf", "rpv", "ret", "rp", "scg")})
+    return SCGSalvoResponse(
+        periodo=payload.periodo, **{k: dados[k] for k in ("cgr", "cgf", "rpv", "ret", "rp", "scg")},
+        pr_automatico=servicos_pr_automatico.atualizar_sem_falhar(payload.periodo),
+    )
 
 
 @router.post("/calcular", response_model=SCGPeriodo)
