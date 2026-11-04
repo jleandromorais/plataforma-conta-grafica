@@ -17,7 +17,7 @@ from Src.api.schemas.sr import (
     SRVpVfResponse,
 )
 from Src.application.use_cases.sr_use_cases import SRUseCases
-from Src.Services import servicos_selic
+from Src.Services import servicos_pr_automatico, servicos_selic
 from Src.Services.servicos_sr import ServicosSR
 
 router = APIRouter(prefix="/sr", tags=["SR"])
@@ -75,7 +75,9 @@ def salvar_trimestre(
         payload.periodo_referencia,
         [l.model_dump() for l in payload.linhas],
     )
-    return SRTrimestreSalvarResponse(total=total)
+    # O PR (e o PV) do trimestre usa este SR: regrava junto.
+    pr = servicos_pr_automatico.atualizar_sem_falhar(payload.labels_meses[0]) if payload.labels_meses else None
+    return SRTrimestreSalvarResponse(total=total, pr_automatico=pr)
 
 
 @router.get("/selic", response_model=SRSelicResponse)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.pr import PRAutomatico
+
 
 class SCGPeriodo(BaseModel):
     periodo: str
@@ -11,6 +13,10 @@ class SCGPeriodo(BaseModel):
     ret: float
     rp: float
     scg: float
+
+
+class SCGSalvoResponse(SCGPeriodo):
+    pr_automatico: PRAutomatico  # PR e PV do trimestre, regravados junto
 
 
 class SalvarManualRequest(BaseModel):
