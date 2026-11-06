@@ -20,6 +20,7 @@ from Src.api.schemas.ret import (
 )
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
+from Src.Services import servicos_pr_automatico
 from Src.Services import servicos_ret_lote as lote_ret
 from Src.Services.servicos_ret import PIS_COFINS_RATE, RegrasRET
 
@@ -73,7 +74,10 @@ def salvar(payload: SalvarRETRequest) -> list[RETSalvo]:
         raise ValueError("Não há documentos na lista para salvar. Processe a pasta do mês primeiro.")
     docs = [d.model_dump() for d in payload.documentos]
     grupos = lote_ret.agrupar_por_mes(docs, periodo_padrao=payload.periodo_padrao)
-    return [RETSalvo(**s) for s in lote_ret.salvar_meses(grupos)]
+    salvos = lote_ret.salvar_meses(grupos)
+    # O RET mudou o SCG de cada mês salvo: o PR e o PV que os usam são regravados (em silêncio).
+    servicos_pr_automatico.atualizar_dos_meses([s["periodo"] for s in salvos])
+    return [RETSalvo(**s) for s in salvos]
 
 
 @router.get("/historico", response_model=list[HistoricoRETLinha])

@@ -18,6 +18,7 @@ from Src.api.schemas.cgf import (
     CGFSalvarResponse,
 )
 from Src.api.schemas.comum import ProblemaArquivo
+from Src.Services import servicos_pr_automatico
 from Src.Services.servicos_cgf import ServicosCGF
 
 router = APIRouter(prefix="/cgf", tags=["CGF"])
@@ -88,7 +89,10 @@ def calcular_rs(payload: CGFCalcularRSRequest) -> CGFCalcularRSResponse:
 @router.post("/salvar", response_model=CGFSalvarResponse)
 def salvar(payload: CGFSalvarRequest) -> CGFSalvarResponse:
     """Grava CGF em R$ (volume final × PMPV) e o resumo de volumes. Exige PMPV."""
-    return CGFSalvarResponse(**ServicosCGF().salvar_com_pmpv(payload.periodo, payload.model_dump(), payload.pmpv))
+    salvo = ServicosCGF().salvar_com_pmpv(payload.periodo, payload.model_dump(), payload.pmpv)
+    # O CGF mudou o RPV e o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
+    servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
+    return CGFSalvarResponse(**salvo)
 
 
 @router.get("/historico", response_model=list[CGFHistoricoLinha])
