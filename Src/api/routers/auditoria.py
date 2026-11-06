@@ -30,6 +30,7 @@ from Src.api.schemas.auditoria import (
     TotaisAuditoria,
 )
 from Src.Services import servicos_auditoria_lote as lote
+from Src.Services import servicos_pr_automatico
 from Src.Services.diferencas_auditoria import comparar_com_gravado
 from Src.Services.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_auditoria import XMLItem
@@ -159,7 +160,10 @@ def salvar(payload: SalvarAuditoriaRequest) -> SalvarAuditoriaResponse:
     """Grava o CGR (recalculado aqui a partir das notas) e os itens do período."""
     if not is_periodo_valido(payload.periodo):
         raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
-    return SalvarAuditoriaResponse(**lote.salvar(payload.periodo, [_item_da_api(i) for i in payload.itens]))
+    salvo = lote.salvar(payload.periodo, [_item_da_api(i) for i in payload.itens])
+    # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
+    servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
+    return SalvarAuditoriaResponse(**salvo)
 
 
 @router.post("/diferencas", response_model=DiferencasAuditoriaResponse)

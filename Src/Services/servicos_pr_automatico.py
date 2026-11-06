@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 
-from Src.common.periodos import periodos_do_trimestre
+from Src.common.periodos import is_periodo_valido, normalizar_periodo, periodos_do_trimestre
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
 from Src.Services.servicos_pr import ServicosPR
 from Src.Services.servicos_pv import ServicosPV
@@ -117,6 +117,22 @@ def atualizar_sem_falhar(periodo: str) -> dict:
         motivo = str(exc) if isinstance(exc, ValueError) else "erro inesperado (veja o log da API)"
         return {"meses_pr": [], "atualizado": False, "pr_antes": None, "pr": None, "pv_antes": None, "pv": None,
                 "pendencias": [f"Não foi possível atualizar o PR e o PV: {motivo}. Salve pela tela do PR."]}
+
+
+def atualizar_dos_meses(periodos: list[str]) -> list[dict]:
+    """PR e PV depois de salvar Auditoria, CGF, RET ou RP de `periodos`.
+
+    Esses módulos mudam o SCG da consolidação, e o PR sai dele: sem isto, o PR e o PV
+    gravados ficam velhos até alguém salvar o SCG ou o SR de novo. Meses do mesmo
+    trimestre civil valem uma atualização só; período inválido é ignorado (o próprio
+    "salvar" já recusa). Nunca levanta erro: o que não deu vira pendência na resposta."""
+    por_trimestre: dict[str, str] = {}
+    for periodo in periodos:
+        if not periodo or not is_periodo_valido(periodo):
+            continue
+        canonico = normalizar_periodo(periodo)
+        por_trimestre.setdefault(meses_do_pr_do_civil(canonico)[0], canonico)
+    return [atualizar_sem_falhar(p) for p in por_trimestre.values()]
 
 
 def atualizar_pv(periodos: list[str], repo: SqlitePRRepository | None = None) -> list[dict]:
