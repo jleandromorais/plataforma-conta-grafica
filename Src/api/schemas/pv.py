@@ -50,3 +50,12 @@ class PVTrimestreSalvarRequest(BaseModel):
 class PVTrimestreSalvarResponse(BaseModel):
     pv: float
     gravado_em: list[str]   # chave do trimestre + os 3 meses
+
+
+class PVAutomatico(BaseModel):
+    """PV regravado ao salvar o PMPV ou o PR (servicos_pr_automatico.atualizar_pv)."""
+    trimestre: str               # "Nov - Jan/2026" (ano do 1º mês); "" se deu erro inesperado
+    atualizado: bool             # False = nada gravado; ver `pendencias`
+    pv_antes: float | None       # PV que estava salvo antes (None = nunca salvo)
+    pv: float | None             # PV novo gravado (None = não gravou)
+    pendencias: list[str] = []

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.pv import PVAutomatico
+
 
 class PRResultado(BaseModel):
     periodo: str | None = None
@@ -24,6 +26,7 @@ class PRSalvarRequest(BaseModel):
 
 class PRSalvarResponse(BaseModel):
     pr: float
+    pv_automatico: PVAutomatico | None = None  # PV do mesmo trimestre, regravado junto
 
 
 class PRSrAnterior(BaseModel):

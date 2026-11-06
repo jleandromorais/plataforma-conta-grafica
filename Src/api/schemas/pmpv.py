@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from Src.api.schemas.pv import PVAutomatico
+
 
 class CalcularPMPVRequest(BaseModel):
     dados_extraidos: dict[str, Any]
@@ -39,6 +41,7 @@ class ImportarMemoriaResponse(BaseModel):
 
 class SalvarPMPVResponse(BaseModel):
     sessao_id: int
+    pv_automatico: list[PVAutomatico] = []  # PV dos trimestres desses meses, regravado junto
 
 
 class PMPVHistoricoLinha(BaseModel):

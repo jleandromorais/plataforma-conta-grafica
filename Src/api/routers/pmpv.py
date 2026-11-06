@@ -19,6 +19,7 @@ from Src.api.schemas.pmpv import (
     TrimestreAtivoResponse,
 )
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
+from Src.Services.servicos_pr_automatico import atualizar_pv_sem_falhar
 
 router = APIRouter(prefix="/pmpv", tags=["PMPV"])
 
@@ -45,7 +46,9 @@ def salvar(
         resultado=payload.resultado,
         periodos=payload.periodos,
     )
-    return SalvarPMPVResponse(sessao_id=sessao_id)
+    # O PMPV mensal já foi gravado (commit): refaz o PV dos trimestres desses meses com o PR salvo.
+    pv = atualizar_pv_sem_falhar(payload.periodos) if payload.periodos else []
+    return SalvarPMPVResponse(sessao_id=sessao_id, pv_automatico=pv)
 
 
 @router.get("/mensal/{periodo:path}", response_model=PMPVMensalResponse)
@@ -64,6 +67,7 @@ def salvar_mensal(
     uc: PMPVUseCases = Depends(get_pmpv_use_cases),
 ) -> None:
     uc.salvar_pmpv_mensal(periodo, payload.pmpv)
+    atualizar_pv_sem_falhar([periodo])  # regrava o PV em silêncio (resposta continua 204)
 
 
 @router.get("/periodos")

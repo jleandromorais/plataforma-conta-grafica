@@ -11,6 +11,7 @@ from Src.api.schemas.pr import (
     PRTrimestralRequest,
 )
 from Src.Services.servicos_pr import ServicosPR
+from Src.Services.servicos_pr_automatico import atualizar_pv_do_pr
 
 router = APIRouter(prefix="/pr", tags=["PR"])
 
@@ -66,4 +67,5 @@ def salvar(
     servico: ServicosPR = Depends(get_servicos_pr),
 ) -> PRSalvarResponse:
     pr = servico.salvar_valores(payload.periodo, payload.scg, payload.sr, payload.vp)
-    return PRSalvarResponse(pr=pr)
+    # PV do mesmo trimestre refeito com o PR recém-salvo (None se a chave não é de trimestre).
+    return PRSalvarResponse(pr=pr, pv_automatico=atualizar_pv_do_pr(payload.periodo))
