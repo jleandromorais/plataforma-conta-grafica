@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 
+from Src.common.periodos import periodos_do_trimestre
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
 from Src.Services.servicos_pr import ServicosPR
 from Src.Services.servicos_pv import ServicosPV
@@ -32,6 +33,43 @@ def meses_do_pr_do_civil(periodo: str) -> list[str]:
     indice = _MESES.index(mes.capitalize())
     fim_do_civil = int(ano) * 12 + indice - indice % 3 + 2
     return [f"{_MESES[(fim_do_civil + k) % 12]}/{(fim_do_civil + k) // 12}" for k in (2, 3, 4)]
+
+
+def _trimestre_do_ciclo(periodo: str) -> tuple[str, int]:
+    """Mês → (rótulo do trimestre do ciclo, ano do 1º mês), a chave do PV.
+    Jan/2027 → ("Nov - Jan", 2026); Dez/2026 → ("Nov - Jan", 2026); Abr/2026 → ("Fev - Abr", 2026)."""
+    mes, ano = periodo.strip().split("/")
+    indice = _MESES.index(mes.capitalize())
+    # Recua até o 1º mês do trimestre do ciclo (Nov, Fev, Mai ou Ago).
+    inicio = int(ano) * 12 + indice - (indice - 1) % 3
+    return _FISCAIS[_MESES[inicio % 12]], inicio // 12
+
+
+def _gravar_pv(repo, label: str, ano_pv: int, pr: float | None = None) -> dict:
+    """Regrava o PV (PMPV + PR) de um trimestre do ciclo. `pr` None = usa o PR SALVO.
+    Devolve {trimestre, atualizado, pv_antes, pv, pendencias}; com pendência nada é gravado."""
+    servico_pv = ServicosPV(repo)
+    trimestre = servico_pv.buscar_trimestre(label, ano_pv)
+    periodos = trimestre["periodos"]
+    resultado = {"trimestre": trimestre["chave"], "atualizado": False,
+                 "pv_antes": trimestre["salvo"]["pv"] if trimestre["salvo"] else None,
+                 "pv": None, "pendencias": []}
+    if pr is None:
+        # Chave do PR: ano do ÚLTIMO mês ("Nov - Jan/2027"), como a tela PR.
+        chave_pr = f"{label}/{periodos[-1].split('/')[1]}"
+        linha = repo.buscar_pr(chave_pr)
+        if not linha or linha.get("pr") is None:
+            resultado["pendencias"].append(
+                f"PV não atualizado: falta o PR salvo de {chave_pr} ({periodos[0]} a {periodos[-1]}).")
+        else:
+            pr = float(linha["pr"])
+    if not trimestre["pmpv"]:
+        resultado["pendencias"].append(f"PV não atualizado: falta o PMPV de {periodos[0]}.")
+    if resultado["pendencias"]:
+        return resultado
+    resultado["pv"] = servico_pv.salvar_trimestre(label, ano_pv, trimestre["pmpv"], pr)["pv"]
+    resultado["atualizado"] = True
+    return resultado
 
 
 def atualizar_do_mes(periodo: str, repo: SqlitePRRepository | None = None) -> dict:
@@ -59,14 +97,10 @@ def atualizar_do_mes(periodo: str, repo: SqlitePRRepository | None = None) -> di
         pr = servico_pr.salvar_valores(chave_pr, apuracao["scg_selic"], apuracao["sr"], apuracao["vp"])
         resultado.update(atualizado=True, pr=pr)
 
-        servico_pv = ServicosPV(repo)
-        ano_pv = int(meses_pr[0].split("/")[1])
-        trimestre = servico_pv.buscar_trimestre(label, ano_pv)
-        resultado["pv_antes"] = trimestre["salvo"]["pv"] if trimestre["salvo"] else None
-        if not trimestre["pmpv"]:
-            resultado["pendencias"].append(f"PV não atualizado: falta o PMPV de {meses_pr[0]}.")
-            return resultado
-        resultado["pv"] = servico_pv.salvar_trimestre(label, ano_pv, trimestre["pmpv"], pr)["pv"]
+        # PV do mesmo trimestre, com o PR que acabou de ser gravado.
+        pv = _gravar_pv(repo, label, int(meses_pr[0].split("/")[1]), pr)
+        resultado.update(pv_antes=pv["pv_antes"], pv=pv["pv"])
+        resultado["pendencias"].extend(pv["pendencias"])
         return resultado
     finally:
         if proprio:
@@ -83,3 +117,42 @@ def atualizar_sem_falhar(periodo: str) -> dict:
         motivo = str(exc) if isinstance(exc, ValueError) else "erro inesperado (veja o log da API)"
         return {"meses_pr": [], "atualizado": False, "pr_antes": None, "pr": None, "pv_antes": None, "pv": None,
                 "pendencias": [f"Não foi possível atualizar o PR e o PV: {motivo}. Salve pela tela do PR."]}
+
+
+def atualizar_pv(periodos: list[str], repo: SqlitePRRepository | None = None) -> list[dict]:
+    """Regrava o PV de cada trimestre do ciclo que contém algum dos `periodos`,
+    usando o PR salvo. Chamado ao salvar o PMPV (ou o PR)."""
+    trimestres: list[tuple[str, int]] = []
+    for periodo in periodos:
+        t = _trimestre_do_ciclo(periodo)
+        if t not in trimestres:  # 3 meses do mesmo trimestre → 1 gravação só
+            trimestres.append(t)
+    proprio = repo is None
+    repo = repo or SqlitePRRepository()
+    try:
+        return [_gravar_pv(repo, label, ano) for label, ano in trimestres]
+    finally:
+        if proprio:
+            repo.fechar()
+
+
+def atualizar_pv_sem_falhar(periodos: list[str]) -> list[dict]:
+    """Como `atualizar_pv`, mas um problema não desfaz o PMPV/PR já salvo: vira pendência."""
+    try:
+        return atualizar_pv(periodos)
+    except Exception as exc:  # noqa: BLE001 — o salvamento principal já aconteceu
+        logger.exception("PV automático falhou para %s", periodos)
+        motivo = str(exc) if isinstance(exc, ValueError) else "erro inesperado (veja o log da API)"
+        return [{"trimestre": "", "atualizado": False, "pv_antes": None, "pv": None,
+                 "pendencias": [f"Não foi possível atualizar o PV de {', '.join(periodos)}: {motivo}. "
+                                "Salve pela tela do PV."]}]
+
+
+def atualizar_pv_do_pr(chave_pr: str) -> dict | None:
+    """Chave do PR ("Nov - Jan/2027", ano do último mês) → regrava o PV desse trimestre.
+    Chave que não é de trimestre do ciclo (ex.: "Jan/2026", formato antigo) → None."""
+    label, _, ano = chave_pr.strip().rpartition("/")
+    if label not in _FISCAIS.values() or not ano.isdigit():
+        return None
+    ano_pv = int(ano) - 1 if label == "Nov - Jan" else int(ano)  # o PV usa o ano do 1º mês
+    return atualizar_pv_sem_falhar(periodos_do_trimestre(label, ano_pv))[0]
