@@ -14,6 +14,7 @@ from Src.api.schemas.ret import (
     DocumentoRET,
     HistoricoRETLinha,
     ProcessarRETResponse,
+    ProvaRealRET,
     RETMes,
     RETSalvo,
     SalvarRETRequest,
@@ -23,6 +24,7 @@ from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services import servicos_pr_automatico
 from Src.Services import servicos_ret_lote as lote_ret
 from Src.Services.servicos_ret import PIS_COFINS_RATE, RegrasRET
+from Src.common.periodos import normalizar_periodo
 
 router = APIRouter(prefix="/ret", tags=["RET"])
 
@@ -78,6 +80,12 @@ def salvar(payload: SalvarRETRequest) -> list[RETSalvo]:
     # O RET mudou o SCG de cada mês salvo: o PR e o PV que os usam são regravados (em silêncio).
     servicos_pr_automatico.atualizar_dos_meses([s["periodo"] for s in salvos])
     return [RETSalvo(**s) for s in salvos]
+
+
+@router.get("/prova-real", response_model=ProvaRealRET)
+def prova_real(periodo: str) -> ProvaRealRET:
+    """A conta do RET gravado do mês, aberta: EAT, PIS/COFINS, EC e RET. NÃO grava nada."""
+    return ProvaRealRET(**lote_ret.prova_real(normalizar_periodo(periodo) or periodo))
 
 
 @router.get("/historico", response_model=list[HistoricoRETLinha])

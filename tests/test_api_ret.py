@@ -77,3 +77,84 @@ def test_pasta_real_do_trimestre_por_mes(client):
     assert client.get("/api/rpv", params={"periodo": "Jan/2026"}).status_code == 200
     hist = {h["periodo"]: h for h in client.get("/api/ret/historico").json()}
     assert hist["Mar/2026"]["ret_gravado"] == pytest.approx(640_451.24, abs=0.01)
+
+
+# ---------------------------------------------------------------- prova real
+
+def _doc(tipo: str, valor: float, empresa: str = "Empresa A", mes: str = "Jan/2026") -> dict:
+    return {"arquivo": f"{tipo}_{empresa}.pdf", "caminho": f"{tipo}/{mes}/a.pdf", "tipo_encargo": tipo,
+            "empresa": empresa, "nota_tipo": "Débito", "numero_nd": "1", "data_vencimento": "",
+            "valor_total": valor, "mes_ref": mes}
+
+
+def _salvar(client, docs):
+    resp = client.post("/api/ret/salvar", json={"documentos": docs})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def test_prova_real_ret_confere_com_o_gravado(client):
+    # Valores fictícios: EAT 100.000 e EC 50.000 → RET = 100.000 × 0,9075 + 50.000 = 140.750
+    _salvar(client, [_doc("EAT", 60_000.0, "Empresa A"), _doc("EAT", 40_000.0, "Empresa B"),
+                     _doc("EC", 50_000.0, "Empresa A")])
+    r = client.get("/api/ret/prova-real", params={"periodo": "Jan/2026"})
+    assert r.status_code == 200, r.text
+    p = r.json()
+    assert p["tem_itens"] is True
+    assert (p["qtd_documentos"], p["qtd_eat"], p["qtd_ec"], p["qtd_outros"]) == (3, 2, 1, 0)
+    assert p["eat_bruto"] == pytest.approx(100_000.0)
+    assert p["pis_cofins_rate"] == pytest.approx(0.0925)
+    assert p["eat_liquido"] == pytest.approx(90_750.0)
+    assert p["ec"] == pytest.approx(50_000.0)
+    assert p["ret_calculado"] == pytest.approx(140_750.0)
+    assert p["ret_gravado"] == pytest.approx(140_750.0)
+    assert p["diferenca"] == pytest.approx(0.0)
+    assert p["confere"] is True
+    assert [(e["empresa"], e["tipo_encargo"], e["qtd"]) for e in p["por_empresa"]] == [
+        ("Empresa A", "EAT", 1), ("Empresa A", "EC", 1), ("Empresa B", "EAT", 1)]
+    assert [e["valor"] for e in p["por_empresa"]] == [60_000.0, 50_000.0, 40_000.0]  # maior primeiro
+    assert p["data_atualizacao"] != ""
+
+
+def test_prova_real_ret_reproduz_jan_2026_so_com_ec(client):
+    # Jan/2026 da planilha oficial: EAT 0,00 + EC = 1.760.685,43
+    _salvar(client, [_doc("EC", 1_000_000.00), _doc("EC", 760_685.43, "Empresa B")])
+    p = client.get("/api/ret/prova-real", params={"periodo": "Jan/2026"}).json()
+    assert p["eat_bruto"] == 0.0
+    assert p["ret_calculado"] == pytest.approx(1_760_685.43, abs=0.01)
+    assert p["confere"] is True
+
+
+def test_prova_real_ret_sem_itens(client):
+    p = client.get("/api/ret/prova-real", params={"periodo": "Fev/2026"}).json()
+    assert p["tem_itens"] is False
+    assert p["confere"] is False
+    assert p["ret_calculado"] is None and p["ret_gravado"] is None and p["diferenca"] is None
+    assert p["por_empresa"] == []
+
+
+def test_prova_real_ret_periodo_invalido_422(client):
+    r = client.get("/api/ret/prova-real", params={"periodo": "Teste2"})
+    assert r.status_code == 422
+    assert "período" in r.json()["detail"]
+
+
+def test_prova_real_ret_gravado_diferente_dos_itens(client, tmp_path):
+    _salvar(client, [_doc("EAT", 100_000.0), _doc("EC", 50_000.0)])
+    with DatabasePMPV(db_path=str(tmp_path / "ret_teste.db")) as db:
+        db.cursor.execute("UPDATE consolidacao SET ret = ? WHERE periodo = ?", (100_000.0, "Jan/2026"))
+        db.conn.commit()
+    p = client.get("/api/ret/prova-real", params={"periodo": "Jan/2026"}).json()
+    assert p["ret_gravado"] == pytest.approx(100_000.0)
+    assert p["diferenca"] == pytest.approx(40_750.0)
+    assert p["confere"] is False
+
+
+def test_prova_real_ret_outros_nao_entram(client):
+    _salvar(client, [_doc("EAT", 100_000.0), _doc("EC", 50_000.0),
+                     _doc("TOP", 9_999.0), _doc("Outros", 777.0), _doc("Penalidades (Receita)", 5_000.0)])
+    p = client.get("/api/ret/prova-real", params={"periodo": "Jan/2026"}).json()
+    assert p["qtd_documentos"] == 5 and p["qtd_outros"] == 3
+    assert p["ret_calculado"] == pytest.approx(140_750.0)
+    assert p["confere"] is True
+    assert {e["tipo_encargo"] for e in p["por_empresa"]} == {"EAT", "EC"}

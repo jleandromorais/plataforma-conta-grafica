@@ -51,6 +51,33 @@ class RETSalvo(BaseModel):
     qtd_documentos: int
 
 
+class ProvaRealEmpresaRET(BaseModel):
+    empresa: str
+    tipo_encargo: str        # "EAT" | "EC"
+    qtd: int
+    valor: float
+
+
+class ProvaRealRET(BaseModel):
+    """A conta do RET gravado do mês refeita com os itens gravados."""
+    periodo: str
+    tem_itens: bool          # False: mês gravado só com o total, sem os itens
+    qtd_documentos: int
+    qtd_eat: int
+    qtd_ec: int
+    qtd_outros: int          # fora de EAT/EC: não entram no RET
+    eat_bruto: float
+    pis_cofins_rate: float
+    eat_liquido: float       # eat_bruto × (1 − taxa)
+    ec: float                # Σ itens EC
+    ret_calculado: float | None = None
+    ret_gravado: float | None = None
+    diferenca: float | None = None
+    confere: bool
+    por_empresa: list[ProvaRealEmpresaRET] = []
+    data_atualizacao: str = ""
+
+
 class HistoricoRETLinha(BaseModel):
     periodo: str
     qtd_documentos: int
