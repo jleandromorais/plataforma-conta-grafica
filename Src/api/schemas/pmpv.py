@@ -54,6 +54,48 @@ class PMPVHistoricoLinha(BaseModel):
     vp: float
 
 
+class ProvaRealEmpresaPMPV(BaseModel):
+    empresa: str
+    molecula: float
+    transporte: float
+    logistica: float
+    preco: float          # molécula + transporte + logística (R$/m³)
+    volume: float         # m³
+    custo: float          # preço × volume (R$)
+
+
+class ProvaRealMesPMPV(BaseModel):
+    mes: int              # 1, 2 ou 3 do trimestre
+    empresas: list[ProvaRealEmpresaPMPV]
+    volume: float
+    custo: float
+    pmpv_do_mes: float
+
+
+class ProvaRealPMPV(BaseModel):
+    """A conta do PMPV de uma sessão salva, refeita com as linhas gravadas (GET /pmpv/prova-real)."""
+    sessao_id: int
+    nome: str
+    data_criacao: str | None
+    tem_linhas: bool                       # False: sessão sem linhas com volume
+    tem_resultado: bool                    # False: sessão sem resultado gravado
+    meses: list[ProvaRealMesPMPV]
+    custo_total_calculado: float | None
+    custo_total_gravado: float | None
+    diferenca_custo: float | None
+    volume_total: float | None             # Σ volume (o VP da sessão)
+    vp_gravado: float | None
+    diferenca_vp: float | None
+    pmpv_calculado: float | None           # Σ(preço × volume) ÷ Σ volume
+    pmpv_gravado: float | None
+    diferenca_pmpv: float | None
+    conta_grafica: float | None            # a gravada: não é recalculada aqui (vem do PR)
+    preco_final_calculado: float | None    # PMPV calculado + Conta Gráfica
+    preco_final_gravado: float | None
+    diferenca_preco_final: float | None
+    confere: bool
+
+
 class PMPVMensalRequest(BaseModel):
     pmpv: float
 

@@ -4,7 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from Src.api.deps import get_pmpv_use_cases
 from Src.api.schemas.pmpv import (
@@ -13,12 +13,14 @@ from Src.api.schemas.pmpv import (
     PMPVHistoricoLinha,
     PMPVMensalRequest,
     PMPVMensalResponse,
+    ProvaRealPMPV,
     SalvarPMPVRequest,
     SalvarPMPVResponse,
     TrimestreAtivoRequest,
     TrimestreAtivoResponse,
 )
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
+from Src.Services.servicos_pmpv import prova_real_sessao
 from Src.Services.servicos_pr_automatico import atualizar_pv_sem_falhar
 
 router = APIRouter(prefix="/pmpv", tags=["PMPV"])
@@ -79,6 +81,15 @@ def listar_periodos(uc: PMPVUseCases = Depends(get_pmpv_use_cases)) -> list:
 def historico(uc: PMPVUseCases = Depends(get_pmpv_use_cases)) -> list[PMPVHistoricoLinha]:
     """Sessões salvas com PMPV, Conta Gráfica, preço final e VP — da mais recente à mais antiga."""
     return [PMPVHistoricoLinha(**h) for h in uc.repo.listar_historico()]
+
+
+@router.get("/prova-real", response_model=ProvaRealPMPV)
+def prova_real(sessao_id: int) -> ProvaRealPMPV:
+    """A conta do PMPV de uma sessão salva, refeita com as linhas gravadas. Não grava nada."""
+    try:
+        return ProvaRealPMPV(**prova_real_sessao(sessao_id))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/trimestre-ativo", response_model=TrimestreAtivoResponse)

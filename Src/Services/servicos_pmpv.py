@@ -225,3 +225,89 @@ class RegrasPMPV:
             'vf_calculo_por_mes': vf_calculo_por_mes,
             'avisos': avisos
         }
+
+
+TOL_PROVA_REAL_PMPV = 0.0001   # R$/m³: o PMPV é gravado com 4 casas
+TOL_PROVA_REAL_RS = 1.0        # R$: custo total
+TOL_PROVA_REAL_M3 = 1.0        # m³: volume prospectivo
+
+
+def prova_real_sessao(sessao_id: int) -> dict:
+    """A conta do PMPV de uma sessão salva, refeita com as linhas gravadas e comparada
+    com o resultado gravado. Não grava nada.
+
+    PMPV = Σ(preço × volume) ÷ Σ volume, com preço = molécula + transporte + logística de
+    cada empresa (mesma regra de `RegrasPMPV.calcular_resultados`; os dias do mês só entram
+    no "volume de cálculo", não no PMPV). Preço final = PMPV + Conta Gráfica (a gravada).
+    Linhas com volume ≤ 0 não entram, como no cálculo.
+    """
+    from Src.Database.database import DatabasePMPV
+
+    with DatabasePMPV() as db:
+        sessao = next((x for x in db.listar_historico_pmpv() if x["id"] == sessao_id), None)
+        if sessao is None:
+            raise LookupError(f"Não encontrei a sessão {sessao_id} do PMPV.")
+        res = db.buscar_resultado_sessao(sessao_id) or {}
+        por_mes = {m: db.carregar_dados_mes(sessao_id, m) for m in (1, 2, 3)}
+
+    custo_total = volume_total = 0.0
+    meses = []
+    for mes, linhas in por_mes.items():
+        empresas, custo_mes, volume_mes = [], 0.0, 0.0
+        for l in linhas:
+            vol = float(l.get("volume") or 0.0)
+            if vol <= 0:
+                continue
+            preco = float(l.get("molecula") or 0.0) + float(l.get("transporte") or 0.0) + float(l.get("logistica") or 0.0)
+            empresas.append({"empresa": l.get("empresa") or "(sem nome)", "molecula": float(l.get("molecula") or 0.0),
+                             "transporte": float(l.get("transporte") or 0.0), "logistica": float(l.get("logistica") or 0.0),
+                             "preco": preco, "volume": vol, "custo": preco * vol})
+            custo_mes += preco * vol
+            volume_mes += vol
+        if empresas:
+            meses.append({"mes": mes, "empresas": empresas, "volume": volume_mes, "custo": custo_mes,
+                          "pmpv_do_mes": custo_mes / volume_mes})
+        custo_total += custo_mes
+        volume_total += volume_mes
+
+    tem_linhas = volume_total > 0
+    tem_resultado = bool(res)
+    pmpv_calc = custo_total / volume_total if tem_linhas else None
+    pmpv_grav = float(res["pmpv_trimestral"]) if tem_resultado and res.get("pmpv_trimestral") is not None else None
+    cg = float(res["conta_grafica"]) if tem_resultado and res.get("conta_grafica") is not None else None
+    final_calc = pmpv_calc + cg if pmpv_calc is not None and cg is not None else None
+    final_grav = float(res["preco_final"]) if tem_resultado and res.get("preco_final") is not None else None
+    custo_grav = float(res["custo_total"]) if tem_resultado and res.get("custo_total") is not None else None
+    vp_grav = float(res["vp_total"]) if tem_resultado and res.get("vp_total") is not None else None
+
+    def dif(a, b):
+        return a - b if a is not None and b is not None else None
+
+    def ok(d, tol):
+        return d is not None and abs(d) <= tol
+
+    d_pmpv, d_final = dif(pmpv_calc, pmpv_grav), dif(final_calc, final_grav)
+    d_custo, d_vp = dif(custo_total if tem_linhas else None, custo_grav), dif(volume_total if tem_linhas else None, vp_grav)
+    return {
+        "sessao_id": sessao_id,
+        "nome": sessao["nome"],
+        "data_criacao": sessao.get("data_criacao"),
+        "tem_linhas": tem_linhas,
+        "tem_resultado": tem_resultado,
+        "meses": meses,
+        "custo_total_calculado": custo_total if tem_linhas else None,
+        "custo_total_gravado": custo_grav,
+        "diferenca_custo": d_custo,
+        "volume_total": volume_total if tem_linhas else None,
+        "vp_gravado": vp_grav,
+        "diferenca_vp": d_vp,
+        "pmpv_calculado": pmpv_calc,
+        "pmpv_gravado": pmpv_grav,
+        "diferenca_pmpv": d_pmpv,
+        "conta_grafica": cg,
+        "preco_final_calculado": final_calc,
+        "preco_final_gravado": final_grav,
+        "diferenca_preco_final": d_final,
+        "confere": ok(d_pmpv, TOL_PROVA_REAL_PMPV) and ok(d_final, TOL_PROVA_REAL_PMPV)
+                   and ok(d_custo, TOL_PROVA_REAL_RS) and ok(d_vp, TOL_PROVA_REAL_M3),
+    }

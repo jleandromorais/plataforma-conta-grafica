@@ -159,3 +159,33 @@ def test_importar_memoria_igual_ao_desktop(client):
             assert obtido[nome]["transporte"] == pytest.approx(d["trans"])
             assert obtido[nome]["logistica"] == pytest.approx(d["log"])
             assert obtido[nome]["volume"] == pytest.approx(d["volume"])
+
+
+def test_prova_real_refaz_o_pmpv_da_sessao(client):
+    resultado = client.post("/api/pmpv/calcular", json=_payload_calculo()).json()
+    sid = client.post("/api/pmpv/salvar", json={
+        "nome": "PMPV_Fev_Abr_2026", "dados_por_mes": DADOS, "resultado": resultado, "periodos": PERIODOS,
+    }).json()["sessao_id"]
+    p = client.get("/api/pmpv/prova-real", params={"sessao_id": sid}).json()
+    assert p["tem_linhas"] and p["tem_resultado"] and p["confere"] is True
+    assert p["pmpv_calculado"] == pytest.approx(resultado["pmpv"])
+    assert p["preco_final_calculado"] == pytest.approx(resultado["preco_final"])
+    assert p["custo_total_calculado"] == pytest.approx(resultado["custo_total"])
+    assert p["volume_total"] == pytest.approx(resultado["vp_mensal"])
+    # A conta fecha mês a mês: Σ custo dos meses = custo total; PMPV do mês = custo ÷ volume.
+    assert sum(m["custo"] for m in p["meses"]) == pytest.approx(p["custo_total_calculado"])
+    assert [len(m["empresas"]) for m in p["meses"]] == [2, 1, 2]
+    for m in p["meses"]:
+        assert m["pmpv_do_mes"] == pytest.approx(m["custo"] / m["volume"])
+
+
+def test_prova_real_detecta_resultado_gravado_diferente(client):
+    resultado = client.post("/api/pmpv/calcular", json=_payload_calculo()).json()
+    adulterado = {**resultado, "pmpv": resultado["pmpv"] + 0.5, "preco_final": resultado["preco_final"] + 0.5}
+    sid = client.post("/api/pmpv/salvar", json={"nome": "X", "dados_por_mes": DADOS, "resultado": adulterado}).json()["sessao_id"]
+    p = client.get("/api/pmpv/prova-real", params={"sessao_id": sid}).json()
+    assert p["confere"] is False and p["diferenca_pmpv"] == pytest.approx(-0.5)
+
+
+def test_prova_real_sessao_inexistente_404(client):
+    assert client.get("/api/pmpv/prova-real", params={"sessao_id": 999}).status_code == 404
