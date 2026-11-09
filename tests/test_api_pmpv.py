@@ -189,3 +189,31 @@ def test_prova_real_detecta_resultado_gravado_diferente(client):
 
 def test_prova_real_sessao_inexistente_404(client):
     assert client.get("/api/pmpv/prova-real", params={"sessao_id": 999}).status_code == 404
+
+
+def test_margem_regulatoria_conhecida_salva_e_ausente(client):
+    # 2026 o sistema conhece (R$ 0,5410); 2027 ninguém informou; o analista pode informar.
+    assert client.get("/api/pmpv/margem-regulatoria", params={"ano": 2026}).json() == {"ano": 2026, "margem": 0.541, "origem": "padrao"}
+    assert client.get("/api/pmpv/margem-regulatoria", params={"ano": 2027}).json() == {"ano": 2027, "margem": None, "origem": "ausente"}
+    salvo = client.post("/api/pmpv/margem-regulatoria", json={"ano": 2027, "margem": 0.6}).json()
+    assert salvo == {"ano": 2027, "margem": 0.6, "origem": "salva"}
+    assert client.get("/api/pmpv/margem-regulatoria", params={"ano": 2027}).json()["origem"] == "salva"
+    # O que o analista salva vale mais que o padrão do sistema.
+    assert client.post("/api/pmpv/margem-regulatoria", json={"ano": 2026, "margem": 0.55}).json()["margem"] == 0.55
+
+
+def test_margem_regulatoria_rejeita_valor_ruim(client):
+    assert client.post("/api/pmpv/margem-regulatoria", json={"ano": 2026, "margem": -1}).status_code == 422
+    assert client.post("/api/pmpv/margem-regulatoria", json={"ano": 1999, "margem": 0.5}).status_code == 422
+    assert client.get("/api/pmpv/margem-regulatoria", params={"ano": 3000}).status_code == 422
+
+
+def test_calcular_com_margem_traz_a_tarifa_media(client):
+    payload = _payload_calculo()
+    sem = client.post("/api/pmpv/calcular", json=payload).json()
+    assert "tarifa_media" not in sem  # sem margem, a resposta é a de antes
+    com = client.post("/api/pmpv/calcular", json={**payload, "margem_regulatoria": 0.541}).json()
+    # Tarifa Média = PV + margem, com PV = PMPV + PR (= preco_final).
+    assert com["tarifa_media"] == pytest.approx(com["pmpv"] + (-0.021) + 0.541)
+    assert com["tarifa_media"] == pytest.approx(com["preco_final"] + 0.541)
+    assert com["preco_final"] == pytest.approx(sem["preco_final"])

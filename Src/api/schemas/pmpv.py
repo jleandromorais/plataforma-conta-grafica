@@ -13,6 +13,8 @@ class CalcularPMPVRequest(BaseModel):
     dias_config: dict[str, int]
     lista_meses: list[str]
     idx_start: int = 0
+    # Margem regulatória do ano (R$/m³). Informada: a resposta traz também a Tarifa Média (PV + margem).
+    margem_regulatoria: float | None = None
 
 
 class SalvarPMPVRequest(BaseModel):
@@ -94,6 +96,18 @@ class ProvaRealPMPV(BaseModel):
     preco_final_gravado: float | None
     diferenca_preco_final: float | None
     confere: bool
+
+
+class MargemRegulatoria(BaseModel):
+    """Margem regulatória de um ano e de onde ela vem (GET /pmpv/margem-regulatoria)."""
+    ano: int
+    margem: float | None                   # None: ninguém informou ainda
+    origem: str                            # "salva" | "padrao" | "ausente"
+
+
+class MargemRegulatoriaRequest(BaseModel):
+    ano: int
+    margem: float
 
 
 class PMPVMensalRequest(BaseModel):

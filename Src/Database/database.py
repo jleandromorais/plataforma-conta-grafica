@@ -348,6 +348,26 @@ class DatabasePMPV:
         """, (valor,))
         self.conn.commit()
 
+    def salvar_config_numero(self, chave: str, valor: float) -> None:
+        """Guarda um número na tabela `config` (chave/valor), como `trimestre_ativo` guarda o texto."""
+        self.cursor.execute("""
+            INSERT INTO config (chave, valor, data_atualizacao)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(chave) DO UPDATE SET
+                valor = excluded.valor,
+                data_atualizacao = CURRENT_TIMESTAMP
+        """, (chave, repr(float(valor))))
+        self.conn.commit()
+
+    def buscar_config_numero(self, chave: str) -> float | None:
+        """Número guardado na `config`, ou None se não há (ou não é número)."""
+        self.cursor.execute("SELECT valor FROM config WHERE chave = ?", (chave,))
+        row = self.cursor.fetchone()
+        try:
+            return float(row[0]) if row and row[0] not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
     def buscar_trimestre_ativo(self) -> list[str]:
         """Retorna os meses do trimestre activo ou lista vazia se não definido."""
         self.cursor.execute("SELECT valor FROM config WHERE chave = 'trimestre_ativo'")

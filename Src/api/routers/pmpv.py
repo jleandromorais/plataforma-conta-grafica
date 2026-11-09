@@ -10,6 +10,8 @@ from Src.api.deps import get_pmpv_use_cases
 from Src.api.schemas.pmpv import (
     CalcularPMPVRequest,
     ImportarMemoriaResponse,
+    MargemRegulatoria,
+    MargemRegulatoriaRequest,
     PMPVHistoricoLinha,
     PMPVMensalRequest,
     PMPVMensalResponse,
@@ -20,6 +22,7 @@ from Src.api.schemas.pmpv import (
     TrimestreAtivoResponse,
 )
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
+from Src.Services.servicos_margem import buscar_margem, salvar_margem, tarifa_media
 from Src.Services.servicos_pmpv import prova_real_sessao
 from Src.Services.servicos_pr_automatico import atualizar_pv_sem_falhar
 
@@ -28,13 +31,30 @@ router = APIRouter(prefix="/pmpv", tags=["PMPV"])
 
 @router.post("/calcular")
 def calcular(payload: CalcularPMPVRequest) -> dict:
-    return PMPVUseCases.calcular_resultados(
+    resultado = PMPVUseCases.calcular_resultados(
         dados_extraidos=payload.dados_extraidos,
         valor_cg=payload.valor_cg,
         dias_config=payload.dias_config,
         lista_meses=payload.lista_meses,
         idx_start=payload.idx_start,
     )
+    # `preco_final` = PMPV + PR = PV. Com a margem do ano, a Tarifa Média = PV + margem.
+    if payload.margem_regulatoria is not None:
+        resultado["margem_regulatoria"] = payload.margem_regulatoria
+        resultado["tarifa_media"] = tarifa_media(resultado["preco_final"], payload.margem_regulatoria)
+    return resultado
+
+
+@router.get("/margem-regulatoria", response_model=MargemRegulatoria)
+def buscar_margem_regulatoria(ano: int) -> MargemRegulatoria:
+    """Margem regulatória do ano (R$/m³): a que o analista salvou, a que o sistema conhece, ou ausente."""
+    return MargemRegulatoria(**buscar_margem(ano))
+
+
+@router.post("/margem-regulatoria", response_model=MargemRegulatoria)
+def salvar_margem_regulatoria(payload: MargemRegulatoriaRequest) -> MargemRegulatoria:
+    """O analista informa a margem de um ano (vale mais que a que o sistema conhece)."""
+    return MargemRegulatoria(**salvar_margem(payload.ano, payload.margem))
 
 
 @router.post("/salvar", response_model=SalvarPMPVResponse)
