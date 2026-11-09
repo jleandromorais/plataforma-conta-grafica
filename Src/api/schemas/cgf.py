@@ -44,6 +44,27 @@ class CGFSalvarResponse(BaseModel):
     rpv: float
 
 
+class ProvaRealCGF(BaseModel):
+    """A conta do CGF gravado do mês, aberta (GET /cgf/prova-real)."""
+    periodo: str
+    tem_resumo: bool                       # False: mês sem resumo de volumes gravado
+    volume_faturado: float
+    volume_canceladas: float               # informativo: não entra no volume final
+    volume_devolucoes: float
+    volume_consumo_proprio: float          # informativo: já retirado do faturado
+    volume_final_calculado: float          # faturado − devoluções
+    volume_final_gravado: float | None
+    diferenca_volume: float | None
+    volume_confere: bool
+    pmpv: float | None                     # PMPV do mês (4 casas); None sem PMPV gravado
+    cgf_calculado: float | None            # volume final × PMPV
+    cgf_gravado: float | None
+    diferenca_cgf: float | None
+    cgf_confere: bool
+    confere: bool                          # volume e CGF conferem
+    data_atualizacao: str
+
+
 class CGFHistoricoLinha(CGFVolumes):
     periodo: str
     cgf_rs: float

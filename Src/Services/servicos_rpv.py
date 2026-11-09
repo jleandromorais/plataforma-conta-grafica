@@ -1,6 +1,9 @@
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.formatting import format_brl, parse_brl as _parse_brl
 
+TOL_PROVA_REAL_RS = 1.0  # R$: abaixo disso é arredondamento
+
+
 class ServicosRPV:
     """Especialista em regras de negócio e formatação para o módulo RPV."""
 
@@ -37,6 +40,43 @@ class ServicosRPV:
         """Salva CGR e CGF e pede ao banco para recalcular o RPV oficial."""
         dados = self.consolidacao.salvar_valores(periodo, cgr=cgr, cgf=cgf)
         return dados["rpv"]
+
+    def prova_real(self, periodo: str) -> dict:
+        """A conta do RPV gravado do mês: CGR − CGF = RPV, comparada com o RPV gravado, e de
+        onde vêm os dois números (a prova real da Auditoria CGR e a do CGF). Não grava nada.
+
+        `origem_cgr` / `origem_cgf`: o CGR gravado bate com a soma das notas? O CGF gravado
+        bate com volume × PMPV? Mês sem notas (ou sem resumo) vira `None`: não dá para provar.
+        """
+        from Src.Services import servicos_auditoria_lote as lote
+        from Src.Services.servicos_cgf import ServicosCGF
+
+        dados = self.consolidacao.buscar_consolidacao(periodo) or {}
+        gravado = bool(dados)
+        cgr = float(dados.get("cgr") or 0.0)
+        cgf = float(dados.get("cgf") or 0.0)
+        rpv_gravado = float(dados["rpv"]) if dados.get("rpv") is not None else None
+        rpv_calculado = cgr - cgf
+        diferenca = rpv_calculado - rpv_gravado if rpv_gravado is not None else None
+        confere = gravado and diferenca is not None and abs(diferenca) <= TOL_PROVA_REAL_RS
+
+        aud = lote.prova_real(periodo)
+        prova_cgf = ServicosCGF().prova_real(periodo)
+        return {
+            "periodo": periodo,
+            "gravado": gravado,
+            "cgr": cgr,
+            "cgf": cgf,
+            "rpv_calculado": rpv_calculado,
+            "rpv_gravado": rpv_gravado,
+            "diferenca": diferenca,
+            "confere": confere,
+            "origem_cgr": {"tem_notas": aud["qtd_notas"] > 0, "valor_das_notas": aud["cgr_das_notas"] if aud["qtd_notas"] else None,
+                           "confere": aud["confere"]},
+            "origem_cgf": {"tem_resumo": prova_cgf["tem_resumo"], "valor_calculado": prova_cgf["cgf_calculado"],
+                           "confere": prova_cgf["confere"]},
+            "data_atualizacao": (dados.get("data_atualizacao") or "")[:16],
+        }
 
     def historico(self) -> list[dict]:
         """CGR, CGF e RPV de cada período, do mais recente ao mais antigo."""

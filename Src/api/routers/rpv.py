@@ -8,9 +8,10 @@ from Src.api.schemas.rpv import (
     RPVResultado,
     RPVSalvarRequest,
     RPVSalvarResponse,
+    ProvaRealRPV,
 )
 from Src.Services.servicos_rpv import ServicosRPV
-from Src.common.periodos import is_periodo_valido
+from Src.common.periodos import is_periodo_valido, normalizar_periodo
 
 router = APIRouter(prefix="/rpv", tags=["RPV"])
 
@@ -24,6 +25,14 @@ def listar_periodos(servico: ServicosRPV = Depends(get_servicos_rpv)) -> list:
 def historico(servico: ServicosRPV = Depends(get_servicos_rpv)) -> list[RPVHistoricoLinha]:
     """CGR, CGF e RPV de cada período — mesma tabela do histórico do desktop."""
     return [RPVHistoricoLinha(**h) for h in servico.historico()]
+
+
+@router.get("/prova-real", response_model=ProvaRealRPV)
+def prova_real(periodo: str, servico: ServicosRPV = Depends(get_servicos_rpv)) -> ProvaRealRPV:
+    """A conta do RPV gravado do mês (CGR − CGF) e de onde vêm os dois. Não grava nada."""
+    if not is_periodo_valido(periodo):
+        raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
+    return ProvaRealRPV(**servico.prova_real(normalizar_periodo(periodo) or periodo))
 
 
 @router.get("", response_model=RPVResultado)

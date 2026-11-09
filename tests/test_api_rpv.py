@@ -60,3 +60,23 @@ def test_historico_lista_periodos_salvos(client):
     assert hist["Jan/2026"]["rpv"] == pytest.approx(30.0)
     assert hist["Fev/2026"]["rpv"] == pytest.approx(-20.0)
     assert hist["Fev/2026"]["data_atualizacao"]
+
+
+def test_prova_real_rpv_cgr_menos_cgf(client):
+    client.post("/api/rpv/salvar", json={"periodo": "Mar/2026", "cgr": 3_982_585.0, "cgf": 5_172_827.66})
+    p = client.get("/api/rpv/prova-real", params={"periodo": "Mar/2026"}).json()
+    assert p["gravado"] is True
+    assert p["rpv_calculado"] == pytest.approx(3_982_585.0 - 5_172_827.66)
+    assert p["rpv_gravado"] == pytest.approx(p["rpv_calculado"])
+    assert p["confere"] is True
+    # Gravado só com os totais (sem notas nem resumo): dá para provar o RPV, não a origem.
+    assert p["origem_cgr"]["tem_notas"] is False and p["origem_cgf"]["tem_resumo"] is False
+
+
+def test_prova_real_rpv_mes_sem_dados(client):
+    p = client.get("/api/rpv/prova-real", params={"periodo": "Dez/2030"}).json()
+    assert p["gravado"] is False and p["confere"] is False and p["rpv_gravado"] is None
+
+
+def test_prova_real_rpv_periodo_invalido(client):
+    assert client.get("/api/rpv/prova-real", params={"periodo": "Teste"}).status_code == 422

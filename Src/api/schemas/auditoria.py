@@ -88,6 +88,32 @@ class SalvarAuditoriaResponse(BaseModel):
     qtd_itens: int
 
 
+class ProvaRealEmpresa(BaseModel):
+    empresa: str
+    qtd_nfe: int
+    qtd_cte: int
+    qtd_devolucoes: int
+    compras: float            # CGR das notas de compra (positivo)
+    devolucoes: float         # CGR das devoluções (negativo)
+    frete_fora_do_cgr: float  # valor dos CT-e de frete comum (não entra)
+    cgr: float                # compras + devoluções
+
+
+class ProvaRealAuditoria(BaseModel):
+    """A conta do CGR gravado do mês, aberta por empresa (GET /auditoria/prova-real)."""
+    periodo: str
+    qtd_notas: int
+    por_empresa: list[ProvaRealEmpresa]
+    compras: float
+    devolucoes: float
+    frete_fora_do_cgr: float
+    cgr_das_notas: float
+    cgr_gravado: float | None
+    diferenca: float | None
+    confere: bool
+    data_atualizacao: str
+
+
 class HistoricoAuditoriaLinha(BaseModel):
     periodo: str
     qtd_notas: int

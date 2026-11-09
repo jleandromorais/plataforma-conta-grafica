@@ -16,10 +16,12 @@ from Src.api.schemas.cgf import (
     CGFProcessarResponse,
     CGFSalvarRequest,
     CGFSalvarResponse,
+    ProvaRealCGF,
 )
 from Src.api.schemas.comum import ProblemaArquivo
 from Src.Services import servicos_pr_automatico
 from Src.Services.servicos_cgf import ServicosCGF
+from Src.common.periodos import normalizar_periodo
 
 router = APIRouter(prefix="/cgf", tags=["CGF"])
 
@@ -93,6 +95,12 @@ def salvar(payload: CGFSalvarRequest) -> CGFSalvarResponse:
     # O CGF mudou o RPV e o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
     servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
     return CGFSalvarResponse(**salvo)
+
+
+@router.get("/prova-real", response_model=ProvaRealCGF)
+def prova_real(periodo: str) -> ProvaRealCGF:
+    """A conta do CGF gravado do mês, aberta: volumes, PMPV e CGF em R$. Não grava nada."""
+    return ProvaRealCGF(**ServicosCGF().prova_real(normalizar_periodo(periodo) or periodo))
 
 
 @router.get("/historico", response_model=list[CGFHistoricoLinha])

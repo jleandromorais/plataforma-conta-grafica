@@ -1,0 +1,33 @@
+{
+	"folders": [
+		{
+			"name": "Plataforma",
+			"path": "../../.."
+		},
+		{
+			"name": "SCG-26",
+			"path": "../../../../SCG-26"
+		},
+		{
+			"name": "fev-26",
+			"path": "../../../../SCG-26/RP - Recuperação de Penalidades/fev-26"
+		},
+		{
+			"name": "mar-26",
+			"path": "../../../../SCG-26/RP - Recuperação de Penalidades/mar-26"
+		},
+		{
+			"name": "jun-26",
+			"path": "../../../../SCG-26/RP - Recuperação de Penalidades/jun-26"
+		},
+		{
+			"name": "mai-26",
+			"path": "../../../../SCG-26/RP - Recuperação de Penalidades/mai-26"
+		},
+		{
+			"name": "abr-26",
+			"path": "../../../../SCG-26/RP - Recuperação de Penalidades/abr-26"
+		}
+	],
+	"settings": {}
+}

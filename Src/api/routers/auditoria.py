@@ -25,6 +25,7 @@ from Src.api.schemas.auditoria import (
     HistoricoAuditoriaLinha,
     ItemAuditoria,
     ProcessarAuditoriaResponse,
+    ProvaRealAuditoria,
     SalvarAuditoriaRequest,
     SalvarAuditoriaResponse,
     TotaisAuditoria,
@@ -206,6 +207,14 @@ async def relatorio(request: Request) -> FileResponse:
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True),
     )
+
+
+@router.get("/prova-real", response_model=ProvaRealAuditoria)
+def prova_real(periodo: str) -> ProvaRealAuditoria:
+    """A conta do CGR gravado do mês, aberta por empresa, com o selo "confere". Não grava nada."""
+    if not is_periodo_valido(periodo):
+        raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
+    return ProvaRealAuditoria(**lote.prova_real(normalizar_periodo(periodo) or periodo))
 
 
 @router.get("/historico", response_model=list[HistoricoAuditoriaLinha])

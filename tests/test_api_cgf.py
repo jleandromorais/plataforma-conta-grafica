@@ -251,3 +251,28 @@ def test_salvar_arredonda_volume_como_a_planilha(client):
     assert round(r["cgf_rs"], 2) == 99836501.56
     resumo = next(h for h in client.get("/api/cgf/historico").json() if h["periodo"] == "Jun/2026")
     assert resumo["volume_final"] == 43730399.28
+
+
+def test_prova_real_refaz_volume_e_cgf(client):
+    r = client.post("/api/cgf/processar", files=_arquivos_sinteticos()).json()
+    payload = {k: r[k] for k in ("volume_faturado", "volume_canceladas", "volume_devolucoes", "volume_consumo_proprio", "volume_final")}
+    pmpv = 2.5
+    client.post("/api/cgf/salvar", json={**payload, "periodo": "Mar/2026", "pmpv": pmpv})
+    with DatabasePMPV() as db:
+        db.salvar_pmpv_mensal("Mar/2026", pmpv)
+    p = client.get("/api/cgf/prova-real", params={"periodo": "Mar/2026"}).json()
+    assert p["tem_resumo"] is True
+    assert p["volume_final_calculado"] == pytest.approx(p["volume_faturado"] - p["volume_devolucoes"])
+    assert p["volume_confere"] is True and p["cgf_confere"] is True and p["confere"] is True
+    assert p["cgf_calculado"] == pytest.approx(p["volume_final_calculado"] * 2.5)
+    assert p["cgf_gravado"] == pytest.approx(p["cgf_calculado"])
+
+
+def test_prova_real_cgf_mes_sem_dados_nao_confere(client):
+    p = client.get("/api/cgf/prova-real", params={"periodo": "Dez/2026"}).json()
+    assert p["tem_resumo"] is False and p["confere"] is False and p["cgf_gravado"] is None
+    assert p["cgf_calculado"] is None and p["diferenca_cgf"] is None
+
+
+def test_prova_real_cgf_periodo_invalido(client):
+    assert client.get("/api/cgf/prova-real", params={"periodo": "Teste"}).status_code == 422

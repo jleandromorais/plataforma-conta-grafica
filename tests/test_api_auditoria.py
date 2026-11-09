@@ -182,6 +182,31 @@ def test_salvar_recalcula_cgr_e_grava_itens(client):
     assert hist["Mar/2026"]["qtd_notas"] == 4
 
 
+def test_prova_real_refaz_o_cgr_gravado(client):
+    r = client.post("/api/auditoria/processar", files=_envio_sintetico()).json()
+    client.post("/api/auditoria/salvar", json={"periodo": "Mar/2026", "itens": r["itens"]})
+    p = client.get("/api/auditoria/prova-real", params={"periodo": "Mar/2026"}).json()
+    assert p["qtd_notas"] == len(r["itens"])
+    assert p["cgr_das_notas"] == pytest.approx(r["totais"]["cgr_liquido"])
+    assert p["cgr_gravado"] == pytest.approx(r["totais"]["cgr_liquido"])
+    assert p["confere"] is True
+    # A conta fecha por empresa e por parte: compras + devoluções = CGR.
+    assert sum(e["cgr"] for e in p["por_empresa"]) == pytest.approx(p["cgr_das_notas"])
+    assert p["compras"] + p["devolucoes"] == pytest.approx(p["cgr_das_notas"])
+    # Frete comum fica fora, igual ao processar.
+    frete = {e["empresa"]: e["frete_fora_do_cgr"] for e in r["totais"]["por_empresa"]}
+    assert {e["empresa"]: e["frete_fora_do_cgr"] for e in p["por_empresa"]} == pytest.approx(frete)
+
+
+def test_prova_real_de_mes_sem_notas_nao_confere(client):
+    p = client.get("/api/auditoria/prova-real", params={"periodo": "Dez/2026"}).json()
+    assert p["qtd_notas"] == 0 and p["confere"] is False and p["cgr_gravado"] is None
+
+
+def test_prova_real_periodo_invalido(client):
+    assert client.get("/api/auditoria/prova-real", params={"periodo": "Teste"}).status_code == 422
+
+
 def test_relatorio_excel(client):
     itens = client.post("/api/auditoria/processar", files=_envio_sintetico()).json()["itens"]
     resp = client.post("/api/auditoria/relatorio", data={"itens": json.dumps(itens), "periodo": "Mar/2026"})

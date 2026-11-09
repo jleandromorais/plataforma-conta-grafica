@@ -321,6 +321,66 @@ def historico() -> list[dict]:
     return ordenar_historico(linhas)
 
 
+TOL_PROVA_REAL = 1.0  # R$: abaixo disso é arredondamento
+
+
+def prova_real(periodo: str) -> dict:
+    """A conta do CGR gravado do mês, aberta por empresa, a partir das notas gravadas.
+
+    Refaz a soma que `calcular_totais` fez na hora de gravar, só com o que o banco
+    guarda (`auditoria_itens.cgr_liquido`, já negativo nas devoluções): entra no CGR
+    o que é NF-e ou CT-e de gasoduto (`empresa_integra_cgr`); o resto é frete e fica
+    fora. Compara a soma com o CGR da consolidação. Não grava nada.
+    """
+    from Src.Database.database import DatabasePMPV
+    from Src.Services.servicos_auditoria import empresa_integra_cgr
+
+    with DatabasePMPV() as db:
+        itens = db.listar_auditoria_itens(periodo) or []
+        cons = db.buscar_consolidacao(periodo) or {}
+
+    def integra(g: dict) -> bool:
+        return g.get("tipo") == "NF-e" or empresa_integra_cgr(g.get("empresa", ""))
+
+    por_empresa: dict[str, dict] = {}
+    for g in itens:
+        e = por_empresa.setdefault(g.get("empresa") or "(sem empresa)", {
+            "empresa": g.get("empresa") or "(sem empresa)", "qtd_nfe": 0, "qtd_cte": 0, "qtd_devolucoes": 0,
+            "compras": 0.0, "devolucoes": 0.0, "frete_fora_do_cgr": 0.0, "cgr": 0.0,
+        })
+        e["qtd_nfe" if g.get("tipo") == "NF-e" else "qtd_cte"] += 1
+        if not integra(g):
+            e["frete_fora_do_cgr"] += float(g.get("valor_total") or 0.0)
+            continue
+        cgr = float(g.get("cgr_liquido") or 0.0)
+        if cgr < 0:
+            e["devolucoes"] += cgr
+            e["qtd_devolucoes"] += 1
+        else:
+            e["compras"] += cgr
+        e["cgr"] += cgr
+
+    empresas = sorted(por_empresa.values(), key=lambda e: e["empresa"])
+    cgr_das_notas = sum(e["cgr"] for e in empresas)
+    gravado = cons.get("cgr")
+    cgr_gravado = float(gravado) if gravado is not None else None
+    diferenca = cgr_das_notas - cgr_gravado if cgr_gravado is not None else None
+    return {
+        "periodo": periodo,
+        "qtd_notas": len(itens),
+        "por_empresa": empresas,
+        "compras": sum(e["compras"] for e in empresas),
+        "devolucoes": sum(e["devolucoes"] for e in empresas),
+        "frete_fora_do_cgr": sum(e["frete_fora_do_cgr"] for e in empresas),
+        "cgr_das_notas": cgr_das_notas,
+        "cgr_gravado": cgr_gravado,
+        "diferenca": diferenca,
+        # Sem notas gravadas (mês gravado só com o total) não há o que provar.
+        "confere": bool(itens) and diferenca is not None and abs(diferenca) <= TOL_PROVA_REAL,
+        "data_atualizacao": (cons.get("data_atualizacao") or "")[:16],
+    }
+
+
 def itens_para_banco(itens: list[XMLItem]) -> list[dict]:
     """Formato de DatabasePMPV.salvar_auditoria_itens, com o CGR líquido
     negativo nas devoluções."""

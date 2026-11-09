@@ -7,6 +7,9 @@ import pandas as pd
 from Src.Database.database import DatabasePMPV
 from Src.common.periodos import is_periodo_valido
 from Src.common.precisao import arredondar_tarifa, arredondar_volume
+
+TOL_PROVA_REAL_RS = 1.0   # R$: abaixo disso é arredondamento
+TOL_VOLUME_M3 = 0.01      # m³: o volume final é gravado com 2 casas
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePMPVRepository
 
@@ -340,6 +343,53 @@ class ServicosCGF:
                 volume_final,
             )
         return {"cgf_rs": cgf_rs, "rpv": rpv}
+
+    def prova_real(self, periodo: str) -> dict:
+        """A conta do CGF gravado do mês, aberta: faturado − devoluções = volume final, e
+        volume final × PMPV = CGF em R$, comparados com o que está gravado. Não grava nada.
+
+        Usa só o que o banco guarda (resumo de volumes, PMPV do mês e CGF da consolidação),
+        com os mesmos arredondamentos de `salvar_com_pmpv` (volume 2 casas, PMPV 4 casas).
+        """
+        if not is_periodo_valido(periodo):
+            raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
+        with DatabasePMPV() as db:
+            resumo = db.buscar_cgf_resumo(periodo) or {}
+            cons = db.buscar_consolidacao(periodo) or {}
+            pmpv_banco = db.buscar_pmpv_mensal(periodo)
+
+        tem_resumo = bool(resumo)
+        faturado = float(resumo.get("volume_faturado") or 0.0)
+        devolucoes = float(resumo.get("volume_devolucoes") or 0.0)
+        vf_gravado = float(resumo.get("volume_final") or 0.0)
+        vf_calculado = arredondar_volume(faturado - devolucoes)
+        pmpv = arredondar_tarifa(pmpv_banco) if pmpv_banco else None
+        cgf_gravado = float(cons["cgf"]) if cons.get("cgf") is not None else None
+        # Sem o resumo de volumes (mês gravado só com o total) não há o que multiplicar: não dá para provar.
+        cgf_calculado = vf_calculado * pmpv if pmpv and tem_resumo else None
+        dif_volume = vf_calculado - vf_gravado
+        dif_cgf = cgf_calculado - cgf_gravado if cgf_calculado is not None and cgf_gravado is not None else None
+        volume_confere = tem_resumo and abs(dif_volume) <= TOL_VOLUME_M3
+        cgf_confere = dif_cgf is not None and abs(dif_cgf) <= TOL_PROVA_REAL_RS
+        return {
+            "periodo": periodo,
+            "tem_resumo": tem_resumo,
+            "volume_faturado": faturado,
+            "volume_canceladas": float(resumo.get("volume_canceladas") or 0.0),
+            "volume_devolucoes": devolucoes,
+            "volume_consumo_proprio": float(resumo.get("volume_consumo_proprio") or 0.0),
+            "volume_final_calculado": vf_calculado,
+            "volume_final_gravado": vf_gravado if tem_resumo else None,
+            "diferenca_volume": dif_volume if tem_resumo else None,
+            "volume_confere": volume_confere,
+            "pmpv": pmpv,
+            "cgf_calculado": cgf_calculado,
+            "cgf_gravado": cgf_gravado,
+            "diferenca_cgf": dif_cgf,
+            "cgf_confere": cgf_confere,
+            "confere": volume_confere and cgf_confere,
+            "data_atualizacao": (resumo.get("data_atualizacao") or "")[:16],
+        }
 
     def historico(self) -> list[dict]:
         """Resumo de volumes gravado por período + CGF em R$ da consolidação."""
