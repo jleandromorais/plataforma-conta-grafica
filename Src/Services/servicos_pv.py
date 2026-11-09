@@ -139,6 +139,52 @@ class ServicosPV:
         self._repo.salvar_pv_lote(chaves, pmpv, pr, pv)
         return {"pv": pv, "gravado_em": chaves}
 
+    def historico_trimestres(self) -> list[dict]:
+        """PVs gravados por trimestre fiscal, do mais recente ao mais antigo (para a tabela da tela)."""
+        linhas = []
+        for r in self._repo.listar_pv_trimestres():
+            rotulo, _, ano = str(r["periodo"]).partition("/")
+            if not ano.isdigit():
+                continue
+            linhas.append({
+                "chave": r["periodo"], "trimestre": rotulo.strip(), "ano": int(ano),
+                "pmpv": float(r.get("pmpv") or 0.0), "pr": float(r.get("pr") or 0.0), "pv": float(r.get("pv") or 0.0),
+                "data_atualizacao": str(r.get("data_atualizacao") or "")[:16],
+            })
+        return linhas
+
+    def prova_real_trimestre(self, label: str, ano: int) -> dict:
+        """A conta do PV gravado do trimestre: PMPV + PR = PV, e se PMPV e PR gravados ainda são os
+        dos módulos de hoje. Não grava nada.
+
+        - `conta_confere`: o PV gravado é a soma do PMPV e do PR gravados com ele (4 casas);
+        - `pmpv_confere` / `pr_confere`: o PMPV e o PR gravados no PV são os ATUAIS dos módulos PMPV e PR.
+          Se não são, o PV gravado ficou velho (PMPV ou PR mudaram depois) e precisa ser salvo de novo.
+        """
+        atual = self.buscar_trimestre(label, ano)   # pmpv/pr/pv atuais dos módulos + o PV salvo
+        salvo = atual["salvo"]
+        tol = 1e-4  # PMPV, PR e PV têm 4 casas
+        out = {
+            "chave": atual["chave"], "periodos": atual["periodos"], "tem_salvo": salvo is not None,
+            "pmpv_atual": atual["pmpv"], "pr_atual": atual["pr"], "pv_atual": atual["pv"],
+            "pmpv_gravado": None, "pr_gravado": None, "pv_gravado": None, "pv_da_soma": None,
+            "diferenca_conta": None, "conta_confere": False, "pmpv_confere": False, "pr_confere": False,
+            "confere": False, "data_atualizacao": "", "avisos": list(atual["avisos"]),
+        }
+        if salvo is None:
+            return out
+        pv_da_soma = arredondar_tarifa(self.calcular_pv(salvo["pmpv"], salvo["pr"]))
+        dif = pv_da_soma - arredondar_tarifa(salvo["pv"])
+        out.update({
+            "pmpv_gravado": salvo["pmpv"], "pr_gravado": salvo["pr"], "pv_gravado": salvo["pv"],
+            "pv_da_soma": pv_da_soma, "diferenca_conta": dif, "conta_confere": abs(dif) <= tol,
+            "pmpv_confere": abs(arredondar_tarifa(salvo["pmpv"]) - atual["pmpv"]) <= tol,
+            "pr_confere": abs(arredondar_tarifa(salvo["pr"]) - arredondar_tarifa(atual["pr"])) <= tol,
+            "data_atualizacao": salvo["data"],
+        })
+        out["confere"] = out["conta_confere"] and out["pmpv_confere"] and out["pr_confere"]
+        return out
+
     def gerar_texto_historico(self) -> str:
         periodos = self._repo.listar_pv()
         cab = (

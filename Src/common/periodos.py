@@ -85,6 +85,13 @@ def numero_para_abrev(numero: int) -> str:
     return abrev
 
 
+def deslocar_periodo(periodo: str, meses: int) -> str:
+    """Anda `meses` meses no calendário (negativo = para trás). Jan/2026, -3 → Out/2025."""
+    mes, ano = normalizar_periodo(periodo).split("/")
+    total = int(ano) * 12 + (abrev_para_numero(mes) - 1) + meses
+    return f"{numero_para_abrev(total % 12 + 1)}/{total // 12}"
+
+
 def abrev_para_numero(abrev: str) -> int:
     """Converte abreviação PT (ex: 'Jan') para número de mês (1–12). Lança ValueError se inválido."""
     try:

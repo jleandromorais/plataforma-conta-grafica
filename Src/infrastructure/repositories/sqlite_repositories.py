@@ -196,6 +196,9 @@ class SqlitePRRepository(PRRepository):
     def listar_pv(self):
         return self.db.listar_pv()
 
+    def listar_pv_trimestres(self):
+        return self.db.listar_pv_trimestres()
+
     def fechar(self):
         self.db.fechar()
 

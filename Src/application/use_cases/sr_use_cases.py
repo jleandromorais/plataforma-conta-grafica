@@ -16,9 +16,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, labels_meses, normalizar_periodo
+from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, deslocar_periodo, labels_meses, normalizar_periodo
+from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import SRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
+from Src.Services import servicos_selic
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 
 
@@ -86,6 +88,16 @@ def chave_pr_do_mes(periodo: str) -> str:
     return f"{_ABREV[inicio % 12]} - {_ABREV[fim % 12]}/{int(ano) + (fim // 12 - i // 12)}"
 
 
+def _num(valor: float, casas: int) -> str:
+    """Número no padrão brasileiro (vírgula decimal, ponto de milhar) para as mensagens."""
+    return f"{valor:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _data_br(iso: str) -> str:
+    ano, mes, dia = iso.split("-")
+    return f"{dia}/{mes}/{ano}"
+
+
 class SRUseCases:
     def __init__(self, repo: SRRepository | None = None):
         self.repo = repo or SqliteSRRepository()
@@ -100,8 +112,10 @@ class SRUseCases:
     def carregar_vp_vf_pr(self, sessao_id: int, labels_meses: list[str]) -> list[dict[str, Any]]:
         """Para cada mês do trimestre, preenche VP (do PMPV que cobre aquele mês
         do calendário — ver `vp_do_mes`), VF (volume_final do CGF do período) e
-        PR (1º o salvo no próprio SR; 2º o PR do trimestre salvo na tela PR; 3º estimado
-        a partir de SCG/SR/VP; `pr_origem` diz qual: "salvo", "estimado" ou "ausente").
+        PR. Regra do PR (Quadro 6 da Nota Técnica): o SR do mês M usa o PR do
+        trimestre fiscal que contém o mês M-3. 1º o PR salvo na tela PR para essa
+        chave ("salvo"); 2º estimado por (SCG + SR) ÷ VP ("estimado"); senão "ausente".
+        `pr_chave` diz a chave do PR usado ("" se não é "salvo").
         `sessao_id` fica na assinatura por compatibilidade; o VP não depende dela."""
         resultado = []
         servicos_cons = ServicosConsolidacao()
@@ -112,24 +126,122 @@ class SRUseCases:
                 resumo = self.repo.buscar_cgf_resumo(periodo)
                 vf = float(resumo["volume_final"]) if resumo and resumo.get("volume_final") is not None else 0.0
 
-                pr_row = self.repo.buscar_sr(periodo)
-                pr = float((pr_row or {}).get("pr") or 0.0)
+                chave = chave_pr_do_mes(deslocar_periodo(periodo, -3))
+                pr_tela = self.repo.buscar_pr(chave)
+                pr = float((pr_tela or {}).get("pr") or 0.0)
                 pr_origem = "salvo" if pr else "ausente"
-                if pr == 0.0:
-                    pr_tela = self.repo.buscar_pr(chave_pr_do_mes(periodo))
-                    pr = float((pr_tela or {}).get("pr") or 0.0)
-                    pr_origem = "salvo" if pr else "ausente"
+                pr_chave = chave if pr else ""
                 if pr == 0.0 and vp > 0:
+                    pr_row = self.repo.buscar_sr(periodo)
                     dados_cons = servicos_cons.buscar_consolidacao(periodo)
                     scg_m = float((dados_cons or {}).get("scg") or 0.0)
                     sr_m = float((pr_row or {}).get("sr") or 0.0)
                     pr = (scg_m + sr_m) / vp if vp else 0.0
                     pr_origem = "estimado" if pr else "ausente"
 
-                resultado.append({"mes": periodo, "vp": vp, "vf": vf, "pr": pr, "pr_origem": pr_origem})
+                resultado.append({"mes": periodo, "vp": vp, "vf": vf, "pr": pr,
+                                  "pr_origem": pr_origem, "pr_chave": pr_chave})
         finally:
             servicos_cons.fechar()
         return resultado
+
+    def propor_trimestre(self, labels_meses: list[str], buscar=None) -> dict[str, Any]:
+        """Proposta do SR do trimestre: calcula VP, VF, PR e SELIC sozinho, compara
+        com o que está gravado e diz o que impede de gravar. SÓ LÊ: não grava nada."""
+        buscar = buscar or servicos_selic.buscar_bcb
+        base = self.carregar_vp_vf_pr(0, labels_meses)
+
+        # SELIC do Banco Central (trimestre aberto ou BC fora do ar → 0, com aviso).
+        selic = {"disponivel": False, "fecha_em": "", "fonte": "Banco Central (série 11)", "mensagem": ""}
+        valores: dict[str, float] = {}
+        try:
+            r = servicos_selic.selic_do_trimestre(labels_meses, buscar=buscar)
+            selic.update(disponivel=r["disponivel"], fecha_em=r["fecha_em"], fonte=r["fonte"])
+            valores = r["valores"] if r["disponivel"] else {}
+            if not r["disponivel"]:
+                selic["mensagem"] = f"O trimestre só fecha em {_data_br(r['fecha_em'])}; a SELIC ainda não está disponível."
+        except (servicos_selic.SelicIndisponivel, ValueError) as exc:  # BC fora do ar ou meses que não formam um trimestre
+            selic["mensagem"] = str(exc)
+        if not selic["fecha_em"]:
+            try:
+                selic["fecha_em"] = servicos_selic.fim_do_trimestre(labels_meses).isoformat()
+            except ValueError:
+                pass
+
+        gravados = {g["mes"]: g for g in self.buscar_trimestre(labels_meses)}
+        entradas = []
+        for b in base:
+            g = gravados.get(b["mes"])
+            entradas.append({
+                "mes": b["mes"], "vp": b["vp"], "vf": b["vf"], "pr": arredondar_tarifa(b["pr"]),
+                "selic_mensal": float(valores.get(b["mes"], 0.0)),
+                "sr_anterior": float((g or {}).get("sr_anterior") or 0.0),
+            })
+        calculo = self.calcular_trimestre(entradas)
+
+        bloqueios: list[str] = []
+        linhas = []
+        for b, c in zip(base, calculo["linhas"]):
+            mes = b["mes"]
+            g = gravados.get(mes)
+            gravado = None
+            if g:
+                gravado = {k: float(g.get(k) or 0.0) for k in ("vp", "vf", "pr", "selic_mensal", "sr_selic", "sr_anterior")}
+            alertas: list[dict[str, str]] = []
+
+            if c["vp"] == 0:
+                msg = f"Sem VP de {mes}: salve o PMPV do trimestre que contém {mes} na tela PMPV."
+                alertas.append({"codigo": "sem_vp", "mensagem": msg})
+                bloqueios.append(msg)
+            tri_pr = chave_pr_do_mes(deslocar_periodo(mes, -3)).replace(" - ", "–")
+            if b["pr_origem"] == "ausente":
+                msg = f"Não há PR salvo para {mes} (trimestre {tri_pr}): rode a tela PR."
+                alertas.append({"codigo": "pr_ausente", "mensagem": msg})
+                bloqueios.append(msg)
+            elif b["pr_origem"] == "estimado":
+                # Estimativa (SCG + SR) ÷ VP é circular e já deu SR muito errado: não se grava em cima dela.
+                msg = (f"O PR de {mes} é só uma estimativa (não há PR salvo para o trimestre {tri_pr}): "
+                       "rode a tela PR desse trimestre antes de gravar o SR.")
+                alertas.append({"codigo": "pr_estimado", "mensagem": msg})
+                bloqueios.append(msg)
+            if c["vf"] == 0:
+                msg = f"Sem CGF gravado em {mes} (volume final): processe o CGF."
+                alertas.append({"codigo": "vf_ausente", "mensagem": msg})
+                bloqueios.append(msg)
+            if not selic["disponivel"]:
+                msg = selic["mensagem"] or "A SELIC não está disponível; ficaria 0%."
+                alertas.append({"codigo": "selic_indisponivel", "mensagem": msg})
+                if msg not in bloqueios:   # a mesma frase vale para os 3 meses: aparece uma vez
+                    bloqueios.append(msg)
+            elif gravado and gravado["selic_mensal"] == 0 and c["selic_mensal"] > 0:
+                alertas.append({"codigo": "selic_zero_gravada",
+                                "mensagem": f"O SR gravado está com SELIC 0%; o BC dá {_num(c['selic_mensal'], 6)}%."})
+            if gravado:
+                difs = []
+                comparar = [("vp", 1.0, 0), ("vf", 1.0, 0), ("pr", 1e-4, 4)]
+                if selic["disponivel"]:  # sem SELIC, comparar SELIC e SR só geraria falso alarme
+                    comparar += [("selic_mensal", 5e-7, 6), ("sr_selic", 0.01, 2)]
+                for campo, tol, casas in comparar:
+                    if abs(c[campo] - gravado[campo]) > tol:
+                        difs.append(f"{campo} (gravado {_num(gravado[campo], casas)} × novo {_num(c[campo], casas)})")
+                if difs:
+                    alertas.append({"codigo": "difere_gravado",
+                                    "mensagem": f"Difere do gravado em {mes}: " + "; ".join(difs) + "."})
+
+            linhas.append({**c, "pr_origem": b["pr_origem"], "pr_chave": b["pr_chave"],
+                           "gravado": gravado, "alertas": alertas})
+
+        total_gravado = sum(float(x.get("sr_selic") or 0.0) for x in gravados.values()) if gravados else None
+        return {
+            "labels_meses": labels_meses,
+            "linhas": linhas,
+            "total": calculo["total"],
+            "total_gravado": total_gravado,
+            "diferenca_total": None if total_gravado is None else calculo["total"] - total_gravado,
+            "selic": selic,
+            "bloqueios": bloqueios,
+            "pode_gravar": not bloqueios,
+        }
 
     @staticmethod
     def calcular_trimestre(linhas: list[dict[str, Any]]) -> dict[str, Any]:

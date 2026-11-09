@@ -6,6 +6,8 @@ from Src.api.deps import get_servicos_sr, get_sr_use_cases
 from Src.api.schemas.sr import (
     SRCalcularRequest,
     SRCalcularResponse,
+    SRPropostaRequest,
+    SRPropostaResponse,
     SRSelicResponse,
     SRSessao,
     SRTrimestreCalcularRequest,
@@ -59,7 +61,18 @@ def carregar_trimestre(
     return [SRTrimestreLinhaCarregada(**l) for l in linhas]
 
 
-@router.post("/trimestre/calcular", response_model=SRTrimestreCalcularResponse)
+@router.post("/trimestre/proposta", response_model=SRPropostaResponse)
+def propor_trimestre(
+    payload: SRPropostaRequest,
+    uc: SRUseCases = Depends(get_sr_use_cases),
+) -> SRPropostaResponse:
+    """Calcula o SR do trimestre sozinho (VP, VF, PR, SELIC) e compara com o gravado.
+    NÃO grava nada: quem grava é o /trimestre/salvar, depois que o analista confirma."""
+    resultado = uc.propor_trimestre(payload.labels_meses, buscar=servicos_selic.buscar_bcb)
+    return SRPropostaResponse(**resultado)
+
+
+@router.post("/trimestre/calcular",response_model=SRTrimestreCalcularResponse)
 def calcular_trimestre(payload: SRTrimestreCalcularRequest) -> SRTrimestreCalcularResponse:
     resultado = SRUseCases.calcular_trimestre([l.model_dump() for l in payload.linhas])
     return SRTrimestreCalcularResponse(**resultado)

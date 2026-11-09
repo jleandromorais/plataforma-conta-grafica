@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from Src.api.deps import get_servicos_pv
 from Src.api.schemas.pv import (
     PVCriarPeriodoRequest,
+    PVHistoricoTrimestre,
     PVResultado,
     PVSalvarRequest,
     PVSalvarResponse,
     PVTrimestreResultado,
     PVTrimestreSalvarRequest,
     PVTrimestreSalvarResponse,
+    ProvaRealPV,
 )
 from Src.Services.servicos_pv import ServicosPV
 
@@ -55,6 +57,22 @@ def salvar(
 
 # ── Trimestral (tela do site) ─────────────────────────────────────────────────
 # Os endpoints mensais acima continuam: o desktop (tela_pv.py) usa o mesmo serviço.
+
+@router.get("/historico", response_model=list[PVHistoricoTrimestre])
+def historico(servico: ServicosPV = Depends(get_servicos_pv)) -> list[PVHistoricoTrimestre]:
+    """PVs gravados por trimestre fiscal, do mais recente ao mais antigo."""
+    return [PVHistoricoTrimestre(**h) for h in servico.historico_trimestres()]
+
+
+@router.get("/prova-real", response_model=ProvaRealPV)
+def prova_real(
+    trimestre: str,
+    ano: int = Query(ge=2000, le=2098),
+    servico: ServicosPV = Depends(get_servicos_pv),
+) -> ProvaRealPV:
+    """A conta do PV gravado do trimestre (PMPV + PR) e se ainda bate com os módulos. Não grava nada."""
+    return ProvaRealPV(**servico.prova_real_trimestre(trimestre, ano))
+
 
 @router.get("/trimestre", response_model=PVTrimestreResultado)
 def buscar_trimestre(

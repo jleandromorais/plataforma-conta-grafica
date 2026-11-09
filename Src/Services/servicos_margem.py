@@ -1,11 +1,11 @@
-"""Margem regulatória e Tarifa Média (Quadro 9 da Nota Técnica).
+"""MB (margem de distribuição, a "margem regulatória" da Nota Técnica) e Tarifa Média (Quadro 9 da Nota Técnica).
 
 A margem regulatória é definida pelo regulador, uma vez por ano (R$/m³): não dá para calculá-la
 a partir dos dados do sistema. O sistema conhece a de alguns anos (`MARGEM_PADRAO_POR_ANO`);
 para os demais o analista informa o valor, que fica salvo no banco (tabela `config`). O valor
 que o analista salvou vale mais que o padrão.
 
-Tarifa Média = PV + Margem Regulatória, com PV = PMPV + PR.
+Tarifa Média = PV + MB, com PV = PMPV + PR.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _chave(ano: int) -> str:
 
 def _validar_ano(ano: int) -> int:
     if not isinstance(ano, int) or not 2000 <= ano <= 2100:
-        raise ValueError("O ano da margem regulatória precisa estar entre 2000 e 2100.")
+        raise ValueError("O ano da MB (margem de distribuição) precisa estar entre 2000 e 2100.")
     return ano
 
 
@@ -41,12 +41,12 @@ def buscar_margem(ano: int) -> dict:
 def salvar_margem(ano: int, margem: float) -> dict:
     _validar_ano(ano)
     if margem is None or margem < 0:
-        raise ValueError("A margem regulatória precisa ser um valor igual ou maior que zero (R$/m³).")
+        raise ValueError("A MB (margem de distribuição) precisa ser um valor igual ou maior que zero (R$/m³).")
     with DatabasePMPV() as db:
         db.salvar_config_numero(_chave(ano), float(margem))
     return buscar_margem(ano)
 
 
 def tarifa_media(pv: float, margem: float | None) -> float | None:
-    """Tarifa Média = PV + Margem Regulatória. Sem margem, não há tarifa média."""
+    """Tarifa Média = PV + MB (margem de distribuição). Sem margem, não há tarifa média."""
     return None if margem is None else float(pv) + float(margem)

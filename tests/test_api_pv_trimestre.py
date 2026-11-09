@@ -64,3 +64,37 @@ def test_salvar_trimestre_invalido_retorna_422(client):
     r = c.post("/api/pv/trimestre/salvar", json={"trimestre": "Jan - Mar", "ano": 2026, "pmpv": 1.9988, "pr": 0.0})
     assert r.status_code == 422
     assert "Fev - Abr" in r.json()["detail"]
+
+
+def test_historico_lista_os_trimestres_gravados(client):
+    c, _ = client
+    assert c.get("/api/pv/historico").json() == []  # nada gravado ainda
+    c.post("/api/pv/trimestre/salvar", json={"trimestre": "Fev - Abr", "ano": 2026, "pmpv": 1.9988, "pr": -0.0321})
+    h = c.get("/api/pv/historico").json()
+    assert [(x["chave"], x["trimestre"], x["ano"]) for x in h] == [("Fev - Abr/2026", "Fev - Abr", 2026)]
+    assert h[0]["pv"] == pytest.approx(1.9667)  # só o trimestre: os 3 meses ficam de fora
+
+
+def test_prova_real_do_pv_confere_quando_os_modulos_nao_mudaram(client):
+    c, _ = client
+    c.post("/api/pv/trimestre/salvar", json={"trimestre": "Fev - Abr", "ano": 2026, "pmpv": 1.9988, "pr": -0.0321})
+    p = c.get("/api/pv/prova-real", params={"trimestre": "Fev - Abr", "ano": 2026}).json()
+    assert p["tem_salvo"] and p["conta_confere"] and p["pmpv_confere"] and p["pr_confere"] and p["confere"]
+    assert p["pv_da_soma"] == pytest.approx(p["pmpv_gravado"] + p["pr_gravado"]) == pytest.approx(1.9667)
+
+
+def test_prova_real_do_pv_acusa_pr_que_mudou_depois_de_gravar(client):
+    c, banco = client
+    c.post("/api/pv/trimestre/salvar", json={"trimestre": "Fev - Abr", "ano": 2026, "pmpv": 1.9988, "pr": -0.0321})
+    with DatabasePMPV(db_path=str(banco)) as db:
+        db.salvar_pr("Fev - Abr/2026", 0.0, 0.0, 0.0, -0.0400)  # o módulo PR passou a dar outro valor
+    p = c.get("/api/pv/prova-real", params={"trimestre": "Fev - Abr", "ano": 2026}).json()
+    assert p["conta_confere"] is True and p["pr_confere"] is False and p["confere"] is False
+    assert p["pr_gravado"] == pytest.approx(-0.0321) and p["pr_atual"] == pytest.approx(-0.0400)
+
+
+def test_prova_real_do_pv_sem_gravar(client):
+    c, _ = client
+    p = c.get("/api/pv/prova-real", params={"trimestre": "Fev - Abr", "ano": 2026}).json()
+    assert p["tem_salvo"] is False and p["confere"] is False and p["pv_gravado"] is None
+    assert p["pv_atual"] == pytest.approx(1.9667)  # o que os módulos dão hoje

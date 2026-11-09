@@ -52,6 +52,38 @@ class PVTrimestreSalvarResponse(BaseModel):
     gravado_em: list[str]   # chave do trimestre + os 3 meses
 
 
+class PVHistoricoTrimestre(BaseModel):
+    """PV gravado de um trimestre fiscal (linha do histórico da tela PV)."""
+    chave: str              # "Fev - Abr/2026"
+    trimestre: str          # "Fev - Abr"
+    ano: int                # ano do 1º mês
+    pmpv: float
+    pr: float
+    pv: float
+    data_atualizacao: str
+
+
+class ProvaRealPV(BaseModel):
+    """A conta do PV gravado do trimestre e se ele ainda bate com os módulos (GET /pv/prova-real)."""
+    chave: str
+    periodos: list[str]
+    tem_salvo: bool                    # False: o trimestre ainda não tem PV gravado
+    pmpv_gravado: float | None
+    pr_gravado: float | None
+    pv_gravado: float | None
+    pv_da_soma: float | None           # PMPV gravado + PR gravado
+    diferenca_conta: float | None
+    conta_confere: bool                # PV gravado = PMPV gravado + PR gravado
+    pmpv_atual: float                  # o dos módulos hoje
+    pr_atual: float
+    pv_atual: float
+    pmpv_confere: bool                 # o PMPV gravado no PV é o PMPV de hoje
+    pr_confere: bool                   # o PR gravado no PV é o PR de hoje
+    confere: bool
+    data_atualizacao: str
+    avisos: list[str] = []
+
+
 class PVAutomatico(BaseModel):
     """PV regravado ao salvar o PMPV ou o PR (servicos_pr_automatico.atualizar_pv)."""
     trimestre: str               # "Nov - Jan/2026" (ano do 1º mês); "" se deu erro inesperado

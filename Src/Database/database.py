@@ -1088,6 +1088,14 @@ class DatabasePMPV:
         )
         return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("pmpv", "pr", "pv"))
 
+    def listar_pv_trimestres(self) -> List[Dict]:
+        """PVs gravados por TRIMESTRE fiscal (chave "Fev - Abr/2026"), do mais recente ao mais antigo.
+        São as linhas que `listar_pv` deixa de fora."""
+        self.cursor.execute(
+            "SELECT * FROM pv_resultados WHERE periodo LIKE '% - %' ORDER BY data_atualizacao DESC"
+        )
+        return self._deduplicar_periodos([dict(r) for r in self.cursor.fetchall()], ("pmpv", "pr", "pv"))
+
     # ==========================================
     # CGF RESUMO
     # ==========================================
