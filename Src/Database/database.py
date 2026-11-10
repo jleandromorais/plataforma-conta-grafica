@@ -676,6 +676,12 @@ class DatabasePMPV:
             self._merge_registros_periodo(registros, periodo, ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
         )
     
+    def buscar_consolidacao_bruta(self, periodo: str) -> dict | None:
+        """Como `buscar_consolidacao`, mas com `rpv`/`scg` EXATAMENTE como estão gravados
+        (sem recalcular). Só a prova real do SCG usa: ela precisa ver a coluna crua."""
+        registros = self._buscar_por_periodo("consolidacao", periodo, order_by="data_atualizacao DESC, id DESC")
+        return self._merge_registros_periodo(registros, periodo, ("cgr", "ret", "rp", "rpv", "cgf", "scg"))
+
     def listar_periodos(self) -> List:
         """Lista todos os períodos válidos (Mês/Ano), ordenados do mais recente ao mais antigo."""
         self.cursor.execute("""

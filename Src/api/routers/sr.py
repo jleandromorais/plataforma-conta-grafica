@@ -6,6 +6,8 @@ from Src.api.deps import get_servicos_sr, get_sr_use_cases
 from Src.api.schemas.sr import (
     SRCalcularRequest,
     SRCalcularResponse,
+    SRHistoricoTrimestre,
+    SRProvaReal,
     SRPropostaRequest,
     SRPropostaResponse,
     SRSelicResponse,
@@ -100,6 +102,19 @@ def selic(meses: list[str] = Query(..., description="Os 3 meses do trimestre civ
         return SRSelicResponse(**servicos_selic.selic_do_trimestre(meses, buscar=servicos_selic.buscar_bcb))
     except servicos_selic.SelicIndisponivel as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/historico", response_model=list[SRHistoricoTrimestre])
+def historico(uc: SRUseCases = Depends(get_sr_use_cases)) -> list[SRHistoricoTrimestre]:
+    """Trimestres de SR gravados, do mais recente ao mais antigo."""
+    return [SRHistoricoTrimestre(**h) for h in uc.historico_trimestres()]
+
+
+@router.get("/prova-real", response_model=SRProvaReal)
+def prova_real(trimestre: str, uc: SRUseCases = Depends(get_sr_use_cases)) -> SRProvaReal:
+    """Refaz a conta do SR gravado do trimestre (ex.: Jan/2026_Mar/2026) e mostra o que VP, VF,
+    PR e SELIC dizem hoje. NÃO grava nada."""
+    return SRProvaReal(**uc.prova_real(trimestre, buscar=servicos_selic.buscar_bcb))
 
 
 @router.get("/trimestre", response_model=list[dict])

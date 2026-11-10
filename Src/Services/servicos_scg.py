@@ -4,6 +4,8 @@ from Src.Services.servicos_concilia import FATOR_PIS_COFINS
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.formatting import format_brl
 
+TOL_PROVA_REAL_RS = 1.0  # R$: abaixo disso é arredondamento
+
 class ServicosSCG:
     """Especialista na gestão de dados e formatação da Consolidação SCG."""
 
@@ -89,6 +91,54 @@ class ServicosSCG:
         rpv = cgr - cgf
         scg = rpv + ret + rp
         return {"cgr": cgr, "cgf": cgf, "rpv": rpv, "ret": ret, "rp": rp, "scg": scg}
+
+    def prova_real(self, periodo: str) -> dict:
+        """A conta do SCG gravado do mês: RPV = CGR − CGF e SCG = RPV + RET + RP, refeita com os
+        valores da consolidação (a MESMA `ServicosConsolidacao.calcular_scg`), e de onde vem cada
+        número (a prova real de CGR, CGF, RET e RP). Não grava nada.
+
+        Lê a linha crua do banco: a leitura normal já recalcula RPV e SCG na hora, e isso
+        esconderia um SCG alterado por fora. `origens.*`: mês sem itens (ou sem resumo do CGF)
+        não dá para provar (`tem_* = False`, `valor = None`)."""
+        from Src.Services import servicos_auditoria_lote, servicos_concilia_lote, servicos_ret_lote
+        from Src.Services.servicos_cgf import ServicosCGF
+        from Src.common.periodos import is_periodo_valido
+
+        if not is_periodo_valido(periodo):
+            raise ValueError(f'O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
+        with DatabasePMPV() as db:
+            dados = db.buscar_consolidacao_bruta(periodo) or {}
+        gravado = bool(dados)
+        cgr, cgf = float(dados.get("cgr") or 0.0), float(dados.get("cgf") or 0.0)
+        ret, rp = float(dados.get("ret") or 0.0), float(dados.get("rp") or 0.0)
+        rpv = float(dados["rpv"]) if dados.get("rpv") is not None else cgr - cgf
+        rpv_calculado = ServicosConsolidacao.calcular_rpv(cgr, cgf)
+        scg_calculado = ServicosConsolidacao.calcular_scg(cgr, cgf, ret, rp)
+        scg_gravado = float(dados["scg"]) if dados.get("scg") is not None else None
+        diferenca = scg_calculado - scg_gravado if scg_gravado is not None else None
+
+        aud = servicos_auditoria_lote.prova_real(periodo)
+        pcgf = ServicosCGF().prova_real(periodo)
+        pret = servicos_ret_lote.prova_real(periodo)
+        prp = servicos_concilia_lote.prova_real(periodo)
+        return {
+            "periodo": periodo,
+            "gravado": gravado,
+            "cgr": cgr, "cgf": cgf, "rpv": rpv, "ret": ret, "rp": rp,
+            "rpv_calculado": rpv_calculado,
+            "scg_calculado": scg_calculado,
+            "scg_gravado": scg_gravado,
+            "diferenca": diferenca,
+            "confere": gravado and diferenca is not None and abs(diferenca) <= TOL_PROVA_REAL_RS,
+            "origens": {
+                "cgr": {"tem_itens": aud["qtd_notas"] > 0,
+                        "valor_das_notas": aud["cgr_das_notas"] if aud["qtd_notas"] else None, "confere": aud["confere"]},
+                "cgf": {"tem_resumo": pcgf["tem_resumo"], "valor_calculado": pcgf["cgf_calculado"], "confere": pcgf["confere"]},
+                "ret": {"tem_itens": pret["tem_itens"], "valor_calculado": pret["ret_calculado"], "confere": pret["confere"]},
+                "rp": {"tem_itens": prp["tem_itens"], "valor_calculado": prp["rp_calculado"], "confere": prp["confere"]},
+            },
+            "data_atualizacao": (dados.get("data_atualizacao") or "")[:16],
+        }
 
     def historico(self) -> list[dict]:
         """Valores gravados de cada período, do mais recente ao mais antigo."""

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from Src.api.deps import get_servicos_scg
 from Src.api.schemas.scg import (
+    ProvaRealSCG,
     RPVResponse,
     SalvarManualRequest,
     SCGComparacao,
@@ -14,7 +15,7 @@ from Src.api.schemas.scg import (
 )
 from Src.Services import servicos_pr_automatico
 from Src.Services.servicos_scg import ServicosSCG
-from Src.common.periodos import is_periodo_valido
+from Src.common.periodos import is_periodo_valido, normalizar_periodo
 
 router = APIRouter(prefix="/scg", tags=["SCG"])
 
@@ -59,6 +60,13 @@ def comparar(
         modulos=SCGValores(**ServicosSCG.buscar_dados_fontes(periodo)),
         gravado=SCGValores(**gravado) if gravado else None,
     )
+
+
+@router.get("/prova-real", response_model=ProvaRealSCG)
+def prova_real(periodo: str, servico: ServicosSCG = Depends(get_servicos_scg)) -> ProvaRealSCG:
+    """Refaz a conta do SCG gravado do mês (RPV + RET + RP) e confere a origem de cada número
+    com a prova real do próprio módulo. NÃO grava nada."""
+    return ProvaRealSCG(**servico.prova_real(normalizar_periodo(periodo) or periodo))
 
 
 @router.get("/historico", response_model=list[SCGHistoricoLinha])

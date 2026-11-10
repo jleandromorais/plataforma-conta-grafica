@@ -16,7 +16,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, deslocar_periodo, labels_meses, normalizar_periodo
+from Src.common.periodos import (
+    TRIMESTRES_FISCAIS_ABREVS, deslocar_periodo, is_periodo_valido, labels_meses, normalizar_periodo, periodo_sort_key,
+)
 from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import SRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
@@ -35,7 +37,28 @@ def _trimestre_label(labels: list[str]) -> str:
     return f"{labels[0]}_{labels[-1]}"
 
 
-_RE_NOME_SESSAO = re.compile(r"^PMPV_([A-Za-z]{3})_+([A-Za-z]{3})_(\d{4})$")
+def meses_do_trimestre_label(trimestre: str) -> list[str]:
+    """'Jan/2026_Mar/2026' → ['Jan/2026', 'Fev/2026', 'Mar/2026']. Texto que não seja
+    "Mês/Ano_Mês/Ano" com 3 meses seguidos → ValueError (vira 422)."""
+    erro = ValueError(f"O trimestre “{trimestre}” não é válido. Use o formato Jan/2026_Mar/2026 (3 meses seguidos).")
+    partes = (trimestre or "").split("_")
+    if len(partes) != 2:
+        raise erro
+    ini, fim = normalizar_periodo(partes[0]), normalizar_periodo(partes[1])
+    if not (is_periodo_valido(ini) and is_periodo_valido(fim)):
+        raise erro
+    meses = [deslocar_periodo(ini, i) for i in range(3)]
+    if meses[-1] != fim:
+        raise erro
+    return meses
+
+
+# Tolerâncias da prova real do SR
+TOL_CONTA_SR = 0.01                                                     # R$ por mês
+TOL_FONTES = {"vp": 1.0, "vf": 1.0, "pr": 1e-4, "selic_mensal": 5e-7}  # volumes em m³
+
+
+_RE_NOME_SESSAO =re.compile(r"^PMPV_([A-Za-z]{3})_+([A-Za-z]{3})_(\d{4})$")
 
 
 def periodos_da_sessao(nome: str) -> list[str]:
@@ -299,3 +322,87 @@ class SRUseCases:
 
     def buscar_trimestre(self, labels_meses: list[str]) -> list[dict[str, Any]]:
         return self.repo.buscar_sr_trimestre(_trimestre_label(labels_meses))
+
+    def historico_trimestres(self) -> list[dict[str, Any]]:
+        """Trimestres de SR gravados, do mais recente ao mais antigo."""
+        linhas = []
+        for tri in self.repo.listar_sr_trimestres():
+            rows = self.repo.buscar_sr_trimestre(tri)
+            if not rows:
+                continue
+            try:
+                labels = meses_do_trimestre_label(tri)
+            except ValueError:  # rótulo antigo fora do padrão: lista os meses gravados
+                labels = [r["mes"] for r in rows]
+            linhas.append({
+                "trimestre": tri,
+                "labels_meses": labels,
+                "total": sum(float(r.get("sr_selic") or 0.0) for r in rows),
+                "qtd_meses": len(rows),
+                "data_atualizacao": max((r.get("data_atualizacao") or "" for r in rows), default="")[:16],
+            })
+        return sorted(linhas, key=lambda x: periodo_sort_key(x["trimestre"].split("_")[0]), reverse=True)
+
+    def prova_real(self, trimestre: str, buscar=None) -> dict[str, Any]:
+        """A conta do SR gravado do trimestre, refeita mês a mês com a MESMA `calcular_trimestre`
+        do salvar, e o que as fontes (PMPV, CGF, PR, SELIC do BC) dizem HOJE (`propor_trimestre`).
+        NÃO grava nada. SELIC fora do ar não derruba: `selic_mensal` das fontes vira None."""
+        labels = meses_do_trimestre_label(trimestre)
+        trimestre = _trimestre_label(labels)
+        por_mes = {normalizar_periodo(r["mes"]): r for r in self.repo.buscar_sr_trimestre(trimestre)}
+        gravadas = [por_mes[m] for m in labels if m in por_mes]
+        if not gravadas:
+            return {"trimestre": trimestre, "labels_meses": labels, "gravado": False, "linhas": [],
+                    "total_gravado": 0.0, "total_recalculado": 0.0, "conta_confere": False,
+                    "fontes_disponiveis": False,
+                    "alertas": [{"codigo": "sem_sr_gravado",
+                                 "mensagem": f"Ainda não há SR salvo para {labels[0]} a {labels[-1]}. Salve o SR deste trimestre na tela SR."}],
+                    "data_atualizacao": ""}
+
+        calculo = self.calcular_trimestre([
+            {k: g.get(k) for k in ("mes", "vp", "vf", "pr", "selic_mensal", "sr_anterior")} for g in gravadas])
+
+        proposta, alertas = None, []
+        try:
+            proposta = self.propor_trimestre(labels, buscar=buscar or servicos_selic.buscar_bcb)
+        except (servicos_selic.SelicIndisponivel, ValueError) as exc:
+            alertas.append({"codigo": "fontes_indisponiveis", "mensagem": str(exc)})
+        selic_ok = bool(proposta and proposta["selic"]["disponivel"])
+        propostas = {normalizar_periodo(l["mes"]): l for l in (proposta or {}).get("linhas", [])}
+
+        linhas = []
+        for g, c in zip(gravadas, calculo["linhas"]):
+            gravado_sr = float(g.get("sr_selic") or 0.0)
+            p = propostas.get(normalizar_periodo(g["mes"]))
+            fontes = None
+            if p:
+                fontes = {"vp": p["vp"], "vf": p["vf"], "pr": p["pr"],
+                          "selic_mensal": p["selic_mensal"] if selic_ok else None, "diferem": []}
+                for campo, tol in TOL_FONTES.items():
+                    if campo == "selic_mensal" and not selic_ok:
+                        continue  # sem a SELIC do BC não há o que comparar
+                    if abs(float(fontes[campo]) - float(g.get(campo) or 0.0)) > tol:
+                        fontes["diferem"].append(campo)
+            linhas.append({
+                "mes": g["mes"], "vp": c["vp"], "vf": c["vf"], "pr": c["pr"], "selic_mensal": c["selic_mensal"],
+                "sr_anterior": c["sr_anterior"], "diferenca": c["diferenca"], "sr_parcela": c["sr_parcela"],
+                "sr_selic_recalculado": c["sr_selic"], "sr_selic_gravado": gravado_sr,
+                "conta_confere": abs(c["sr_selic"] - gravado_sr) <= TOL_CONTA_SR,
+                "fontes": fontes,
+            })
+
+        for l in (proposta or {}).get("linhas", []):  # repassa os avisos da proposta, sem repetir
+            for a in l["alertas"]:
+                if a not in alertas:
+                    alertas.append(a)
+        total_gravado = sum(l["sr_selic_gravado"] for l in linhas)
+        total_recalculado = calculo["total"]
+        return {
+            "trimestre": trimestre, "labels_meses": labels, "gravado": True, "linhas": linhas,
+            "total_gravado": total_gravado, "total_recalculado": total_recalculado,
+            "conta_confere": all(l["conta_confere"] for l in linhas)
+                             and abs(total_recalculado - total_gravado) <= TOL_CONTA_SR * len(linhas),
+            "fontes_disponiveis": proposta is not None,
+            "alertas": alertas,
+            "data_atualizacao": max((g.get("data_atualizacao") or "" for g in gravadas), default="")[:16],
+        }

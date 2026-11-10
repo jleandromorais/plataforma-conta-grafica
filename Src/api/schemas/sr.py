@@ -139,6 +139,53 @@ class SRPropostaResponse(BaseModel):
     pode_gravar: bool
 
 
+class SRHistoricoTrimestre(BaseModel):
+    """Um trimestre de SR gravado (GET /sr/historico)."""
+    trimestre: str            # "Jan/2026_Mar/2026"
+    labels_meses: list[str]
+    total: float              # soma do sr_selic dos meses
+    qtd_meses: int
+    data_atualizacao: str = ""
+
+
+class SRProvaRealFontes(BaseModel):
+    """O que as fontes dizem HOJE para o mês (VP do PMPV, VF do CGF, PR pela regra M−3, SELIC do BC)."""
+    vp: float
+    vf: float
+    pr: float
+    selic_mensal: float | None = None  # None: o Banco Central não deu a SELIC (trimestre aberto ou fora do ar)
+    diferem: list[str] = []            # campos que diferem do gravado: vp, vf, pr, selic_mensal
+
+
+class SRProvaRealLinha(BaseModel):
+    mes: str
+    vp: float
+    vf: float
+    pr: float
+    selic_mensal: float
+    sr_anterior: float
+    diferenca: float                   # vp − vf
+    sr_parcela: float                  # diferenca × pr
+    sr_selic_recalculado: float        # sr_parcela × (1 + selic/100) + sr_anterior
+    sr_selic_gravado: float
+    conta_confere: bool                # |recalculado − gravado| <= 0,01
+    fontes: SRProvaRealFontes | None = None
+
+
+class SRProvaReal(BaseModel):
+    """A conta do SR gravado do trimestre e o que as fontes dizem hoje (GET /sr/prova-real)."""
+    trimestre: str
+    labels_meses: list[str]
+    gravado: bool                      # False: trimestre sem SR salvo
+    linhas: list[SRProvaRealLinha] = []
+    total_gravado: float
+    total_recalculado: float
+    conta_confere: bool
+    fontes_disponiveis: bool           # False: a proposta não pôde ser montada (fontes = null)
+    alertas: list[SRPropostaAlerta] = []
+    data_atualizacao: str = ""
+
+
 class SRSelicResponse(BaseModel):
     disponivel: bool  # False: o trimestre ainda não fechou (ver fecha_em)
     valores: dict[str, float]  # {"Jan/2026": 3.411174, ...} — % acumulada até o fim do trimestre

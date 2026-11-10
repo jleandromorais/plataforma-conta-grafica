@@ -50,3 +50,47 @@ class SCGComparacao(BaseModel):
 class SCGHistoricoLinha(SCGValores):
     periodo: str
     diverge: bool  # módulos ≠ gravado em algum valor
+
+
+class OrigemCGRSCG(BaseModel):
+    tem_itens: bool                      # False: mês gravado só com o total, sem as notas
+    valor_das_notas: float | None = None  # soma das notas gravadas (prova real da Auditoria)
+    confere: bool
+
+
+class OrigemItensSCG(BaseModel):
+    """Prova real de RET e RP, que guardam itens."""
+    tem_itens: bool                      # False: mês gravado só com o total, sem os itens
+    valor_calculado: float | None = None  # refeito com os itens gravados
+    confere: bool
+
+
+class OrigemCGFSCG(BaseModel):
+    tem_resumo: bool
+    valor_calculado: float | None = None  # volume final × PMPV
+    confere: bool
+
+
+class OrigensSCG(BaseModel):
+    cgr: OrigemCGRSCG
+    cgf: OrigemCGFSCG
+    ret: OrigemItensSCG
+    rp: OrigemItensSCG
+
+
+class ProvaRealSCG(BaseModel):
+    """A conta do SCG gravado do mês e de onde vem cada número (GET /scg/prova-real)."""
+    periodo: str
+    gravado: bool                        # False: mês sem consolidação gravada
+    cgr: float
+    cgf: float
+    rpv: float
+    ret: float
+    rp: float
+    rpv_calculado: float                 # CGR − CGF
+    scg_calculado: float                 # RPV calculado + RET + RP
+    scg_gravado: float | None = None
+    diferenca: float | None = None
+    confere: bool
+    origens: OrigensSCG
+    data_atualizacao: str = ""
