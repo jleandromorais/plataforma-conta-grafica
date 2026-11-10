@@ -284,6 +284,62 @@ class TestParsePdfDacte:
         assert d["icms"] == pytest.approx(117_325.40)
 
 
+# Caracterização do OCR (fixa o comportamento atual; textos e valores fictícios).
+def _pdf_com_texto(monkeypatch, texto):
+    class Pagina:
+        def extract_text(self):
+            return texto
+
+    class Pdf:
+        pages = [Pagina()]
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("Src.Services.servicos_auditoria.pdfplumber.open", lambda _p: Pdf())
+
+
+class TestParsePdfCaracterizacao:
+    def _ler(self, tmp_path, monkeypatch, texto, nome="nota.pdf"):
+        _pdf_com_texto(monkeypatch, texto)
+        f = tmp_path / nome
+        f.write_bytes(b"%PDF")
+        d = RegrasAuditoria.parse_pdf_ocr(f)
+        return {k: (round(v, 6) if isinstance(v, float) else v) for k, v in d.items()}
+
+    def test_danfe_por_blocos(self, tmp_path, monkeypatch):
+        texto = ("DANFE\nBASE DE CALCULO DO ICMS VALOR DO ICMS VALOR TOTAL DOS PRODUTOS\n1.000,00 120,00 1.000,00\n"
+                 "VALOR DO FRETE VALOR TOTAL DA NOTA\n0,00 1.000,00\nALIQUOTA ICMS 12,00 %\nM3 500,00 2,00\nNº 000123\n")
+        assert self._ler(tmp_path, monkeypatch, texto) == {
+            "tipo": "NF-e", "numero": "123", "valor_total": 1000.0, "icms": 120.0, "icms_taxa": 0.12,
+            "pis": 0.0, "cofins": 0.0, "volume_total": 500.0, "volume": 500, "fonte": "OCR"}
+
+    def test_danfe_siglas_com_pontos_e_taxa_derivada(self, tmp_path, monkeypatch):
+        texto = "DANFE\nVALOR TOTAL DA NOTA: 2.000,00\nVALOR DO I.C.M.S: 410,00\n"
+        d = self._ler(tmp_path, monkeypatch, texto)
+        assert (d["valor_total"], d["icms"], d["icms_taxa"], d["numero"]) == (2000.0, 410.0, 0.205, "N/A")
+
+    def test_dacte_isento(self, tmp_path, monkeypatch):
+        d = self._ler(tmp_path, monkeypatch, "DACTE\nFrete valor 2.000,00\n40 - ICMS Isento\nNRO. DOCUMENTO 555\n")
+        assert (d["tipo"], d["valor_total"], d["icms"], d["icms_taxa"], d["numero"]) == ("CT-e", 2000.0, 0.0, 0.0, "555")
+
+    def test_dacte_maior_rs_e_numero_pelo_nome(self, tmp_path, monkeypatch):
+        d = self._ler(tmp_path, monkeypatch, "DACTE\nparcela R$ 100,00\nR$ 1.500,00\nICMS 12,00 180,00\n", "CT-e 987.pdf")
+        assert (d["valor_total"], d["icms"], d["icms_taxa"], d["numero"]) == (1500.0, 180.0, 0.12, "987")
+
+    def test_nota_comercial(self, tmp_path, monkeypatch):
+        d = self._ler(tmp_path, monkeypatch, "Fatura\nVALOR TOTAL DA NOTA: 3.000,00\nVALOR DO ICMS: 360,00\nN. 77\n")
+        assert (d["tipo"], d["valor_total"], d["icms"], d["icms_taxa"], d["numero"]) == ("NF-e", 3000.0, 360.0, 0.12, "77")
+
+    def test_nota_comercial_sem_icms_e_maior_numero(self, tmp_path, monkeypatch):
+        d = self._ler(tmp_path, monkeypatch, "Fatura\nitens 1.200,00 e 3.400,50\n")
+        assert (d["valor_total"], d["icms"], d["icms_taxa"]) == (3400.5, 0.0, 0.0)
+
+    def test_texto_vazio(self, tmp_path, monkeypatch):
+        assert self._ler(tmp_path, monkeypatch, "") == {"erro": "Não foi possível extrair texto do PDF"}
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # XMLItem dataclass
 # ════════════════════════════════════════════════════════════════════════════

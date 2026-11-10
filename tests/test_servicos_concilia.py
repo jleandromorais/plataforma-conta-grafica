@@ -89,6 +89,41 @@ class TestExtrairValor:
         valor, _ = RegrasConcilia.extrair_valor(texto)
         assert valor == pytest.approx(15764.98)
 
+    # ── Caracterização (fixa o comportamento atual; valores fictícios) ──────
+
+    def test_mensagem_quando_acha_valor(self):
+        assert RegrasConcilia.extrair_valor("Valor Total: R$ 12,34") == (pytest.approx(12.34), "Maior Valor Válido Detectado")
+
+    def test_estrategia_4_numero_br_no_meio_da_linha(self):
+        # Sem "Total", sem "R$" e sem número no fim da linha: varre o texto todo.
+        assert RegrasConcilia.extrair_valor("cobranca 1.234,56 referente ao mes")[0] == pytest.approx(1234.56)
+
+    def test_estrategia_4_ignora_acima_de_999_mil(self):
+        assert RegrasConcilia.extrair_valor("cobranca 1.234.567,89 referente") == (0.0, "Valor não identificado")
+
+    def test_estrategia_4_ignora_abaixo_de_1_real(self):
+        assert RegrasConcilia.extrair_valor("taxa 0,99 aplicada") == (0.0, "Valor não identificado")
+
+    def test_faixa_exclui_um_centavo(self):
+        # 0,01 não passa no filtro "maior que 0,01" das estratégias 1–3 nem no ">= 1,00" da 4.
+        assert RegrasConcilia.extrair_valor("R$ 0,01") == (0.0, "Valor não identificado")
+
+    def test_estrategia_1_tem_prioridade_e_pega_o_maior(self):
+        # "TOTAL ... = R$" casa na estratégia 1; o R$ 9.000,00 solto é ignorado.
+        texto = "VALOR TOTAL = R$ 100,00\nTOTAL = R$ 250,00\nR$ 9.000,00"
+        assert RegrasConcilia.extrair_valor(texto)[0] == pytest.approx(250.0)
+
+    def test_l_minusculo_vira_1_e_padroes_com_l_nao_casam(self):
+        # Comportamento atual (anotado como achado): clean_ocr_text troca "l" por
+        # "1", então "Valor Total:" vira "Va1or Tota1:" e cai na estratégia 2
+        # (maior R$ do texto).
+        texto = "Valor Total: R$ 100,00\nValor a Pagar: R$ 250,00\nR$ 9.000,00"
+        assert RegrasConcilia.extrair_valor(texto)[0] == pytest.approx(9000.0)
+
+    def test_estrategia_3_ignora_numero_que_nao_esta_no_fim(self):
+        texto = "linha 7,00 meio\nfinal 45,10"
+        assert RegrasConcilia.extrair_valor(texto)[0] == pytest.approx(45.10)
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # processar_arquivos
@@ -193,6 +228,52 @@ class TestProcessarArquivos:
         ):
             itens = RegrasConcilia.processar_arquivos([antiga, atual, outra], "Receita", lambda _m: None, raiz=tmp_path)
         assert sorted(i.file_name for i in itens) == sorted([atual.name, outra.name])
+
+    @pytest.mark.parametrize("ordem", ["original_primeiro", "atualizada_primeiro"])
+    def test_mesma_nd_fica_a_atualizada_e_cancelada_entra_negativa_no_fim(self, tmp_path, ordem):
+        # Caracterização: mesma ND na mesma pasta (sem "Substituídos"), uma
+        # cancelada e uma sem número de ND. Valores fictícios.
+        original = tmp_path / "EMPRESA X - NDPFP00001.pdf"
+        atualizada = tmp_path / "EMPRESA X - NDPFP00001 atualizada.pdf"
+        cancelada = tmp_path / "EMPRESA X - NDPFP00002 cancelado.pdf"
+        sem_nd = tmp_path / "EMPRESA Y - nota avulsa.pdf"
+        for a in (original, atualizada, cancelada, sem_nd):
+            a.write_bytes(b"")
+        par = [original, atualizada] if ordem == "original_primeiro" else [atualizada, original]
+        with patch(
+            "Src.Services.servicos_concilia.read_pdf_text",
+            return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
+        ):
+            itens = RegrasConcilia.processar_arquivos([cancelada, *par, sem_nd], "Despesa", lambda _m: None)
+        assert [(i.file_name, i.amount, i.status, i.category) for i in itens] == [
+            (atualizada.name, 10.0, "OK", "Despesa"),
+            (sem_nd.name, 10.0, "OK", "Despesa"),
+            (cancelada.name, -10.0, "OK", "Despesa"),
+        ]
+        assert itens[0].method == "PDFPLUMBER -> Maior Valor Válido Detectado"
+
+    def test_duas_sem_atualiz_fica_a_primeira(self, tmp_path):
+        a = tmp_path / "EMPRESA X - NDPFP00003 v1.pdf"
+        b = tmp_path / "EMPRESA X - NDPFP00003 v2.pdf"
+        for f in (a, b):
+            f.write_bytes(b"")
+        with patch(
+            "Src.Services.servicos_concilia.read_pdf_text",
+            return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
+        ):
+            itens = RegrasConcilia.processar_arquivos([b, a], "Receita", lambda _m: None)
+        assert [i.file_name for i in itens] == [b.name]
+
+    def test_excecao_corta_mensagem_em_50_caracteres(self, tmp_path):
+        arq = tmp_path / "x.pdf"
+        arq.write_bytes(b"")
+        with patch(
+            "Src.Services.servicos_concilia.read_pdf_text",
+            side_effect=RuntimeError("e" * 80),
+        ):
+            itens = RegrasConcilia.processar_arquivos([arq], "Receita", lambda _m: None)
+        assert itens[0].method == "Exceção: " + "e" * 50
+        assert itens[0].amount == 0.0
 
 
 class TestPdfItemDataclass:

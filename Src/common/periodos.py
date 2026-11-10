@@ -76,6 +76,20 @@ _EN_TO_PT: dict[str, str] = {
     "Sep": "Set", "Oct": "Out", "Nov": "Nov", "Dec": "Dez",
 }
 
+# Nome ou abreviação do mês, em maiúsculas, → número (1–12). Usado para achar o
+# mês no nome de pastas e arquivos ("JANEIRO 2026", "EAT fev26", "MARÇO").
+MESES_POR_NOME: dict[str, int] = {
+    "JANEIRO": 1, "JAN": 1, "FEVEREIRO": 2, "FEV": 2, "MARÇO": 3, "MARCO": 3, "MAR": 3,
+    "ABRIL": 4, "ABR": 4, "MAIO": 5, "MAI": 5, "JUNHO": 6, "JUN": 6,
+    "JULHO": 7, "JUL": 7, "AGOSTO": 8, "AGO": 8, "SETEMBRO": 9, "SET": 9,
+    "OUTUBRO": 10, "OUT": 10, "NOVEMBRO": 11, "NOV": 11, "DEZEMBRO": 12, "DEZ": 12,
+}
+
+
+def sem_acento(texto: str) -> str:
+    """Tira os acentos ("Março" → "Marco"), sem mudar maiúsculas e minúsculas."""
+    return unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+
 
 def numero_para_abrev(numero: int) -> str:
     """Converte número de mês (1–12) para abreviação PT. Lança ValueError se inválido."""
@@ -112,8 +126,7 @@ def _limpar_texto(valor: str | None) -> str:
 
 
 def _normalizar_token(texto: str) -> str:
-    token = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9]", "", token.lower())
+    return re.sub(r"[^a-z0-9]", "", sem_acento(texto).lower())
 
 
 _ANO_MIN = 2000

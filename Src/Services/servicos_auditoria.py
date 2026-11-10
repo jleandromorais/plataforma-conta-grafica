@@ -1,13 +1,12 @@
-import os
 import re
-import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, Tuple, List
+from typing import Dict
 import pdfplumber
 from dataclasses import dataclass
 
-from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED, read_pdf_text, pytesseract
+from Src.common.periodos import sem_acento
+from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED, pytesseract
 
 # ── Fórmula regulatória CGR ──────────────────────────────────────────────────
 # Validada contra a planilha "Conta Gráfica e Apuração de Custos" (Jun25→Dez25+):
@@ -41,8 +40,35 @@ _EMPRESAS_CGR_TRANSPORTE = ('TAG', 'MASTERGAS')
 
 
 def empresa_integra_cgr(nome_empresa: str) -> bool:
-    nome_norm = unicodedata.normalize("NFKD", nome_empresa or "").encode("ascii", "ignore").decode("ascii").upper()
+    nome_norm = sem_acento(nome_empresa or "").upper()
     return any(re.search(rf'\b{empresa}\b', nome_norm) for empresa in _EMPRESAS_CGR_TRANSPORTE)
+
+
+def _float_ou(texto: str, padrao=None):
+    """float(texto), ou `padrao` quando o texto não é número."""
+    try:
+        return float(texto)
+    except ValueError:
+        return padrao
+
+
+def _parse_brl(s: str) -> float:
+    """Converte '1.234.567,89' → 1234567.89"""
+    s = s.strip().replace(' ', '')
+    if ',' in s:
+        s = s.replace('.', '').replace(',', '.')
+    return float(s)
+
+
+def _brl_ou(s: str, padrao=None):
+    """_parse_brl(s), ou `padrao` quando o texto não é número."""
+    try:
+        return _parse_brl(s)
+    except ValueError:
+        return padrao
+
+
+_RE_VALOR_DO_ICMS = r'VALOR\s+DO\s+ICMS\s*[:\-]?\s*([\d.,]+)'
 
 
 @dataclass
@@ -143,12 +169,9 @@ class RegrasAuditoria:
             icms_taxa = 0.0
             for det in root.findall('.//nfe:det', ns):
                 p = det.find('.//nfe:pICMS', ns)
-                if p is not None and p.text:
-                    try:
-                        icms_taxa = float(p.text) / 100.0
-                        break
-                    except ValueError:
-                        pass
+                if p is not None and p.text and (taxa := _float_ou(p.text)) is not None:
+                    icms_taxa = taxa / 100.0
+                    break
 
             # 2ª opção: derivar do total (fallback seguro)
             if icms_taxa == 0.0 and valor > 0:
@@ -161,31 +184,21 @@ class RegrasAuditoria:
             for det in root.findall('.//nfe:det', ns):
                 u_com = det.find('nfe:prod/nfe:uCom', ns)
                 q_com = det.find('nfe:prod/nfe:qCom', ns)
-                if u_com is not None and q_com is not None:
-                    if u_com.text.strip().upper() in UNIDADES_M3:
-                        try:
-                            vol_m3 += float(q_com.text)
-                        except ValueError:
-                            pass
+                if u_com is not None and q_com is not None and u_com.text.strip().upper() in UNIDADES_M3:
+                    vol_m3 += _float_ou(q_com.text, 0.0)
 
             # Fallback 1: qVol
             if vol_m3 == 0.0:
                 for vol in root.findall('.//nfe:vol', ns):
                     q = vol.find('nfe:qVol', ns)
                     if q is not None and q.text:
-                        try:
-                            vol_m3 += float(q.text)
-                        except ValueError:
-                            pass
+                        vol_m3 += _float_ou(q.text, 0.0)
 
             # Fallback 2: pesoL
             if vol_m3 == 0.0:
                 peso = root.find('.//nfe:vol/nfe:pesoL', ns)
                 if peso is not None and peso.text:
-                    try:
-                        vol_m3 = float(peso.text)
-                    except ValueError:
-                        pass
+                    vol_m3 = _float_ou(peso.text, vol_m3)
 
             return {
                 'tipo':         'NF-e',
@@ -252,13 +265,8 @@ class RegrasAuditoria:
             else:
                 icms_r = float(v_icms_node.text) if v_icms_node is not None else 0.0
 
-                if p_icms_node is not None and p_icms_node.text:
-                    try:
-                        icms_taxa = float(p_icms_node.text) / 100.0
-                    except ValueError:
-                        icms_taxa = (icms_r / valor) if valor > 0 else 0.0
-                else:
-                    icms_taxa = (icms_r / valor) if valor > 0 else 0.0
+                taxa = _float_ou(p_icms_node.text) if p_icms_node is not None and p_icms_node.text else None
+                icms_taxa = taxa / 100.0 if taxa is not None else ((icms_r / valor) if valor > 0 else 0.0)
 
             # ── volume (apenas M³, cUnid='00') ───────────────────────────────
             vol_m3 = 0.0
@@ -267,16 +275,12 @@ class RegrasAuditoria:
             for infQ in root.findall('.//cte:infQ', ns):
                 c_unid  = infQ.find('cte:cUnid', ns)
                 q_carga = infQ.find('cte:qCarga', ns)
-                if c_unid is not None and c_unid.text == '00':
-                    if q_carga is not None and q_carga.text:
-                        try:
-                            v = float(q_carga.text)
-                            if v > 0:
-                                vol_m3 = v
-                                unid_encontrada = 'M3'
-                                break
-                        except ValueError:
-                            pass
+                if c_unid is not None and c_unid.text == '00' and q_carga is not None and q_carga.text:
+                    v = _float_ou(q_carga.text, 0.0)
+                    if v > 0:
+                        vol_m3 = v
+                        unid_encontrada = 'M3'
+                        break
             # Unidades diferentes de M3 (mmbtu, kg etc.) → serviço de transporte puro,
             # volume não é contabilizado em m³ no CGR.
 
@@ -314,7 +318,6 @@ class RegrasAuditoria:
         pis (R$), cofins (R$), volume_total (m³), volume (int), fonte='OCR'.
         """
 
-        # ── helpers ──────────────────────────────────────────────────────────
         def _extrair_texto(path: Path) -> str:
             texto = ''
             try:
@@ -332,23 +335,10 @@ class RegrasAuditoria:
                 pass
             return texto
 
-        def _parse_brl(s: str) -> float:
-            """Converte '1.234.567,89' → 1234567.89"""
-            s = s.strip().replace(' ', '')
-            if ',' in s:
-                s = s.replace('.', '').replace(',', '.')
-            return float(s)
-
         def _find_brl(pattern: str, text: str, default: float = 0.0) -> float:
             m = re.search(pattern, text, re.IGNORECASE)
-            if m:
-                try:
-                    return _parse_brl(m.group(1))
-                except (ValueError, IndexError):
-                    pass
-            return default
+            return _brl_ou(m.group(1), default) if m else default
 
-        # ── extração de texto ─────────────────────────────────────────────
         texto = _extrair_texto(pdf_path)
         if not texto.strip():
             return {'erro': 'Não foi possível extrair texto do PDF'}
@@ -389,10 +379,7 @@ class RegrasAuditoria:
                     for j in range(i + 1, min(i + 3, len(linhas))):
                         nums = re.findall(r'[\d.]+,\d{2}', linhas[j])
                         if len(nums) >= 2:
-                            try:
-                                icms_r = _parse_brl(nums[1])
-                            except (ValueError, IndexError):
-                                pass
+                            icms_r = _brl_ou(nums[1], icms_r)
                             break
 
                 # Bloco "VALOR DO FRETE … VALOR TOTAL DA NOTA"
@@ -401,37 +388,27 @@ class RegrasAuditoria:
                     for j in range(i + 1, min(i + 3, len(linhas))):
                         nums = re.findall(r'[\d.]+,\d{2}', linhas[j])
                         if nums:
-                            try:
-                                valor = _parse_brl(nums[-1])
-                            except (ValueError, IndexError):
-                                pass
+                            valor = _brl_ou(nums[-1], valor)
                             break
 
             if valor == 0.0:
                 valor = _find_brl(
                     r'VALOR\s+TOTAL\s+DA\s+NOTA\s*[:\-]?\s*([\d.,]+)', txt_up)
             if icms_r == 0.0:
-                icms_r = _find_brl(
-                    r'VALOR\s+DO\s+ICMS\s*[:\-]?\s*([\d.,]+)', txt_up)
+                icms_r = _find_brl(_RE_VALOR_DO_ICMS, txt_up)
 
             # ICMS taxa: procurar "BASE DE CÁLCULO … % ICMS"
             m_taxa = re.search(
                 r'ALIQ(?:UOTA)?\s*(?:DO\s*)?ICMS\s*[:\-]?\s*([\d,\.]+)\s*%', txt_up)
-            if m_taxa:
-                try:
-                    icms_taxa = _parse_brl(m_taxa.group(1)) / 100.0
-                except ValueError:
-                    pass
+            if m_taxa and (taxa := _brl_ou(m_taxa.group(1))) is not None:
+                icms_taxa = taxa / 100.0
             if icms_taxa == 0.0 and valor > 0:
                 icms_taxa = icms_r / valor
 
             # Volume M3
             m_vol = re.search(r'M3\s+([\d.,]+)\s+([\d.,]+)', txt_up)
             if m_vol:
-                try:
-                    volume = _parse_brl(m_vol.group(1))
-                except ValueError:
-                    pass
+                volume = _brl_ou(m_vol.group(1), volume)
 
             m_num = re.search(r'N[º°][.\s]*\s*0*(\d+)', texto)
             if m_num:
@@ -443,10 +420,7 @@ class RegrasAuditoria:
 
             m_frete = re.search(r'Frete\s+valor\s+([\d.,]+)', texto)
             if m_frete:
-                try:
-                    valor = _parse_brl(m_frete.group(1))
-                except ValueError:
-                    pass
+                valor = _brl_ou(m_frete.group(1), valor)
 
             if valor == 0.0:
                 valor = _find_brl(
@@ -454,12 +428,8 @@ class RegrasAuditoria:
                     r'\s*[:\-]?\s*R?\$?\s*([\d.,]+)', txt_up)
 
             if valor == 0.0:
-                todos_rs = []
-                for m in re.finditer(r'R\$\s*([\d.,]+)', texto):
-                    try:
-                        todos_rs.append(_parse_brl(m.group(1)))
-                    except ValueError:
-                        pass
+                todos_rs = [v for m in re.finditer(r'R\$\s*([\d.,]+)', texto)
+                            if (v := _brl_ou(m.group(1))) is not None]
                 if todos_rs:
                     valor = max(todos_rs)
 
@@ -484,25 +454,18 @@ class RegrasAuditoria:
                                 icms_taxa = icms_r = 0.0
                         break
                 if icms_r == 0.0:
-                    icms_r = _find_brl(
-                        r'VALOR\s+DO\s+ICMS\s*[:\-]?\s*([\d.,]+)', txt_up)
+                    icms_r = _find_brl(_RE_VALOR_DO_ICMS, txt_up)
                 if icms_r == 0.0:
                     m_icms_val = re.search(
                         r'ICMS[^0-9]+([\d.,]+)\s+([\d.,]+)', txt_up)
                     if m_icms_val:
-                        try:
-                            icms_r = _parse_brl(m_icms_val.group(2))
-                        except ValueError:
-                            pass
+                        icms_r = _brl_ou(m_icms_val.group(2), icms_r)
 
                 # ICMS taxa: "% ICMS" ou "ALÍQUOTA ICMS"
                 m_taxa = re.search(
                     r'(?:ALIQ(?:UOTA)?\s*(?:DO\s*)?ICMS|%\s*ICMS)\s*[:\-]?\s*([\d,\.]+)', txt_up)
-                if m_taxa and icms_taxa == 0.0:
-                    try:
-                        icms_taxa = _parse_brl(m_taxa.group(1)) / 100.0
-                    except ValueError:
-                        pass
+                if m_taxa and icms_taxa == 0.0 and (taxa := _brl_ou(m_taxa.group(1))) is not None:
+                    icms_taxa = taxa / 100.0
                 if icms_taxa == 0.0 and valor > 0:
                     icms_taxa = icms_r / valor
 
@@ -529,26 +492,20 @@ class RegrasAuditoria:
                     break
 
             if valor == 0.0:
-                todos = []
-                for m in re.finditer(r'\b(\d{1,3}(?:\.\d{3})+,\d{2})\b', texto):
-                    try:
-                        todos.append(_parse_brl(m.group(1)))
-                    except ValueError:
-                        pass
+                todos = [v for m in re.finditer(r'\b(\d{1,3}(?:\.\d{3})+,\d{2})\b', texto)
+                         if (v := _brl_ou(m.group(1))) is not None]
                 if todos:
                     valor = max(todos)
 
-            icms_r = _find_brl(r'VALOR\s+DO\s+ICMS\s*[:\-]?\s*([\d.,]+)', txt_up)
-            if icms_r == 0.0 and valor > 0:
-                pass  # ICMS taxa permanece 0 (não tributado / isento)
-            else:
-                icms_taxa = icms_r / valor if valor > 0 else 0.0
+            # Sem "VALOR DO ICMS" a taxa fica 0 (não tributado / isento).
+            icms_r = _find_brl(_RE_VALOR_DO_ICMS, txt_up)
+            icms_taxa = icms_r / valor if valor > 0 else 0.0
 
             m_num = re.search(r'N[º°.]\s*(\d+)', texto)
             if m_num:
                 num = m_num.group(1)
 
-        resultado = {
+        return {
             'tipo':         tipo,
             'numero':       num,
             'valor_total':  valor,
@@ -560,13 +517,3 @@ class RegrasAuditoria:
             'volume':       int(volume),
             'fonte':        'OCR',
         }
-
-        # Fallback IA (Gemini) apenas quando extração local vier fraca.
-        # Mantém custo baixo e melhora casos em que OCR/layout não fecha.
-        resultado_fraco = (
-            resultado['valor_total'] <= 0.0
-            or resultado['numero'] == 'N/A'
-            or (resultado['tipo'] == 'NF-e' and resultado['icms'] <= 0.0)
-        )
-
-        return resultado
