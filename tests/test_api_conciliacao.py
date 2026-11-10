@@ -118,3 +118,84 @@ def test_fevereiro_top_da_pasta_de_despesas_vira_receita():
     assert len(itens) == 29
     assert t["total_receitas"] == pytest.approx((573_278.96 + 4_566_792.73) * 0.9075, abs=0.01)
     assert t["total_despesas"] == pytest.approx((461_151.40 + 43_146.59 + 25_790.68) * 0.9075, abs=0.01)
+
+
+# ---------- Prova real do RP (valores fictícios) ----------
+
+def _salvar(client, periodo, itens):
+    corpo = [{"arquivo": a, "caminho": a, "categoria": c, "valor": v, "status": s, "metodo": "x"}
+             for a, c, v, s in itens]
+    r = client.post("/api/conciliacao/salvar", json={"periodo": periodo, "itens": corpo})
+    assert r.status_code == 200, r.text
+    return r.json()["rp"]
+
+
+ITENS_BASE = [
+    ("GERDAU - NDPFP03882.pdf", "Receita", 1000.0, "OK"),
+    ("KLABIN - NDTOPNREC03901.pdf", "Receita", 25000.0, "OK"),   # TOP veio da pasta de despesas
+    ("CPA - despesa.pdf", "Despesa", 400.0, "OK"),
+]
+
+
+def test_prova_real_confere_e_top_vai_para_receita(client):
+    rp = _salvar(client, "Fev/2026", ITENS_BASE)
+    d = client.get("/api/conciliacao/prova-real", params={"periodo": "Fev/2026"}).json()
+    assert d["tem_itens"] and d["qtd_itens"] == 3 and d["taxa"] == 0.0925
+    assert d["rp_calculado"] == pytest.approx(rp, abs=0.01) == pytest.approx((400 - 26000) * 0.9075, abs=0.01)
+    assert d["confere"] is True and d["diferenca"] == pytest.approx(0, abs=0.01)
+    assert d["receitas"]["qtd"] == 2 and d["despesas"]["qtd"] == 1
+    top = next(i for i in d["itens"] if i["tipo"] == "TOP")
+    assert top["lado"] == "receita" and top["numero"] == "03901"
+    assert d["itens"][0]["valor"] == 25000.0           # maior valor primeiro
+    assert d["possiveis_duplicadas"] == []
+
+
+def test_prova_real_mes_sem_itens(client):
+    d = client.get("/api/conciliacao/prova-real", params={"periodo": "Mar/2026"}).json()
+    assert d["tem_itens"] is False and d["confere"] is False
+    assert d["rp_calculado"] is None and d["itens"] == []
+
+
+def test_prova_real_periodo_invalido_422(client):
+    assert client.get("/api/conciliacao/prova-real", params={"periodo": "xx"}).status_code == 422
+
+
+def test_prova_real_rp_alterado_por_fora(client):
+    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    rp = _salvar(client, "Fev/2026", ITENS_BASE)
+    with ServicosConsolidacao() as c:
+        c.salvar_rp("Fev/2026", rp + 50.0)
+    d = client.get("/api/conciliacao/prova-real", params={"periodo": "Fev/2026"}).json()
+    assert d["confere"] is False and d["diferenca"] == pytest.approx(-50.0, abs=0.01)
+
+
+def test_prova_real_nota_repetida_avisa_e_muda_rp(client):
+    rp1 = _salvar(client, "Fev/2026", ITENS_BASE)
+    repetidas = ITENS_BASE + [("2026.04.20 - KLABIN - NDTOPNREC03901 - Atualizada em 20.04.26.pdf", "Receita", 25243.08, "OK")]
+    rp2 = _salvar(client, "Fev/2026", repetidas)
+    d = client.get("/api/conciliacao/prova-real", params={"periodo": "Fev/2026"}).json()
+    assert len(d["possiveis_duplicadas"]) == 1
+    g = d["possiveis_duplicadas"][0]
+    assert g["qtd"] == 2 and g["tipo"] == "TOP" and g["numero"] == "03901" and len(g["arquivos"]) == 2
+    assert sum(i["repetida"] for i in d["itens"]) == 2
+    # a nota repetida muda o RP em -(25.243,08 × 0,9075)
+    assert rp2 - rp1 == pytest.approx(-25243.08 * 0.9075, abs=0.01)
+    assert rp2 - rp1 == pytest.approx(-22908.10, abs=0.01)
+
+
+def test_prova_real_ja_no_ret_fica_fora_do_rp(client):
+    itens = ITENS_BASE + [("ND encargo.pdf", "Despesa", 0.0, "JA_NO_RET")]
+    rp = _salvar(client, "Fev/2026", itens)
+    d = client.get("/api/conciliacao/prova-real", params={"periodo": "Fev/2026"}).json()
+    assert d["ja_no_ret"]["qtd"] == 1 and d["despesas"]["qtd"] == 1
+    assert next(i for i in d["itens"] if i["nome"] == "ND encargo.pdf")["lado"] == "ja_no_ret"
+    assert d["rp_calculado"] == pytest.approx(rp, abs=0.01) and d["confere"] is True
+
+
+def test_prova_real_top_gravado_como_despesa_conta_como_receita(client):
+    """Mês antigo: TOP foi gravado na categoria Despesa. A prova real o trata como receita
+    e, como o RP gravado usou a regra velha, mostra a diferença (o problema aparece)."""
+    _salvar(client, "Fev/2026", [("KLABIN - NDTOPNREC03901.pdf", "Despesa", 1000.0, "OK")])
+    d = client.get("/api/conciliacao/prova-real", params={"periodo": "Fev/2026"}).json()
+    assert d["itens"][0]["lado"] == "receita" and d["receitas"]["qtd"] == 1
+    assert d["rp_calculado"] == pytest.approx(-907.5) and d["confere"] is False

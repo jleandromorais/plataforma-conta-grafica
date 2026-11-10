@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from Src.Services.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConcilia
+from Src.Services.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConcilia, eh_top
 
 
 def pdfs_da_pasta(pasta: Path | None) -> list[Path]:
@@ -97,6 +97,112 @@ def salvar(periodo: str, itens: list[PdfItem]) -> dict:
             for i in itens
         ])
     return {"rp": rp, "qtd_itens": len(itens)}
+
+
+TOL_PROVA_REAL_RS = 1.0   # R$: abaixo disso é arredondamento
+
+
+def _tipo_e_numero(nome: str) -> tuple[str, str, str | None]:
+    """(tipo, número, chave) da ND pelo nome do arquivo, com a MESMA extração do dedupe do
+    processar_arquivos (`_numero_nd`). Sem ND → ("OUTRA", "", None). Nota "cancelado" não
+    tem chave: ela fica fora da dedupe (entra negativa) e não conta como repetida."""
+    from Src.Services.servicos_concilia import _numero_nd, _sem_acento
+
+    nd = _numero_nd(nome)
+    if not nd:
+        return "OUTRA", "", None
+    tipo = "PFP" if nd.startswith("PFP") else "TOP"
+    numero = nd[3:] if tipo == "PFP" else nd[7:]
+    cancelada = "cancelado" in _sem_acento(nome).lower()
+    return tipo, numero, None if cancelada else nd
+
+
+def _eh_top_pelo_nome(arquivo: str) -> bool:
+    """TOP pelo nome do arquivo: `eh_top` ("ND - TOP NREC 03863") + a ND "NDTOPNREC03899", que
+    `eh_top` só reconhece pela pasta (a pasta não fica gravada)."""
+    nome = Path(arquivo).name
+    return eh_top(nome) or _tipo_e_numero(nome)[0] == "TOP"
+
+
+def prova_real(periodo: str) -> dict:
+    """A conta do RP gravado do mês, aberta, item a item. Lê os itens gravados (`concilia_itens`),
+    refaz o RP com a MESMA `totais` do salvar e compara com consolidacao.rp. NÃO grava nada.
+    Avisa notas repetidas (mesmo tipo + número da ND), que o dedupe do processar já trataria."""
+    from collections import defaultdict
+
+    from Src.Database.database import DatabasePMPV
+    from Src.common.periodos import is_periodo_valido
+
+    if not is_periodo_valido(periodo):
+        raise ValueError(f"O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, "
+                         "por exemplo Jan/2026.")
+    with DatabasePMPV() as db:
+        gravados = db.listar_concilia_itens(periodo) or []
+        cons = db.buscar_consolidacao(periodo) or {}
+
+    # TOP não recuperável é receita mesmo se foi gravado na categoria Despesa (pasta de despesas):
+    # a mesma regra do processar_arquivos (`eh_top`), aplicada aqui pelo nome do arquivo.
+    pdf_itens = [
+        PdfItem(file_name=str(g.get("arquivo") or ""), file_path="",
+                category="Receita" if _eh_top_pelo_nome(str(g.get("arquivo") or "")) else str(g.get("categoria") or ""),
+                amount=float(g.get("valor") or 0.0), status=str(g.get("status") or ""), method="")
+        for g in gravados
+    ]
+    # Quantas vezes cada chave (tipo + nº da ND) aparece.
+    por_chave: dict[str, list[PdfItem]] = defaultdict(list)
+    for p in pdf_itens:
+        chave = _tipo_e_numero(Path(p.file_name).name)[2]
+        if chave:
+            por_chave[chave].append(p)
+
+    itens, agg = [], {"receita": [0, 0.0], "despesa": [0, 0.0], "ja_no_ret": [0, 0.0]}
+    for p in pdf_itens:
+        nome = Path(p.file_name).name
+        tipo, numero, chave = _tipo_e_numero(nome)
+        lado = "ja_no_ret" if p.status == STATUS_JA_NO_RET else ("receita" if p.category == "Receita" else "despesa")
+        agg[lado][0] += 1
+        agg[lado][1] += p.amount
+        itens.append({
+            "arquivo": p.file_name, "nome": nome, "lado": lado, "tipo": tipo, "numero": numero,
+            "valor": round(p.amount, 2), "liquido": round(p.amount * FATOR_PIS_COFINS, 2),
+            "status": p.status, "repetida": bool(chave and len(por_chave[chave]) > 1),
+        })
+    itens.sort(key=lambda x: x["valor"], reverse=True)
+
+    duplicadas = []
+    for chave, grupo in por_chave.items():
+        if len(grupo) > 1:
+            tipo, numero, _ = _tipo_e_numero(Path(grupo[0].file_name).name)
+            total = sum(g.amount for g in grupo)
+            duplicadas.append({
+                "tipo": tipo, "numero": numero, "qtd": len(grupo), "valor_total": round(total, 2),
+                "liquido_total": round(total * FATOR_PIS_COFINS, 2),
+                "arquivos": [Path(g.file_name).name for g in grupo],
+            })
+    duplicadas.sort(key=lambda d: d["valor_total"], reverse=True)
+
+    tem_itens = bool(pdf_itens)
+    rp_calculado = round(totais(pdf_itens)["rp"], 2) if tem_itens else None
+    rp_gravado = float(cons["rp"]) if cons.get("rp") is not None else None
+    diferenca = round(rp_calculado - rp_gravado, 2) if rp_calculado is not None and rp_gravado is not None else None
+    return {
+        "periodo": periodo,
+        "tem_itens": tem_itens,
+        "qtd_itens": len(pdf_itens),
+        "taxa": 0.0925,
+        "receitas": {"qtd": agg["receita"][0], "bruto": round(agg["receita"][1], 2),
+                     "liquido": round(agg["receita"][1] * FATOR_PIS_COFINS, 2)},
+        "despesas": {"qtd": agg["despesa"][0], "bruto": round(agg["despesa"][1], 2),
+                     "liquido": round(agg["despesa"][1] * FATOR_PIS_COFINS, 2)},
+        "ja_no_ret": {"qtd": agg["ja_no_ret"][0], "bruto": round(agg["ja_no_ret"][1], 2)},
+        "rp_calculado": rp_calculado,
+        "rp_gravado": rp_gravado,
+        "diferenca": diferenca,
+        "confere": tem_itens and diferenca is not None and abs(diferenca) <= TOL_PROVA_REAL_RS,
+        "itens": itens,
+        "possiveis_duplicadas": duplicadas,
+        "data_atualizacao": (cons.get("data_atualizacao") or "")[:16],
+    }
 
 
 def historico() -> list[dict]:

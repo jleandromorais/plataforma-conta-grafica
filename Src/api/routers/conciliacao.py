@@ -16,10 +16,12 @@ from Src.api.schemas.conciliacao import (
     HistoricoConciliacaoLinha,
     ItemConciliacao,
     ProcessarConciliacaoResponse,
+    ProvaRealRP,
     SalvarConciliacaoRequest,
     SalvarConciliacaoResponse,
     TotaisConciliacao,
 )
+from Src.common.periodos import normalizar_periodo
 from Src.api.uploads import MAX_ARQUIVOS, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services import servicos_concilia_lote as lote_concilia
@@ -95,7 +97,13 @@ def relatorio(payload: SalvarConciliacaoRequest) -> FileResponse:
     )
 
 
-@router.get("/historico", response_model=list[HistoricoConciliacaoLinha])
+@router.get("/prova-real", response_model=ProvaRealRP)
+def prova_real(periodo: str) -> ProvaRealRP:
+    """A conta do RP gravado do mês, item a item, avisando notas repetidas. NÃO grava nada."""
+    return ProvaRealRP(**lote_concilia.prova_real(normalizar_periodo(periodo) or periodo))
+
+
+@router.get("/historico",response_model=list[HistoricoConciliacaoLinha])
 def historico() -> list[HistoricoConciliacaoLinha]:
     return [HistoricoConciliacaoLinha(**h) for h in lote_concilia.historico()]
 
