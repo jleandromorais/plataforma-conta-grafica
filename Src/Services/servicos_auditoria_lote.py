@@ -20,6 +20,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable
 
+from Src.common.duplicatas import possiveis_duplicatas_por_valor
 from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
 
@@ -377,6 +378,13 @@ def prova_real(periodo: str) -> dict:
         "diferenca": diferenca,
         # Sem notas gravadas (mês gravado só com o total) não há o que provar.
         "confere": bool(itens) and diferenca is not None and abs(diferenca) <= TOL_PROVA_REAL,
+        # Mesmo valor + mesma empresa + mesmo tipo (NF-e/CT-e) com números diferentes = possível cópia.
+        "possiveis_duplicatas_valor": possiveis_duplicatas_por_valor(
+            itens,
+            grupo=lambda g: f"{g.get('tipo') or '?'} · {g.get('empresa') or '(sem empresa)'}",
+            valor=lambda g: g.get("valor_total"),
+            nome=lambda g: f"{g.get('tipo') or 'Nota'} {g.get('numero') or '(sem número)'}",
+        ),
         "data_atualizacao": (cons.get("data_atualizacao") or "")[:16],
     }
 

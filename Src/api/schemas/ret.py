@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from Src.api.schemas.duplicatas import PossivelDuplicataValor
+
 
 class DocumentoRET(BaseModel):
     """Um PDF de encargo lido por RegrasRET.extrair_dados_pdf."""
@@ -75,6 +77,7 @@ class ProvaRealRET(BaseModel):
     diferenca: float | None = None
     confere: bool
     por_empresa: list[ProvaRealEmpresaRET] = []
+    possiveis_duplicatas_valor: list[PossivelDuplicataValor] = []
     data_atualizacao: str = ""
 
 

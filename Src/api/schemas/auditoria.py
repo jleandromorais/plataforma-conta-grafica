@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from Src.api.schemas.comum import ProblemaArquivo
+from Src.api.schemas.duplicatas import PossivelDuplicataValor
 
 
 class ItemAuditoria(BaseModel):
@@ -111,6 +112,7 @@ class ProvaRealAuditoria(BaseModel):
     cgr_gravado: float | None
     diferenca: float | None
     confere: bool
+    possiveis_duplicatas_valor: list[PossivelDuplicataValor] = []
     data_atualizacao: str
 
 

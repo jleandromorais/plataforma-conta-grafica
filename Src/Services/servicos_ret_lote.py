@@ -14,6 +14,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Callable
 
+from Src.common.duplicatas import possiveis_duplicatas_por_valor
 from Src.Services.servicos_ret import RegrasRET
 
 _PASTAS_FORA_DO_RET = ("NOTAS FISCAIS", "NOTA FISCAL")
@@ -128,6 +129,13 @@ def prova_real(periodo: str) -> dict:
         "diferenca": diferenca,
         "confere": tem_itens and diferenca is not None and abs(diferenca) <= TOL_PROVA_REAL_RS,
         "por_empresa": linhas,
+        # Só EAT/EC (o que pesa no RET). Mesmo valor + mesma empresa + mesmo tipo = possível cópia.
+        "possiveis_duplicatas_valor": possiveis_duplicatas_por_valor(
+            calc["eat_docs"] + calc["ec_docs"],
+            grupo=lambda d: f"{d['tipo_encargo']} · {d.get('empresa') or '(sem empresa)'}",
+            valor=lambda d: d["valor_total"],
+            nome=lambda d: Path(str(d.get("arquivo") or d.get("numero_nd") or "(sem nome)")).name,
+        ),
         "data_atualizacao": (cons.get("data_atualizacao") or "")[:16],
     }
 

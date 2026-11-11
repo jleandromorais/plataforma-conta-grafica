@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.duplicatas import PossivelDuplicataValor
+
 
 class ItemConciliacao(BaseModel):
     arquivo: str
@@ -82,6 +84,7 @@ class ProvaRealRP(BaseModel):
     confere: bool
     itens: list[ItemProvaRealRP] = []
     possiveis_duplicadas: list[DuplicadaProvaRealRP] = []
+    possiveis_duplicatas_valor: list[PossivelDuplicataValor] = []
     data_atualizacao: str = ""
 
 

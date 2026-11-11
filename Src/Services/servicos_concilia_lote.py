@@ -12,6 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
+from Src.common.duplicatas import possiveis_duplicatas_por_valor
 from Src.Services.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConcilia, eh_top
 
 
@@ -181,6 +182,13 @@ def prova_real(periodo: str) -> dict:
             })
     duplicadas.sort(key=lambda d: d["valor_total"], reverse=True)
 
+    # Mesmo valor no mesmo lado: pega a cópia que o número da ND não reconheceu como repetida.
+    por_valor = possiveis_duplicatas_por_valor(
+        (i for i in itens if i["lado"] != "ja_no_ret"),
+        grupo=lambda i: "Receita" if i["lado"] == "receita" else "Despesa",
+        valor=lambda i: i["valor"], nome=lambda i: i["nome"], ja_avisada=lambda i: i["repetida"],
+    )
+
     tem_itens = bool(pdf_itens)
     rp_calculado = round(totais(pdf_itens)["rp"], 2) if tem_itens else None
     rp_gravado = float(cons["rp"]) if cons.get("rp") is not None else None
@@ -201,6 +209,7 @@ def prova_real(periodo: str) -> dict:
         "confere": tem_itens and diferenca is not None and abs(diferenca) <= TOL_PROVA_REAL_RS,
         "itens": itens,
         "possiveis_duplicadas": duplicadas,
+        "possiveis_duplicatas_valor": por_valor,
         "data_atualizacao": (cons.get("data_atualizacao") or "")[:16],
     }
 
