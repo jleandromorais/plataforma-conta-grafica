@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from Src.api.auth import usuario_atual
 from Src.api.errors import registrar_exception_handlers
-from Src.api.routers import auth as auth_router, auditoria, cgf, conciliacao, config, dashboard, excel_final, nota_tecnica, pmpv, pr, pv, ret, rpv, scg, sr
+from Src.api.routers import auth as auth_router, auditoria, cgf, conciliacao, config, dashboard, excel_final, nota_tecnica, pmpv, pr, pv, relatorio_trimestral, ret, rpv, scg, sr
 
 app = FastAPI(
     title="Plataforma Conta Gráfica — API",
@@ -55,6 +55,7 @@ app.include_router(ret.router, prefix="/api", dependencies=_protegido)
 app.include_router(conciliacao.router, prefix="/api", dependencies=_protegido)
 app.include_router(excel_final.router, prefix="/api", dependencies=_protegido)
 app.include_router(nota_tecnica.router, prefix="/api", dependencies=_protegido)
+app.include_router(relatorio_trimestral.router, prefix="/api", dependencies=_protegido)
 
 @app.get("/api/health")
 def health() -> dict:
