@@ -54,6 +54,39 @@ def periodo_do_caminho(caminho: str) -> str:
     return f"{_MESES_ABREV[mes_num - 1]}/{ano}"
 
 
+# Pastas que vêm junto no .zip do mês mas são de OUTRA etapa do ciclo (mesmas
+# palavras do Front_end/src/utils/pastaCiclo.ts): encargos (RET/EAT), penalidades
+# (RP/TOP) e CGF. Não são empresas; se entrassem, viravam "notas" do CGR.
+_PASTA_OUTRA_ETAPA = re.compile(
+    r"^ret\b|\beat\b|encargos? de transporte|^rp\b|penalidade|\btop\b|receita|despesa|\bcgf\b|total mensal"
+)
+# Pasta que só embrulha as empresas ("Nota Fiscal", "Notas Fiscais", "NFs", "NF-e").
+_PASTA_DE_NOTAS = re.compile(r"\bnotas? fisca|\bnfs?\b|\bnf-?e\b")
+
+
+def pasta_das_empresas(base: Path) -> tuple[Path, list[str], list[str]]:
+    """Acha a pasta cujas subpastas são as empresas.
+
+    O .zip original do mês às vezes traz "EAT/", "Penalidade (…)/" e
+    "Nota Fiscal/<Empresa>/…" lado a lado: sem isso, "Nota Fiscal" e "EAT"
+    viravam empresas. As pastas de outra etapa são deixadas de fora e, se sobra
+    uma única pasta de notas com subpastas, desce nela.
+    Retorna (pasta, empresas, pastas de outra etapa ignoradas).
+    """
+    atual = base
+    ignoradas: list[str] = []
+    while True:
+        subpastas = sorted(p for p in atual.iterdir() if p.is_dir())
+        fora = [p for p in subpastas if _PASTA_OUTRA_ETAPA.search(_sem_acento(p.name).lower())]
+        restantes = [p for p in subpastas if p not in fora]
+        ignoradas += [p.relative_to(base).as_posix() for p in fora]
+        unica = restantes[0] if len(restantes) == 1 else None
+        if unica and _PASTA_DE_NOTAS.search(_sem_acento(unica.name).lower()) and any(c.is_dir() for c in unica.iterdir()):
+            atual = unica
+            continue
+        return atual, [p.name for p in restantes], ignoradas
+
+
 # ── Regras por item ──────────────────────────────────────────────────────────
 
 def eh_devolucao(item: XMLItem) -> bool:
@@ -355,6 +388,52 @@ def remover_nota(periodo: str, item_id: int) -> dict:
     return {"periodo": periodo, "valor_gravado": cgr, "qtd_itens": len(restantes)}
 
 
+ORIGEM_DIGITADA = "digitada"
+
+
+def incluir_nota(periodo: str, *, empresa: str, numero: str, cgr_liquido: float, motivo: str,
+                 valor_total: float | None = None, volume_total: float | None = None,
+                 linha_excel: int | None = None, tipo: str | None = None) -> dict:
+    """Inclui no mês UMA nota que não veio nos arquivos (ex.: o fornecedor não mandou), com o CGR
+    da planilha, marcada como "digitada" e com o motivo. Regrava o CGR (e o RPV) com a MESMA conta
+    da prova real. O chamador atualiza o SCG/PR (atualizar_dos_meses).
+
+    Se o mês for auditado e gravado de novo pelos arquivos, a nota digitada sai (o salvar substitui
+    as notas do mês): aí é preciso incluí-la outra vez."""
+    from Src.Database.database import DatabasePMPV
+    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.common.periodos import is_periodo_valido
+
+    if not is_periodo_valido(periodo):
+        raise ValueError(f"Período inválido: “{periodo}”. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.")
+    empresa, numero, motivo = (empresa or "").strip(), (numero or "").strip(), (motivo or "").strip()
+    if not empresa or not numero:
+        raise ValueError("Informe a empresa e o número da nota.")
+    if len(motivo) < 5:
+        raise ValueError("Escreva o motivo de incluir a nota à mão (ex.: o fornecedor não mandou a nota).")
+    if not cgr_liquido:
+        raise ValueError("O CGR da nota não pode ser zero.")
+    # Sem o tipo, vale o fornecedor: gasoduto (TAG, Mastergás) emite CT-e; os demais, NF-e. Os dois entram no CGR.
+    tipo = tipo or ("CT-e" if empresa_integra_cgr(empresa) else "NF-e")
+    if motivo and linha_excel:
+        motivo = f"{motivo} (planilha, linha {linha_excel})"
+
+    chave = (empresa.casefold(), _normalizar_numero_nota(numero))
+    with DatabasePMPV() as db:
+        atuais = db.listar_auditoria_itens(periodo) or []
+        if any((str(g.get("empresa") or "").casefold(), _normalizar_numero_nota(g.get("numero") or "")) == chave for g in atuais):
+            raise ValueError(f"A nota {numero} de {empresa} já está gravada em {periodo}.")
+        nova = {"empresa": empresa, "tipo": tipo, "numero": numero, "valor_total": float(valor_total or 0.0),
+                "volume_total": float(volume_total or 0.0), "cgr_liquido": float(cgr_liquido),
+                "origem": ORIGEM_DIGITADA, "motivo": motivo}
+        db.incluir_auditoria_item(periodo, nova)
+    todas = [*atuais, nova]
+    cgr = sum(float(g.get("cgr_liquido") or 0.0) for g in todas if _integra_cgr_gravado(g))
+    with ServicosConsolidacao() as consolidacao:
+        consolidacao.salvar_cgr(periodo, cgr)
+    return {"periodo": periodo, "valor_gravado": cgr, "qtd_itens": len(todas)}
+
+
 def prova_real(periodo: str) -> dict:
     """A conta do CGR gravado do mês, aberta por empresa, a partir das notas gravadas.
 
@@ -412,6 +491,13 @@ def prova_real(periodo: str) -> dict:
             valor=lambda g: g.get("valor_total"),
             nome=lambda g: f"{g.get('tipo') or 'Nota'} {g.get('numero') or '(sem número)'}",
         ),
+        # Notas incluídas à mão (não vieram nos arquivos): a tela mostra com o motivo e deixa tirar.
+        "notas_digitadas": [
+            {"id": g.get("id"), "empresa": g.get("empresa") or "", "tipo": g.get("tipo") or "",
+             "numero": g.get("numero") or "", "cgr_liquido": float(g.get("cgr_liquido") or 0.0),
+             "motivo": g.get("motivo") or ""}
+            for g in itens if g.get("origem") == ORIGEM_DIGITADA
+        ],
         "data_atualizacao": (cons.get("data_atualizacao") or "")[:16],
     }
 

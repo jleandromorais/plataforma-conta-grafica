@@ -217,6 +217,60 @@ def test_auditoria_tirar_nota_inexistente_recusa(client):
     assert client.post("/api/auditoria/remover-nota", json={"periodo": "Mar/2026", "id": 99999}).status_code == 422
 
 
+# ---------- Incluir nota que só está na planilha (Auditoria/CGR) ----------
+
+def _gravar_cgr_mar(itens, cgr):
+    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    with DatabasePMPV() as db:
+        db.salvar_auditoria_itens("Mar/2026", itens)
+    with ServicosConsolidacao() as c:
+        c.salvar_cgr("Mar/2026", cgr)
+
+
+NOTA_COPERGAS = {"periodo": "Mar/2026", "empresa": "PETROBRAS", "numero": "777", "cgr_liquido": 481319.87,
+                 "valor_total": 600000.0, "volume_total": 200000.0, "linha_excel": 42,
+                 "motivo": "A Copergás não mandou a nota; valor da planilha"}
+
+
+def test_incluir_nota_da_planilha_soma_no_cgr_e_aparece_como_digitada(client):
+    _gravar_cgr_mar([{"empresa": "PETROBRAS", "tipo": "NF-e", "numero": "10", "valor_total": 1.0, "cgr_liquido": 1000.0}], 1000.0)
+    r = client.post("/api/auditoria/incluir-nota", json=NOTA_COPERGAS)
+    assert r.status_code == 200, r.text
+    assert r.json()["valor_gravado"] == pytest.approx(1000.0 + 481319.87) and r.json()["qtd_itens"] == 2
+    p = client.get("/api/auditoria/prova-real", params={"periodo": "Mar/2026"}).json()
+    assert p["confere"] is True and p["cgr_gravado"] == pytest.approx(482319.87)
+    [n] = p["notas_digitadas"]
+    assert (n["empresa"], n["numero"], n["tipo"]) == ("PETROBRAS", "777", "NF-e")
+    assert n["cgr_liquido"] == pytest.approx(481319.87)
+    assert "Copergás" in n["motivo"] and "linha 42" in n["motivo"]
+    # tirar do cálculo desfaz
+    r2 = client.post("/api/auditoria/remover-nota", json={"periodo": "Mar/2026", "id": n["id"]})
+    assert r2.status_code == 200 and r2.json()["valor_gravado"] == pytest.approx(1000.0)
+
+
+def test_incluir_nota_gasoduto_sem_tipo_vira_cte_e_entra_no_cgr(client):
+    _gravar_cgr_mar([{"empresa": "PETROBRAS", "tipo": "NF-e", "numero": "10", "valor_total": 1.0, "cgr_liquido": 1000.0}], 1000.0)
+    r = client.post("/api/auditoria/incluir-nota", json={**NOTA_COPERGAS, "empresa": "TAG", "numero": "4539", "cgr_liquido": 500.0})
+    assert r.status_code == 200, r.text
+    assert r.json()["valor_gravado"] == pytest.approx(1500.0)
+    [n] = client.get("/api/auditoria/prova-real", params={"periodo": "Mar/2026"}).json()["notas_digitadas"]
+    assert n["tipo"] == "CT-e"
+
+
+@pytest.mark.parametrize("mudanca, trecho", [
+    ({"motivo": " "}, "motivo"),
+    ({"periodo": "xx"}, "Período"),
+    ({"cgr_liquido": 0}, "zero"),
+    ({"numero": "10"}, "já está gravada"),   # a nota 10 da Petrobras já está no mês
+])
+def test_incluir_nota_recusa(client, mudanca, trecho):
+    _gravar_cgr_mar([{"empresa": "PETROBRAS", "tipo": "NF-e", "numero": "10", "valor_total": 1.0, "cgr_liquido": 1000.0}], 1000.0)
+    r = client.post("/api/auditoria/incluir-nota", json={**NOTA_COPERGAS, **mudanca})
+    assert r.status_code == 422
+    assert trecho.lower() in r.text.lower()
+    assert auditoria_lote.prova_real("Mar/2026")["notas_digitadas"] == []
+
+
 # ---------- Auditoria ----------
 
 def test_auditoria_mesmo_valor_mesma_empresa_e_tipo_avisa(client):

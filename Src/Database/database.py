@@ -166,6 +166,9 @@ class DatabasePMPV:
                 data_registro  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Nota incluída à mão (ex.: só está na planilha porque o fornecedor não mandou): origem "digitada" + motivo.
+        self._garantir_coluna("auditoria_itens", "origem", "TEXT DEFAULT ''")
+        self._garantir_coluna("auditoria_itens", "motivo", "TEXT DEFAULT ''")
 
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS ret_itens (
@@ -863,6 +866,21 @@ class DatabasePMPV:
                 it.get("cgr_liquido", 0.0),
             ))
         self.conn.commit()
+
+    def incluir_auditoria_item(self, periodo: str, item: Dict) -> int:
+        """Acrescenta UMA nota ao mês (sem apagar as outras). Devolve o id da nota nova."""
+        periodo = self._normalizar_periodo(periodo)
+        self.cursor.execute("""
+            INSERT INTO auditoria_itens
+                (periodo, empresa, tipo, numero, valor_total, icms, pis, cofins, volume_total, cgr_liquido, origem, motivo)
+            VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)
+        """, (
+            periodo, item.get("empresa", ""), item.get("tipo", ""), item.get("numero", ""),
+            item.get("valor_total", 0.0), item.get("volume_total", 0.0), item.get("cgr_liquido", 0.0),
+            item.get("origem", ""), item.get("motivo", ""),
+        ))
+        self.conn.commit()
+        return int(self.cursor.lastrowid)
 
     def remover_item_do_periodo(self, tabela: str, periodo: str, item_id: int) -> bool:
         """Apaga UMA nota gravada (pelo id) se ela é do período. True = apagou.

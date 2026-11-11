@@ -24,6 +24,7 @@ from Src.api.schemas.auditoria import (
     ComparacaoAuditoria,
     DiferencasAuditoriaResponse,
     HistoricoAuditoriaLinha,
+    IncluirNotaRequest,
     ItemAuditoria,
     ProcessarAuditoriaResponse,
     ProvaRealAuditoria,
@@ -100,13 +101,20 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
         envio.mkdir()
         gravar_envio(form, envio, {".xml", ".pdf"})
         planilha = gravar_arquivo(form, "planilha", tmp, "planilha")
-        base = descer_pasta_unica(envio)
-        empresas_pasta = sorted(p.name for p in base.iterdir() if p.is_dir())
+        # Desce a pasta única e, no .zip original do mês, pula "EAT/", "Penalidade…/" e entra em "Nota Fiscal/".
+        base, empresas_pasta, outras_etapas = lote.pasta_das_empresas(descer_pasta_unica(envio))
         if not empresas_pasta:
             raise ValueError("A pasta enviada não tem subpastas de empresa. Escolha a pasta “pai” do mês, que tem uma subpasta "
                              "por empresa (Petrobras, TAG, …) com os XML e PDF das notas.")
 
-        problemas: list[dict] = []
+        problemas: list[dict] = [
+            lote.problema(
+                pasta, None, "aviso", "pasta_de_outra_etapa",
+                "Esta pasta é de outra etapa do ciclo (encargos RET/EAT, penalidades RP ou CGF), não de notas de compra; "
+                "ficou fora do CGR.",
+            )
+            for pasta in outras_etapas
+        ]
         escolhidas = json.loads(str(form.get("empresas") or "[]")) or empresas_pasta
         empresas = [e for e in escolhidas if e in empresas_pasta]
         for e in escolhidas:
@@ -116,7 +124,8 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
                     "A empresa foi marcada, mas não há subpasta com esse nome na pasta enviada; ela não foi auditada.",
                 ))
         usar_pdf = str(form.get("modo") or "XML").upper() == "PDF"
-        periodo_detectado = lote.periodo_do_caminho(str(form.get("pasta_raiz") or "") + "/" + base.name)
+        # O caminho inteiro até as empresas: quando a pasta delas é "Nota Fiscal", o mês está na de cima.
+        periodo_detectado = lote.periodo_do_caminho(str(form.get("pasta_raiz") or "") + "/" + base.relative_to(envio).as_posix())
         periodo = str(form.get("periodo") or "") or periodo_detectado
 
         itens, n_xml, n_pdf = await run_in_threadpool(lote.auditar_pasta, base, empresas, usar_pdf, None, problemas)
@@ -173,6 +182,20 @@ def remover_nota(payload: RemoverNotaRequest) -> RemoverNotaResponse:
     """Tira UMA nota gravada do mês (o aviso "Possível duplicata" da prova real) e regrava o CGR sem ela."""
     periodo = normalizar_periodo(payload.periodo) or payload.periodo
     salvo = lote.remover_nota(periodo, payload.id)
+    # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
+    servicos_pr_automatico.atualizar_dos_meses([periodo])
+    return RemoverNotaResponse(**salvo)
+
+
+@router.post("/incluir-nota", response_model=RemoverNotaResponse)
+def incluir_nota(payload: IncluirNotaRequest) -> RemoverNotaResponse:
+    """Inclui no CGR do mês UMA nota que só está na planilha (o fornecedor não mandou), com o motivo."""
+    periodo = normalizar_periodo(payload.periodo) or payload.periodo
+    salvo = lote.incluir_nota(
+        periodo, empresa=payload.empresa, numero=payload.numero, cgr_liquido=payload.cgr_liquido,
+        motivo=payload.motivo, valor_total=payload.valor_total, volume_total=payload.volume_total,
+        linha_excel=payload.linha_excel, tipo=payload.tipo,
+    )
     # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
     servicos_pr_automatico.atualizar_dos_meses([periodo])
     return RemoverNotaResponse(**salvo)

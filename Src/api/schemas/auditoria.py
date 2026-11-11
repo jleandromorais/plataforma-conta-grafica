@@ -100,6 +100,29 @@ class ProvaRealEmpresa(BaseModel):
     cgr: float                # compras + devoluções
 
 
+class NotaDigitada(BaseModel):
+    """Nota incluída à mão no mês (não veio nos arquivos)."""
+    id: int
+    empresa: str
+    tipo: str
+    numero: str
+    cgr_liquido: float
+    motivo: str = ""
+
+
+class IncluirNotaRequest(BaseModel):
+    """Nota que só está na planilha, incluída no CGR do mês com o motivo (POST /auditoria/incluir-nota)."""
+    periodo: str
+    empresa: str
+    numero: str
+    cgr_liquido: float
+    motivo: str
+    valor_total: float | None = None
+    volume_total: float | None = None
+    linha_excel: int | None = None
+    tipo: str | None = None
+
+
 class ProvaRealAuditoria(BaseModel):
     """A conta do CGR gravado do mês, aberta por empresa (GET /auditoria/prova-real)."""
     periodo: str
@@ -113,6 +136,7 @@ class ProvaRealAuditoria(BaseModel):
     diferenca: float | None
     confere: bool
     possiveis_duplicatas_valor: list[PossivelDuplicataValor] = []
+    notas_digitadas: list[NotaDigitada] = []
     data_atualizacao: str
 
 

@@ -167,6 +167,62 @@ def test_processar_zip_e_filtro_de_empresas(client):
     assert r["periodo_detectado"] == "Fev/2026"
 
 
+def _zip_original_do_mes() -> bytes:
+    """Como o .zip original do mês: EAT e penalidades ao lado de "Nota Fiscal/<Empresa>"."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("07 jul-26 NFs/Nota Fiscal/Petrobras/nf1.xml", _nfe("1001"))
+        z.writestr("07 jul-26 NFs/Nota Fiscal/GALP/nf2.xml", _nfe("1002", 5000.0))
+        z.writestr("07 jul-26 NFs/Nota Fiscal/TAG/CTE_XML/cte.xml", CTE_XML_NORMAL)
+        z.writestr("07 jul-26 NFs/EAT/encargo.xml", _nfe("9001", 100.0))  # não é nota de compra
+        z.writestr("07 jul-26 NFs/Penalidade (Receita)/nd.xml", _nfe("9002", 200.0))
+    return buf.getvalue()
+
+
+def test_zip_original_do_mes_empresa_vem_da_subpasta_de_nota_fiscal(client):
+    """A pasta "Nota Fiscal" só embrulha as empresas: a empresa é Petrobras, não "Nota Fiscal"."""
+    r = client.post(
+        "/api/auditoria/processar",
+        files=[("arquivos", ("07 jul-26 NFs.zip", _zip_original_do_mes(), "application/zip"))],
+        data={"pasta_raiz": "07 jul-26 NFs"},
+    ).json()
+    assert sorted(i["empresa"] for i in r["itens"]) == ["GALP", "Petrobras", "TAG"]
+    assert r["periodo_detectado"] == "Jul/2026"
+    s = lambda v: RegrasAuditoria.calcular_s_tributos(v, 0.12)  # noqa: E731
+    assert r["totais"]["cgr_liquido"] == pytest.approx(s(10000) + s(5000) + next(
+        i["cgr_liquido"] for i in r["itens"] if i["empresa"] == "TAG"))  # CT-e da TAG entra no CGR
+
+
+def test_zip_original_do_mes_deixa_eat_e_penalidade_de_fora(client):
+    r = client.post(
+        "/api/auditoria/processar",
+        files=[("arquivos", ("07 jul-26 NFs.zip", _zip_original_do_mes(), "application/zip"))],
+    ).json()
+    assert {i["numero"] for i in r["itens"]}.isdisjoint({"9001", "9002"})
+    avisos = sorted(p["arquivo"] for p in r["problemas"] if p["codigo"] == "pasta_de_outra_etapa")
+    assert avisos == ["EAT", "Penalidade (Receita)"]
+    # Sem pasta_raiz, o mês sai da pasta acima de "Nota Fiscal".
+    assert r["periodo_detectado"] == "Jul/2026"
+
+
+def test_pasta_das_empresas_nao_desce_em_empresa_unica(tmp_path):
+    """Só desce em pasta que embrulha notas; uma empresa sozinha continua sendo empresa."""
+    (tmp_path / "TAG" / "CTE_XML").mkdir(parents=True)
+    (tmp_path / "EAT").mkdir()
+    pasta, empresas, fora = lote.pasta_das_empresas(tmp_path)
+    assert (pasta, empresas, fora) == (tmp_path, ["TAG"], ["EAT"])
+
+
+def test_pasta_so_com_eat_e_recusada(client):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("EAT 07 jul26/EAT/encargo.xml", _nfe("9001"))
+        z.writestr("EAT 07 jul26/Penalidade (Despesa)/nd.xml", _nfe("9002"))
+    resp = client.post("/api/auditoria/processar", files=[("arquivos", ("eat.zip", buf.getvalue(), "application/zip"))])
+    assert resp.status_code == 422
+    assert "subpastas de empresa" in resp.json()["detail"]
+
+
 def test_salvar_recalcula_cgr_e_grava_itens(client):
     r = client.post("/api/auditoria/processar", files=_envio_sintetico()).json()
     itens = r["itens"]
