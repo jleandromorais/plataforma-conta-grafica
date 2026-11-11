@@ -125,6 +125,43 @@ def _eh_top_pelo_nome(arquivo: str) -> bool:
     return eh_top(nome) or _tipo_e_numero(nome)[0] == "TOP"
 
 
+def _pdf_itens_gravados(gravados: list[dict]) -> list[PdfItem]:
+    """Itens gravados (`concilia_itens`) como PdfItem. TOP não recuperável é receita mesmo se foi
+    gravado na categoria Despesa (pasta de despesas): a mesma regra do processar_arquivos (`eh_top`),
+    aplicada aqui pelo nome do arquivo."""
+    return [
+        PdfItem(file_name=str(g.get("arquivo") or ""), file_path="",
+                category="Receita" if _eh_top_pelo_nome(str(g.get("arquivo") or "")) else str(g.get("categoria") or ""),
+                amount=float(g.get("valor") or 0.0), status=str(g.get("status") or ""), method="")
+        for g in gravados
+    ]
+
+
+def remover_nota(periodo: str, item_id: int) -> dict:
+    """Tira UMA nota gravada do mês (a cópia repetida, por exemplo) e regrava o RP sem ela.
+    O RP novo sai da MESMA conta da prova real. O chamador atualiza o SCG/PR (atualizar_dos_meses)."""
+    from Src.Database.database import DatabasePMPV
+    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.common.periodos import is_periodo_valido
+
+    if not is_periodo_valido(periodo):
+        raise ValueError(f"O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, "
+                         "por exemplo Jan/2026.")
+    with DatabasePMPV() as db:
+        atuais = db.listar_concilia_itens(periodo) or []
+        if not any(g.get("id") == item_id for g in atuais):
+            raise ValueError("Essa nota não está mais gravada neste mês. Atualize a página e confira a lista.")
+        if len(atuais) == 1:
+            raise ValueError("Essa é a única nota gravada do mês, então não dá para tirá-la. "
+                             "Para refazer o mês, processe e grave de novo.")
+        db.remover_item_do_periodo("concilia_itens", periodo, item_id)
+        restantes = [g for g in atuais if g.get("id") != item_id]
+    rp = totais(_pdf_itens_gravados(restantes))["rp"]
+    with ServicosConsolidacao() as consolidacao:
+        consolidacao.salvar_rp(periodo, rp)
+    return {"periodo": periodo, "valor_gravado": rp, "qtd_itens": len(restantes)}
+
+
 def prova_real(periodo: str) -> dict:
     """A conta do RP gravado do mês, aberta, item a item. Lê os itens gravados (`concilia_itens`),
     refaz o RP com a MESMA `totais` do salvar e compara com consolidacao.rp. NÃO grava nada.
@@ -141,14 +178,7 @@ def prova_real(periodo: str) -> dict:
         gravados = db.listar_concilia_itens(periodo) or []
         cons = db.buscar_consolidacao(periodo) or {}
 
-    # TOP não recuperável é receita mesmo se foi gravado na categoria Despesa (pasta de despesas):
-    # a mesma regra do processar_arquivos (`eh_top`), aplicada aqui pelo nome do arquivo.
-    pdf_itens = [
-        PdfItem(file_name=str(g.get("arquivo") or ""), file_path="",
-                category="Receita" if _eh_top_pelo_nome(str(g.get("arquivo") or "")) else str(g.get("categoria") or ""),
-                amount=float(g.get("valor") or 0.0), status=str(g.get("status") or ""), method="")
-        for g in gravados
-    ]
+    pdf_itens = _pdf_itens_gravados(gravados)
     # Quantas vezes cada chave (tipo + nº da ND) aparece.
     por_chave: dict[str, list[PdfItem]] = defaultdict(list)
     for p in pdf_itens:
@@ -157,13 +187,14 @@ def prova_real(periodo: str) -> dict:
             por_chave[chave].append(p)
 
     itens, agg = [], {"receita": [0, 0.0], "despesa": [0, 0.0], "ja_no_ret": [0, 0.0]}
-    for p in pdf_itens:
+    for p, g in zip(pdf_itens, gravados):
         nome = Path(p.file_name).name
         tipo, numero, chave = _tipo_e_numero(nome)
         lado = "ja_no_ret" if p.status == STATUS_JA_NO_RET else ("receita" if p.category == "Receita" else "despesa")
         agg[lado][0] += 1
         agg[lado][1] += p.amount
         itens.append({
+            "id": g.get("id"),
             "arquivo": p.file_name, "nome": nome, "lado": lado, "tipo": tipo, "numero": numero,
             "valor": round(p.amount, 2), "liquido": round(p.amount * FATOR_PIS_COFINS, 2),
             "status": p.status, "repetida": bool(chave and len(por_chave[chave]) > 1),

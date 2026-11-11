@@ -23,7 +23,9 @@ def possiveis_duplicatas_por_valor(
 
     Valor zero fica fora (nota que não pesa na conta). Um grupo cujas notas já foram todas
     avisadas como repetidas pelo número (`ja_avisada`) não é repetido aqui. Devolve
-    `[{"grupo", "valor", "qtd", "notas"}]` do maior valor (em módulo) para o menor."""
+    `[{"grupo", "valor", "qtd", "notas", "ids"}]` do maior valor (em módulo) para o menor.
+    `ids` são os ids gravados das notas (campo `id` do item), na mesma ordem de `notas`:
+    é por eles que a tela tira uma nota do cálculo."""
     por_chave: dict[tuple[str, float], list[dict[str, Any]]] = defaultdict(list)
     for item in itens:
         v = valor(item)
@@ -32,7 +34,8 @@ def possiveis_duplicatas_por_valor(
         por_chave[(grupo(item), round(float(v), 2))].append(item)
 
     achadas = [
-        {"grupo": g, "valor": v, "qtd": len(notas), "notas": [nome(n) for n in notas]}
+        {"grupo": g, "valor": v, "qtd": len(notas), "notas": [nome(n) for n in notas],
+         "ids": [n["id"] for n in notas if n.get("id") is not None]}
         for (g, v), notas in por_chave.items()
         if len(notas) > 1 and not all(ja_avisada(n) for n in notas)
     ]

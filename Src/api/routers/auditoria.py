@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from Src.api.schemas.comum import ProblemaArquivo
+from Src.api.schemas.duplicatas import RemoverNotaRequest, RemoverNotaResponse
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_arquivo, gravar_envio
 from Src.api.schemas.auditoria import (
     ComparacaoAuditoria,
@@ -165,6 +166,16 @@ def salvar(payload: SalvarAuditoriaRequest) -> SalvarAuditoriaResponse:
     # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
     servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
     return SalvarAuditoriaResponse(**salvo)
+
+
+@router.post("/remover-nota", response_model=RemoverNotaResponse)
+def remover_nota(payload: RemoverNotaRequest) -> RemoverNotaResponse:
+    """Tira UMA nota gravada do mês (o aviso "Possível duplicata" da prova real) e regrava o CGR sem ela."""
+    periodo = normalizar_periodo(payload.periodo) or payload.periodo
+    salvo = lote.remover_nota(periodo, payload.id)
+    # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
+    servicos_pr_automatico.atualizar_dos_meses([periodo])
+    return RemoverNotaResponse(**salvo)
 
 
 @router.post("/diferencas", response_model=DiferencasAuditoriaResponse)

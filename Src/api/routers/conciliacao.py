@@ -21,6 +21,7 @@ from Src.api.schemas.conciliacao import (
     SalvarConciliacaoResponse,
     TotaisConciliacao,
 )
+from Src.api.schemas.duplicatas import RemoverNotaRequest, RemoverNotaResponse
 from Src.common.periodos import normalizar_periodo
 from Src.api.uploads import MAX_ARQUIVOS, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
@@ -79,6 +80,16 @@ def salvar(payload: SalvarConciliacaoRequest) -> SalvarConciliacaoResponse:
     # O RP mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
     servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
     return SalvarConciliacaoResponse(**salvo)
+
+
+@router.post("/remover-nota", response_model=RemoverNotaResponse)
+def remover_nota(payload: RemoverNotaRequest) -> RemoverNotaResponse:
+    """Tira UMA nota gravada do mês (o aviso "Possível duplicata" da prova real) e regrava o RP sem ela."""
+    periodo = normalizar_periodo(payload.periodo) or payload.periodo
+    salvo = lote_concilia.remover_nota(periodo, payload.id)
+    # O RP mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
+    servicos_pr_automatico.atualizar_dos_meses([periodo])
+    return RemoverNotaResponse(**salvo)
 
 
 @router.post("/relatorio")

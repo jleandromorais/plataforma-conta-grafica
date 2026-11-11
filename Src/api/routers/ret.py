@@ -19,6 +19,7 @@ from Src.api.schemas.ret import (
     RETSalvo,
     SalvarRETRequest,
 )
+from Src.api.schemas.duplicatas import RemoverNotaRequest, RemoverNotaResponse
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services import servicos_pr_automatico
@@ -80,6 +81,16 @@ def salvar(payload: SalvarRETRequest) -> list[RETSalvo]:
     # O RET mudou o SCG de cada mês salvo: o PR e o PV que os usam são regravados (em silêncio).
     servicos_pr_automatico.atualizar_dos_meses([s["periodo"] for s in salvos])
     return [RETSalvo(**s) for s in salvos]
+
+
+@router.post("/remover-documento", response_model=RemoverNotaResponse)
+def remover_documento(payload: RemoverNotaRequest) -> RemoverNotaResponse:
+    """Tira UM documento gravado do mês (o aviso "Possível duplicata" da prova real) e regrava o RET sem ele."""
+    periodo = normalizar_periodo(payload.periodo) or payload.periodo
+    salvo = lote_ret.remover_documento(periodo, payload.id)
+    # O RET mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
+    servicos_pr_automatico.atualizar_dos_meses([periodo])
+    return RemoverNotaResponse(**salvo)
 
 
 @router.get("/prova-real", response_model=ProvaRealRET)

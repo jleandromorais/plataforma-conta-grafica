@@ -325,6 +325,36 @@ def historico() -> list[dict]:
 TOL_PROVA_REAL = 1.0  # R$: abaixo disso é arredondamento
 
 
+def _integra_cgr_gravado(g: dict) -> bool:
+    """Item gravado que entra no CGR: NF-e, ou CT-e de gasoduto (`empresa_integra_cgr`); o resto é frete."""
+    return g.get("tipo") == "NF-e" or empresa_integra_cgr(g.get("empresa", ""))
+
+
+def remover_nota(periodo: str, item_id: int) -> dict:
+    """Tira UMA nota gravada do mês (a cópia repetida, por exemplo) e regrava o CGR sem ela
+    (e o RPV, que sai do CGR). O CGR novo é a soma do `cgr_liquido` gravado das notas que entram
+    no CGR, a MESMA conta da prova real. O chamador atualiza o SCG/PR (atualizar_dos_meses)."""
+    from Src.Database.database import DatabasePMPV
+    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.common.periodos import is_periodo_valido
+
+    if not is_periodo_valido(periodo):
+        raise ValueError(f"Período inválido: “{periodo}”. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.")
+    with DatabasePMPV() as db:
+        atuais = db.listar_auditoria_itens(periodo) or []
+        if not any(g.get("id") == item_id for g in atuais):
+            raise ValueError("Essa nota não está mais gravada neste mês. Atualize a página e confira a lista.")
+        if len(atuais) == 1:
+            raise ValueError("Essa é a única nota gravada do mês, então não dá para tirá-la. "
+                             "Para refazer o mês, audite e grave de novo.")
+        db.remover_item_do_periodo("auditoria_itens", periodo, item_id)
+        restantes = [g for g in atuais if g.get("id") != item_id]
+    cgr = sum(float(g.get("cgr_liquido") or 0.0) for g in restantes if _integra_cgr_gravado(g))
+    with ServicosConsolidacao() as consolidacao:
+        consolidacao.salvar_cgr(periodo, cgr)
+    return {"periodo": periodo, "valor_gravado": cgr, "qtd_itens": len(restantes)}
+
+
 def prova_real(periodo: str) -> dict:
     """A conta do CGR gravado do mês, aberta por empresa, a partir das notas gravadas.
 
@@ -334,15 +364,12 @@ def prova_real(periodo: str) -> dict:
     fora. Compara a soma com o CGR da consolidação. Não grava nada.
     """
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_auditoria import empresa_integra_cgr
 
     with DatabasePMPV() as db:
         itens = db.listar_auditoria_itens(periodo) or []
         cons = db.buscar_consolidacao(periodo) or {}
 
-    def integra(g: dict) -> bool:
-        return g.get("tipo") == "NF-e" or empresa_integra_cgr(g.get("empresa", ""))
-
+    integra = _integra_cgr_gravado
     por_empresa: dict[str, dict] = {}
     for g in itens:
         e = por_empresa.setdefault(g.get("empresa") or "(sem empresa)", {

@@ -864,6 +864,19 @@ class DatabasePMPV:
             ))
         self.conn.commit()
 
+    def remover_item_do_periodo(self, tabela: str, periodo: str, item_id: int) -> bool:
+        """Apaga UMA nota gravada (pelo id) se ela é do período. True = apagou.
+        Só as tabelas que guardam notas; o id sozinho não basta: precisa ser do mês pedido."""
+        if tabela not in ("concilia_itens", "ret_itens", "auditoria_itens"):
+            raise ValueError(f"Tabela não permitida: {tabela}")
+        variantes = self._variantes_periodo(periodo)
+        if not variantes:
+            return False
+        marcas = ", ".join("?" for _ in variantes)
+        self.cursor.execute(f"DELETE FROM {tabela} WHERE id = ? AND periodo IN ({marcas})", (item_id, *variantes))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+
     def listar_auditoria_itens(self, periodo: str | None = None) -> List[Dict]:
         if periodo:
             registros = self._buscar_por_periodo("auditoria_itens", periodo, order_by="empresa, tipo, id DESC")

@@ -82,6 +82,38 @@ def salvar_meses(grupos: dict[str, list[dict]]) -> list[dict]:
 TOL_PROVA_REAL_RS = 1.0   # R$: abaixo disso é arredondamento
 
 
+def _docs_gravados(itens: list[dict]) -> list[dict]:
+    """Itens gravados (`ret_itens`) prontos para `RegrasRET.calcular_ret`: valor_total pode vir
+    vazio do banco e vira 0 para a conta não quebrar."""
+    return [{**i, "tipo_encargo": i.get("tipo_encargo") or "", "valor_total": float(i.get("valor_total") or 0.0)}
+            for i in itens]
+
+
+def remover_documento(periodo: str, item_id: int) -> dict:
+    """Tira UM documento gravado do mês (a cópia repetida, por exemplo) e regrava o RET sem ele.
+    O RET novo sai da MESMA conta da prova real. O chamador atualiza o SCG/PR (atualizar_dos_meses)."""
+    from Src.Database.database import DatabasePMPV
+    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.common.periodos import is_periodo_valido
+
+    if not is_periodo_valido(periodo):
+        raise ValueError(f"O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, "
+                         "por exemplo Jan/2026.")
+    with DatabasePMPV() as db:
+        atuais = db.listar_ret_itens(periodo) or []
+        if not any(i.get("id") == item_id for i in atuais):
+            raise ValueError("Esse documento não está mais gravado neste mês. Atualize a página e confira a lista.")
+        if len(atuais) == 1:
+            raise ValueError("Esse é o único documento gravado do mês, então não dá para tirá-lo. "
+                             "Para refazer o mês, processe e grave de novo.")
+        db.remover_item_do_periodo("ret_itens", periodo, item_id)
+        restantes = [i for i in atuais if i.get("id") != item_id]
+    ret = float(RegrasRET.calcular_ret(_docs_gravados(restantes))["ret"])
+    with ServicosConsolidacao() as consolidacao:
+        consolidacao.salvar_ret(periodo, ret)
+    return {"periodo": periodo, "valor_gravado": ret, "qtd_itens": len(restantes)}
+
+
 def prova_real(periodo: str) -> dict:
     """A conta do RET gravado do mês, aberta: refaz RET = EAT × (1 − PIS/COFINS) + EC com os
     itens gravados (a MESMA `RegrasRET.calcular_ret` do salvar) e compara com consolidacao.ret.
@@ -96,9 +128,7 @@ def prova_real(periodo: str) -> dict:
         itens = db.listar_ret_itens(periodo) or []
         cons = db.buscar_consolidacao(periodo) or {}
 
-    # valor_total pode vir vazio do banco: vira 0 para a conta não quebrar.
-    docs = [{**i, "tipo_encargo": i.get("tipo_encargo") or "", "valor_total": float(i.get("valor_total") or 0.0)}
-            for i in itens]
+    docs = _docs_gravados(itens)
     calc = RegrasRET.calcular_ret(docs)
     tem_itens = bool(docs)
     ret_gravado = float(cons["ret"]) if cons.get("ret") is not None else None

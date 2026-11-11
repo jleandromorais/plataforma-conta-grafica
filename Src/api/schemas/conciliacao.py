@@ -50,6 +50,7 @@ class JaNoRETProvaRealRP(BaseModel):
 
 
 class ItemProvaRealRP(BaseModel):
+    id: int | None = None   # id gravado da nota (para tirá-la do cálculo)
     arquivo: str
     nome: str
     lado: str      # "receita" | "despesa" | "ja_no_ret"
