@@ -60,6 +60,7 @@ class ItemProvaRealRP(BaseModel):
     liquido: float
     status: str
     repetida: bool = False
+    possivel_duplicata: bool = False   # está num grupo de notas com o mesmo valor (ver possiveis_duplicatas_valor)
 
 
 class DuplicadaProvaRealRP(BaseModel):

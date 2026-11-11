@@ -219,6 +219,10 @@ def prova_real(periodo: str) -> dict:
         grupo=lambda i: "Receita" if i["lado"] == "receita" else "Despesa",
         valor=lambda i: i["valor"], nome=lambda i: i["nome"], ja_avisada=lambda i: i["repetida"],
     )
+    # A tabela de notas destaca essas notas (e o filtro "Só repetidas" as mostra).
+    ids_em_duplicata = {i for g in por_valor for i in g["ids"]}
+    for i in itens:
+        i["possivel_duplicata"] = i["id"] in ids_em_duplicata
 
     tem_itens = bool(pdf_itens)
     rp_calculado = round(totais(pdf_itens)["rp"], 2) if tem_itens else None

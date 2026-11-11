@@ -73,6 +73,9 @@ def test_rp_cópia_renomeada_da_klabin_avisa_por_valor(client):
     [g] = d["possiveis_duplicatas_valor"]
     assert (g["grupo"], g["valor"], g["qtd"]) == ("Receita", 25243.08, 2)
     assert len(g["notas"]) == 2
+    # a tabela de notas destaca exatamente essas duas
+    marcadas = [i["nome"] for i in d["itens"] if i["possivel_duplicata"]]
+    assert sorted(marcadas) == sorted(g["notas"]) and len(marcadas) == 2
 
 
 def test_rp_sem_valores_repetidos_nao_avisa(client):
