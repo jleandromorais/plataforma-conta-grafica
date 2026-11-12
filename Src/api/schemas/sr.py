@@ -149,7 +149,7 @@ class SRHistoricoTrimestre(BaseModel):
 
 
 class SRProvaRealFontes(BaseModel):
-    """O que as fontes dizem HOJE para o mês (VP do PMPV, VF do CGF, PR pela regra M−3, SELIC do BC)."""
+    """O que as fontes dizem HOJE para o mês (VP do PMPV, VF do CGF, PR do trimestre do próprio mês, SELIC do BC)."""
     vp: float
     vf: float
     pr: float

@@ -27,16 +27,16 @@ def _carregar(repo):
 
 
 def test_origem_do_pr_e_do_vp():
-    # Só o PR "Ago - Out/2025" está salvo: vale para Jan/26 (M-3 = Out/25).
-    linhas = _carregar(_repo(vp={"Jan/2026": 1000.0, "Mar/2026": 10000.0}, pr={"Ago - Out/2025": -0.0210}))
+    # Só o PR "Nov - Jan/2026" está salvo: vale para Jan/26 (trimestre da tarifa do próprio mês).
+    linhas = _carregar(_repo(vp={"Jan/2026": 1000.0, "Mar/2026": 10000.0}, pr={"Nov - Jan/2026": -0.0210}))
 
     assert linhas["Jan/2026"]["pr"] == -0.0210
     assert linhas["Jan/2026"]["pr_origem"] == "salvo"
-    assert linhas["Jan/2026"]["pr_chave"] == "Ago - Out/2025"
-    # Fev/26 (M-3 = Nov/25 → "Nov - Jan/2026") não tem PR salvo e não tem VP: ausente.
+    assert linhas["Jan/2026"]["pr_chave"] == "Nov - Jan/2026"
+    # Fev/26 ("Fev - Abr/2026") não tem PR salvo e não tem VP: ausente.
     assert linhas["Fev/2026"]["vp"] == 0.0
     assert linhas["Fev/2026"]["pr_origem"] == "ausente"
-    # Mar/26 (M-3 = Dez/25) não tem PR salvo, mas tem VP: estimado por (SCG + SR) / VP.
+    # Mar/26 ("Fev - Abr/2026") não tem PR salvo, mas tem VP: estimado por (SCG + SR) / VP.
     assert linhas["Mar/2026"]["pr"] == -0.0461
     assert linhas["Mar/2026"]["pr_origem"] == "estimado"
 
@@ -57,9 +57,9 @@ def test_api_aceita_sem_sessao_e_devolve_origem(client):
 
 
 def test_pr_salvo_na_tela_pr_alimenta_os_meses_do_trimestre():
-    """Regra M-3: o PR de Mai–Jul/2026 vale para Ago/Set (M-3 = Mai/Jun); Jul (M-3 = Abr → Fev–Abr) continua sem."""
+    """PR do próprio mês: o PR de Ago–Out/2026 vale para Ago/Set; Jul (Mai–Jul) continua sem."""
     repo = _repo(vp={"Jul/2026": 1000.0, "Ago/2026": 1000.0, "Set/2026": 1000.0}, pr={})
-    repo.buscar_pr.side_effect = lambda chave: {"pr": 0.0135} if chave == "Mai - Jul/2026" else None
+    repo.buscar_pr.side_effect = lambda chave: {"pr": 0.0135} if chave == "Ago - Out/2026" else None
     with patch("Src.application.use_cases.sr_use_cases.ServicosConsolidacao") as cons:
         cons.return_value.buscar_consolidacao.return_value = None
         linhas = {l["mes"]: l for l in SRUseCases(repo).carregar_vp_vf_pr(0, ["Jul/2026", "Ago/2026", "Set/2026"])}
@@ -88,10 +88,16 @@ def test_pr_do_proprio_sr_nao_e_mais_fonte():
 
 
 @pytest.mark.parametrize("mes, chave", [
-    ("Jan/2026", "Ago - Out/2025"), ("Fev/2026", "Nov - Jan/2026"), ("Mar/2026", "Nov - Jan/2026"),
-    ("Abr/2026", "Nov - Jan/2026"), ("Mai/2026", "Fev - Abr/2026"), ("Nov/2026", "Ago - Out/2026"),
+    # Aba SR da NT_05/2026 e PR-PV: Out/25 usa PR Ago–Out/25 (0,0116); Nov e Dez/25 usam Nov/25–Jan/26 (−0,0210);
+    # Jan/26 usa Nov–Jan (−0,0210); Fev e Mar/26 usam Fev–Abr/26 (−0,0321).
+    ("Out/2025", "Ago - Out/2025"), ("Nov/2025", "Nov - Jan/2026"), ("Dez/2025", "Nov - Jan/2026"),
+    ("Jan/2026", "Nov - Jan/2026"), ("Fev/2026", "Fev - Abr/2026"), ("Mar/2026", "Fev - Abr/2026"),
+    ("Out/2026", "Ago - Out/2026"), ("Nov/2026", "Nov - Jan/2027"),
 ])
-def test_chave_do_pr_usada_no_sr_e_a_do_mes_menos_3(mes, chave):
-    from Src.common.periodos import deslocar_periodo
-    from Src.application.use_cases.sr_use_cases import chave_pr_do_mes
-    assert chave_pr_do_mes(deslocar_periodo(mes, -3)) == chave
+def test_chave_do_pr_usada_no_sr_e_a_do_proprio_mes(mes, chave):
+    repo = _repo(vp={mes: 1000.0}, pr={chave: -0.01})
+    cons = MagicMock()
+    cons.buscar_consolidacao.return_value = None
+    with patch.object(sr_use_cases, "ServicosConsolidacao", return_value=cons):
+        linha = SRUseCases(repo).carregar_vp_vf_pr(0, [mes])[0]
+    assert (linha["pr_chave"], linha["pr_origem"]) == (chave, "salvo")

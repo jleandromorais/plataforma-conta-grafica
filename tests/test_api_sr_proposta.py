@@ -43,8 +43,8 @@ def _popular(banco: str, vp: bool = True, prs: bool = True, vf: bool = True) -> 
             if vf:
                 db.salvar_cgf_resumo(mes, 0, 0, 0, 0, VF[i])
         if prs:
-            db.salvar_pr("Ago - Out/2025", 0, 0, 1, -0.0210)
-            db.salvar_pr("Nov - Jan/2026", 0, 0, 1, -0.0321)
+            db.salvar_pr("Nov - Jan/2026", 0, 0, 1, -0.0210)
+            db.salvar_pr("Fev - Abr/2026", 0, 0, 1, -0.0321)
 
 
 def _contar_sr(banco: str) -> int:
@@ -66,7 +66,7 @@ def test_proposta_fecha_com_a_planilha_oficial(client, banco):
         assert linha["sr_selic"] == pytest.approx(sr, abs=0.05)
     assert [l["pr"] for l in j["linhas"]] == [-0.0210, -0.0321, -0.0321]
     assert [l["pr_origem"] for l in j["linhas"]] == ["salvo"] * 3
-    assert [l["pr_chave"] for l in j["linhas"]] == ["Ago - Out/2025", "Nov - Jan/2026", "Nov - Jan/2026"]
+    assert [l["pr_chave"] for l in j["linhas"]] == ["Nov - Jan/2026", "Fev - Abr/2026", "Fev - Abr/2026"]
     assert j["total"] == pytest.approx(-270010.98, abs=0.1)
     assert j["pode_gravar"] is True and j["bloqueios"] == []
     assert j["total_gravado"] is None and j["diferenca_total"] is None
@@ -96,7 +96,7 @@ def test_pr_ausente_bloqueia(client, banco):
     j = _propor(client)
     assert j["pode_gravar"] is False
     assert j["linhas"][0]["pr_origem"] == "ausente" and j["linhas"][0]["pr_chave"] == ""
-    assert "Ago–Out/2025" in j["linhas"][0]["alertas"][0]["mensagem"]
+    assert "Nov–Jan/2026" in j["linhas"][0]["alertas"][0]["mensagem"]
     assert "pr_ausente" in [a["codigo"] for a in j["linhas"][0]["alertas"]]
 
 

@@ -17,6 +17,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
+from Src.api import erros_ciclo
 from Src.api.schemas.comum import ProblemaArquivo
 from Src.api.schemas.duplicatas import RemoverNotaRequest, RemoverNotaResponse
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_arquivo, gravar_envio
@@ -161,6 +162,7 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
             ) if comp else None,
             aviso_comparacao=aviso,
             problemas=[ProblemaArquivo(**p) for p in problemas],
+            erros=erros_ciclo.erros_notas_ocr(itens, periodo) + erros_ciclo.erros_comparacao_planilha(comp, periodo),
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -212,7 +214,8 @@ def diferencas(payload: SalvarAuditoriaRequest) -> DiferencasAuditoriaResponse:
         gravados = db.listar_auditoria_itens(payload.periodo) or []
         cgr = (db.buscar_consolidacao(payload.periodo) or {}).get("cgr")
     itens = [_item_da_api(i) for i in payload.itens]
-    return DiferencasAuditoriaResponse(**comparar_com_gravado(itens, gravados, float(cgr) if cgr is not None else None))
+    r = comparar_com_gravado(itens, gravados, float(cgr) if cgr is not None else None)
+    return DiferencasAuditoriaResponse(**r, erros=erros_ciclo.erros_diferencas_auditoria(r, payload.periodo))
 
 
 @router.post("/relatorio")
@@ -248,7 +251,8 @@ def prova_real(periodo: str) -> ProvaRealAuditoria:
     """A conta do CGR gravado do mês, aberta por empresa, com o selo "confere". Não grava nada."""
     if not is_periodo_valido(periodo):
         raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
-    return ProvaRealAuditoria(**lote.prova_real(normalizar_periodo(periodo) or periodo))
+    r = lote.prova_real(normalizar_periodo(periodo) or periodo)
+    return ProvaRealAuditoria(**r, erros=erros_ciclo.erros_prova_real_cgr(r))
 
 
 @router.get("/historico", response_model=list[HistoricoAuditoriaLinha])

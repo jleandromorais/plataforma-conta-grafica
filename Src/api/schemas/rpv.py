@@ -52,3 +52,4 @@ class ProvaRealRPV(BaseModel):
     origem_cgr: OrigemCGR
     origem_cgf: OrigemCGF
     data_atualizacao: str
+    erros: list[str] = []   # frases de erro para o site; [] = nada errado

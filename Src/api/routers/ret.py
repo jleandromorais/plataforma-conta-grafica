@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 
+from Src.api import erros_ciclo
 from Src.api.schemas.ret import (
     DocumentoRET,
     HistoricoRETLinha,
@@ -96,7 +97,8 @@ def remover_documento(payload: RemoverNotaRequest) -> RemoverNotaResponse:
 @router.get("/prova-real", response_model=ProvaRealRET)
 def prova_real(periodo: str) -> ProvaRealRET:
     """A conta do RET gravado do mês, aberta: EAT, PIS/COFINS, EC e RET. NÃO grava nada."""
-    return ProvaRealRET(**lote_ret.prova_real(normalizar_periodo(periodo) or periodo))
+    r = lote_ret.prova_real(normalizar_periodo(periodo) or periodo)
+    return ProvaRealRET(**r, erros=erros_ciclo.erros_prova_real_ret(r))
 
 
 @router.get("/historico", response_model=list[HistoricoRETLinha])

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from Src.api import erros_ciclo
 from Src.api.deps import get_servicos_rpv
 from Src.api.schemas.rpv import (
     RPVHistoricoLinha,
@@ -32,7 +33,8 @@ def prova_real(periodo: str, servico: ServicosRPV = Depends(get_servicos_rpv)) -
     """A conta do RPV gravado do mês (CGR − CGF) e de onde vêm os dois. Não grava nada."""
     if not is_periodo_valido(periodo):
         raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
-    return ProvaRealRPV(**servico.prova_real(normalizar_periodo(periodo) or periodo))
+    r = servico.prova_real(normalizar_periodo(periodo) or periodo)
+    return ProvaRealRPV(**r, erros=erros_ciclo.erros_prova_real_rpv(r))
 
 
 @router.get("", response_model=RPVResultado)

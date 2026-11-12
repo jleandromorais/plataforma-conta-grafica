@@ -137,10 +137,10 @@ _CAMPOS_SR = ("mes", "vp", "vf", "pr", "selic_mensal", "diferenca", "sr_parcela"
 
 def atualizar_sr_do_mes(periodo: str) -> dict:
     """Recalcula e grava o SR do trimestre civil de `periodo`, pela regra de sempre: a mesma
-    proposta da tela SR (VP do PMPV, VF do CGF, PR do trimestre fiscal de M−3, SELIC do BC).
+    proposta da tela SR (VP do PMPV, VF do CGF, PR do trimestre fiscal do próprio mês, SELIC do BC).
 
     Devolve {trimestre, atualizado, sr_antes, sr, pendencias}. Se faltar algo (VP, CGF, PR de
-    M−3 ou SELIC), NADA é gravado e o motivo vem em `pendencias`: a falta nunca vira zero."""
+    do mês ou SELIC), NADA é gravado e o motivo vem em `pendencias`: a falta nunca vira zero."""
     labels = meses_do_trimestre_civil(periodo)
     resultado = {"trimestre": f"{labels[0]}_{labels[-1]}", "atualizado": False,
                  "sr_antes": None, "sr": None, "pendencias": []}

@@ -79,6 +79,7 @@ class ProvaRealRET(BaseModel):
     por_empresa: list[ProvaRealEmpresaRET] = []
     possiveis_duplicatas_valor: list[PossivelDuplicataValor] = []
     data_atualizacao: str = ""
+    erros: list[str] = []   # frases de erro para o site; [] = nada errado
 
 
 class HistoricoRETLinha(BaseModel):

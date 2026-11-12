@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, UploadFile
 
+from Src.api import erros_ciclo
 from Src.api.schemas.cgf import (
     CGFCalcularRSRequest,
     CGFCalcularRSResponse,
@@ -83,9 +84,8 @@ def processar(
 @router.post("/calcular-rs", response_model=CGFCalcularRSResponse)
 def calcular_rs(payload: CGFCalcularRSRequest) -> CGFCalcularRSResponse:
     """CGF em R$ = volume final × PMPV (do payload ou, se ausente, do banco). Não grava."""
-    return CGFCalcularRSResponse(
-        **ServicosCGF().calcular_cgf_rs(payload.periodo, payload.volume_final, payload.pmpv)
-    )
+    r = ServicosCGF().calcular_cgf_rs(payload.periodo, payload.volume_final, payload.pmpv)
+    return CGFCalcularRSResponse(**r, erros=erros_ciclo.erros_calcular_rs(r))
 
 
 @router.post("/salvar", response_model=CGFSalvarResponse)
@@ -100,7 +100,8 @@ def salvar(payload: CGFSalvarRequest) -> CGFSalvarResponse:
 @router.get("/prova-real", response_model=ProvaRealCGF)
 def prova_real(periodo: str) -> ProvaRealCGF:
     """A conta do CGF gravado do mês, aberta: volumes, PMPV e CGF em R$. Não grava nada."""
-    return ProvaRealCGF(**ServicosCGF().prova_real(normalizar_periodo(periodo) or periodo))
+    r = ServicosCGF().prova_real(normalizar_periodo(periodo) or periodo)
+    return ProvaRealCGF(**r, erros=erros_ciclo.erros_prova_real_cgf(r))
 
 
 @router.get("/historico", response_model=list[CGFHistoricoLinha])

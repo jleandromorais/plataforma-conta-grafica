@@ -43,8 +43,8 @@ def _fontes(banco: str) -> None:
         for i, mes in enumerate(MESES):
             db.salvar_vp_periodo(mes, VP[i])
             db.salvar_cgf_resumo(mes, 0, 0, 0, 0, VF[i])
-        db.salvar_pr("Ago - Out/2025", 0, 0, 1, PR[0])
-        db.salvar_pr("Nov - Jan/2026", 0, 0, 1, PR[1])
+        db.salvar_pr("Nov - Jan/2026", 0, 0, 1, PR[0])
+        db.salvar_pr("Fev - Abr/2026", 0, 0, 1, PR[1])
 
 
 def _gravar(banco: str, selic: dict | None = None, trimestre: str = TRI, meses=MESES) -> None:

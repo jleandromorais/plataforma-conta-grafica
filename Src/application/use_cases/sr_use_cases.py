@@ -135,8 +135,10 @@ class SRUseCases:
     def carregar_vp_vf_pr(self, sessao_id: int, labels_meses: list[str]) -> list[dict[str, Any]]:
         """Para cada mês do trimestre, preenche VP (do PMPV que cobre aquele mês
         do calendário — ver `vp_do_mes`), VF (volume_final do CGF do período) e
-        PR. Regra do PR (Quadro 6 da Nota Técnica): o SR do mês M usa o PR do
-        trimestre fiscal que contém o mês M-3. 1º o PR salvo na tela PR para essa
+        PR. Regra do PR (aba SR da Nota Técnica): o SR do mês M usa o PR que estava
+        na tarifa de M, o do trimestre fiscal (Nov–Jan, Fev–Abr, Mai–Jul, Ago–Out)
+        que contém o próprio mês — a mesma chave em que a tela PR grava o PR
+        aplicado nesse trimestre (Out → "Ago - Out"; Nov, Dez → "Nov - Jan"). 1º o PR salvo na tela PR para essa
         chave ("salvo"); 2º estimado por (SCG + SR) ÷ VP ("estimado"); senão "ausente".
         `pr_chave` diz a chave do PR usado ("" se não é "salvo").
         `sessao_id` fica na assinatura por compatibilidade; o VP não depende dela."""
@@ -149,7 +151,7 @@ class SRUseCases:
                 resumo = self.repo.buscar_cgf_resumo(periodo)
                 vf = float(resumo["volume_final"]) if resumo and resumo.get("volume_final") is not None else 0.0
 
-                chave = chave_pr_do_mes(deslocar_periodo(periodo, -3))
+                chave = chave_pr_do_mes(periodo)
                 pr_tela = self.repo.buscar_pr(chave)
                 pr = float((pr_tela or {}).get("pr") or 0.0)
                 pr_origem = "salvo" if pr else "ausente"
@@ -216,7 +218,7 @@ class SRUseCases:
                 msg = f"Sem VP de {mes}: salve o PMPV do trimestre que contém {mes} na tela PMPV."
                 alertas.append({"codigo": "sem_vp", "mensagem": msg})
                 bloqueios.append(msg)
-            tri_pr = chave_pr_do_mes(deslocar_periodo(mes, -3)).replace(" - ", "–")
+            tri_pr = chave_pr_do_mes(mes).replace(" - ", "–")
             if b["pr_origem"] == "ausente":
                 msg = f"Não há PR salvo para {mes} (trimestre {tri_pr}): rode a tela PR."
                 alertas.append({"codigo": "pr_ausente", "mensagem": msg})

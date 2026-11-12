@@ -76,6 +76,7 @@ class ProcessarAuditoriaResponse(BaseModel):
     comparacao: ComparacaoAuditoria | None
     aviso_comparacao: str
     problemas: list[ProblemaArquivo] = []
+    erros: list[str] = []   # frases de erro para o site (OCR suspeito, CGR x planilha)
 
 
 class SalvarAuditoriaRequest(BaseModel):
@@ -138,6 +139,7 @@ class ProvaRealAuditoria(BaseModel):
     possiveis_duplicatas_valor: list[PossivelDuplicataValor] = []
     notas_digitadas: list[NotaDigitada] = []
     data_atualizacao: str
+    erros: list[str] = []   # frases de erro para o site; [] = nada errado
 
 
 class HistoricoAuditoriaLinha(BaseModel):
@@ -175,3 +177,4 @@ class DiferencasAuditoriaResponse(BaseModel):
     notas: list[DiferencaNota]
     qtd_notas_diferentes: int
     resumo: list[str]
+    erros: list[str] = []   # frases de erro para o site (processado x gravado além da tolerância)

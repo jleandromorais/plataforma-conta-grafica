@@ -107,8 +107,8 @@ MESES_SR = ["Jul/2026", "Ago/2026", "Set/2026"]
 VP_SR = [40_000_000.0, 41_000_000.0, 42_000_000.0]   # valores fictícios
 VF_SR = [38_000_000.0, 39_000_000.0, 40_000_000.0]
 SELIC_SR = {"Jul/2026": 3.0, "Ago/2026": 2.0, "Set/2026": 1.0}
-# PR de M−3: Jul usa Fev–Abr; Ago e Set usam Mai–Jul
-PR_SR = {"Fev - Abr/2026": -0.0200, "Mai - Jul/2026": -0.0300}
+# PR do trimestre da tarifa do próprio mês: Jul usa Mai–Jul; Ago e Set usam Ago–Out
+PR_SR = {"Mai - Jul/2026": -0.0200, "Ago - Out/2026": -0.0300}
 
 
 @pytest.fixture()
@@ -143,7 +143,7 @@ def test_sr_trimestre_completo_e_gravado(banco_sr):
     r = auto.atualizar_sr_do_mes("Ago/2026")
     assert r["atualizado"] is True and r["pendencias"] == []
     assert r["trimestre"] == "Jul/2026_Set/2026" and r["sr_antes"] is None
-    # SR do mês = (VP − VF) × PR de M−3 × (1 + SELIC%)
+    # SR do mês = (VP − VF) × PR do trimestre do próprio mês × (1 + SELIC%)
     esperado = [(VP_SR[i] - VF_SR[i]) * pr * (1 + SELIC_SR[m] / 100)
                 for i, (m, pr) in enumerate(zip(MESES_SR, (-0.0200, -0.0300, -0.0300)))]
     with DatabasePMPV(db_path=banco_sr) as db:

@@ -88,6 +88,7 @@ class ProvaRealRP(BaseModel):
     possiveis_duplicadas: list[DuplicadaProvaRealRP] = []
     possiveis_duplicatas_valor: list[PossivelDuplicataValor] = []
     data_atualizacao: str = ""
+    erros: list[str] = []   # frases de erro para o site; [] = nada errado
 
 
 class HistoricoConciliacaoLinha(BaseModel):

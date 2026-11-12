@@ -37,6 +37,7 @@ class CGFCalcularRSResponse(BaseModel):
     pmpv_origem: str                # "manual" | "banco" | "ausente"
     volume_final: float
     cgf_rs: float | None            # None sem PMPV
+    erros: list[str] = []           # frases de erro para o site (ex.: PMPV ausente)
 
 
 class CGFSalvarResponse(BaseModel):
@@ -62,6 +63,7 @@ class ProvaRealCGF(BaseModel):
     diferenca_cgf: float | None
     cgf_confere: bool
     confere: bool                          # volume e CGF conferem
+    erros: list[str] = []                  # frases de erro para o site; [] = nada errado
     data_atualizacao: str
 
 

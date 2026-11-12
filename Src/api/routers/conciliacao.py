@@ -12,6 +12,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
+from Src.api import erros_ciclo
 from Src.api.schemas.conciliacao import (
     HistoricoConciliacaoLinha,
     ItemConciliacao,
@@ -111,7 +112,8 @@ def relatorio(payload: SalvarConciliacaoRequest) -> FileResponse:
 @router.get("/prova-real", response_model=ProvaRealRP)
 def prova_real(periodo: str) -> ProvaRealRP:
     """A conta do RP gravado do mês, item a item, avisando notas repetidas. NÃO grava nada."""
-    return ProvaRealRP(**lote_concilia.prova_real(normalizar_periodo(periodo) or periodo))
+    r = lote_concilia.prova_real(normalizar_periodo(periodo) or periodo)
+    return ProvaRealRP(**r, erros=erros_ciclo.erros_prova_real_rp(r))
 
 
 @router.get("/historico",response_model=list[HistoricoConciliacaoLinha])
