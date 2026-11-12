@@ -78,6 +78,7 @@ class ModeloAlexandre:
     cgr_conta_grafica: dict[str, float] = field(default_factory=dict)   # período → CGR da aba Conta Gráfica
     aba_notas: str = "Custo do Gás Realizado - NFs"   # como a aba (ou abas) das notas é chamada nas mensagens
     aba_cgr: str = "Conta Gráfica"
+    abas_periodo: dict[str, list[str]] = field(default_factory=dict)   # período → nomes reais das abas que o têm
 
     @property
     def periodos_com_notas(self) -> list[str]:
@@ -158,9 +159,28 @@ def ler_modelo(caminho: str) -> ModeloAlexandre | None:
             return None
         ws_conta = _achar_aba(wb, ABA_CONTA)
         cgr = _ler_cgr_conta_grafica(ws_conta) if ws_conta is not None else {}
-        return ModeloAlexandre(notas=notas, cgr_conta_grafica=cgr)
+        abas = abas_por_periodo({p: ws_notas.title for p in notas}, cgr, ws_conta.title if ws_conta is not None else "")
+        return ModeloAlexandre(notas=notas, cgr_conta_grafica=cgr, abas_periodo=abas)
     finally:
         wb.close()
+
+
+def abas_por_periodo(aba_das_notas: dict[str, str], cgr: dict[str, float], aba_cgr: str) -> dict[str, list[str]]:
+    """Período → abas onde ele aparece: a das notas e, se tiver o CGR do mês, a da Conta Gráfica."""
+    out: dict[str, list[str]] = {p: [aba] for p, aba in aba_das_notas.items()}
+    for p in cgr:
+        out.setdefault(p, []).append(aba_cgr)
+    return out
+
+
+def conferir_mes(modelo: ModeloAlexandre, periodo: str) -> dict[str, Any]:
+    """O mês está na planilha? Em quais abas e com quantas notas (sem comparar nada)."""
+    notas = modelo.notas.get(periodo)
+    return {
+        "tem": notas is not None or periodo in modelo.cgr_conta_grafica,
+        "abas": list(modelo.abas_periodo.get(periodo, [])),
+        "qtd_notas": len(_agrupar_planilha(notas)) if notas is not None else None,
+    }
 
 
 # ── Comparação ───────────────────────────────────────────────────────────────
@@ -313,9 +333,15 @@ def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> Res
     ambas = [k for k in aud if k in pla]
 
     divergencias: list[dict[str, Any]] = []
+    em_ambas: list[dict[str, Any]] = []   # as que batem (sem divergência)
     for k in ambas:
         a, p = aud[k], pla[k]
         motivos = _divergencias_da_nota(a, p)
+        if not motivos:
+            em_ambas.append({
+                "empresa": a["empresa"], "tipo": a["tipo"], "numero": a["numero"], "linha_excel": p["linhas"][0],
+                "cgr_liquido": round(a["cgr"], 2), "cgr_planilha": round(p["cgr"], 2),
+            })
         if motivos:
             divergencias.append({
                 "empresa": a["empresa"], "tipo": a["tipo"], "numero": a["numero"],
@@ -372,6 +398,7 @@ def comparar(itens: list[XMLItem], modelo: ModeloAlexandre, periodo: str) -> Res
         sheets_periodo_match=[f"{modelo.aba_notas} ({periodo_norm})"],
         total_linhas_periodo=len(notas_mes),
         modelo="alexandre", divergencias_valor=divergencias, por_empresa=por_empresa,
+        notas_em_ambas=sorted(em_ambas, key=lambda d: (d["empresa"], d["linha_excel"])),
         cgr_auditoria=cgr_auditoria, cgr_planilha_notas=cgr_planilha,
         cgr_planilha_conta_grafica=cgr_conta, notas_mes_na_planilha=True,
         fontes_cgr=[{"rotulo": f"Soma das notas ({modelo.aba_notas})", "valor": cgr_planilha},

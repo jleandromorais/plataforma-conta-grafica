@@ -23,6 +23,7 @@ from Src.api.schemas.duplicatas import RemoverNotaRequest, RemoverNotaResponse
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_arquivo, gravar_envio
 from Src.api.schemas.auditoria import (
     ComparacaoAuditoria,
+    ConferirPlanilhaResponse,
     DiferencasAuditoriaResponse,
     HistoricoAuditoriaLinha,
     IncluirNotaRequest,
@@ -159,11 +160,34 @@ async def processar(request: Request) -> ProcessarAuditoriaResponse:
                 cgr_planilha_conta_grafica=comp.cgr_planilha_conta_grafica,
                 divergencias_valor=comp.divergencias_valor,
                 por_empresa=comp.por_empresa,
+                notas_em_ambas=comp.notas_em_ambas,
             ) if comp else None,
             aviso_comparacao=aviso,
             problemas=[ProblemaArquivo(**p) for p in problemas],
             erros=erros_ciclo.erros_notas_ocr(itens, periodo) + erros_ciclo.erros_comparacao_planilha(comp, periodo),
         )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@router.post("/planilha/conferir", response_model=ConferirPlanilhaResponse)
+async def conferir_planilha(request: Request) -> ConferirPlanilhaResponse:
+    """Abre a planilha da Conta Gráfica e diz quais meses ela tem. NÃO audita notas nem grava nada.
+
+    Formulário: `planilha` (.xlsx) e `meses` ("Jul/2026,Ago/2026,Set/2026").
+    Planilha que não abre volta 200 com `ok: false` e o motivo em `aviso`.
+    """
+    form = await request.form()
+    brutos = [m.strip() for m in str(form.get("meses") or "").split(",") if m.strip()]
+    if not brutos or not all(is_periodo_valido(m) for m in brutos):
+        raise ValueError("Informe os meses a conferir, por exemplo Jul/2026,Ago/2026,Set/2026.")
+    meses = [normalizar_periodo(m) or m for m in brutos]
+    tmp = Path(tempfile.mkdtemp(prefix="auditoria_conferir_"))
+    try:
+        planilha = gravar_arquivo(form, "planilha", tmp, "planilha")
+        if planilha is None:
+            raise ValueError("Escolha a planilha da Conta Gráfica (.xlsx) para conferir.")
+        return ConferirPlanilhaResponse(**await run_in_threadpool(lote.conferir_planilha, str(planilha), meses))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

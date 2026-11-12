@@ -296,6 +296,8 @@ class ResultadoComparacaoNotas:
     tipo: str = "generico"          # "por_nota" | "por_supridor" | "generico" — a tela escolhe o layout por aqui
     modelo_rotulo: str = ""         # nome para mostrar ("Modelo NT")
     fontes_cgr: list[dict[str, Any]] = field(default_factory=list)   # [{"rotulo", "valor"|None}] para comparar com o CGR das notas
+    # Notas que batem nos dois lados: [{"empresa", "tipo", "numero", "linha_excel", "cgr_liquido", "cgr_planilha"|None}]
+    notas_em_ambas: list[dict[str, Any]] = field(default_factory=list)
 
 
 class ComparadorContaGrafica:
@@ -501,4 +503,11 @@ class ComparadorContaGrafica:
             sheets_excel=sheets_excel,
             sheets_periodo_match=sheets_periodo_match,
             total_linhas_periodo=total_linhas_periodo,
+            # O genérico só confere presença: não sabe o valor da nota na planilha.
+            notas_em_ambas=[
+                {"empresa": nossa_por_nota[n]["empresa"], "tipo": nossa_por_nota[n]["tipo"],
+                 "numero": nossa_por_nota[n]["numero"], "linha_excel": conta_por_nota[n]["linha_excel"],
+                 "cgr_liquido": round(nossa_por_nota[n]["cgr_liquido"], 2), "cgr_planilha": None}
+                for n in sorted(em_ambas)
+            ],
         )

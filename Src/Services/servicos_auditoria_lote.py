@@ -13,6 +13,7 @@ Duas correções em relação ao comportamento antigo da tela:
 """
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from collections import defaultdict
@@ -23,6 +24,8 @@ from Src.common.periodos import ano_do_caminho
 from Src.common.duplicatas import possiveis_duplicatas_por_valor
 from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
+
+logger = logging.getLogger(__name__)
 
 _MESES_DETECT = {
     "JANEIRO": 1, "JAN": 1, "FEVEREIRO": 2, "FEV": 2, "MARÇO": 3, "MARCO": 3, "MAR": 3,
@@ -313,6 +316,53 @@ def comparar_com_planilha(itens: list[XMLItem], caminho: str, periodo: str):
     return ComparadorContaGrafica.comparar(
         resultados=itens, df_excel=carregar_planilha_comparacao(caminho), periodo=periodo,
     )
+
+
+ROTULO_GENERICO = "Planilha sem modelo conhecido (confere só se a nota está lá)"
+AVISO_PLANILHA_ILEGIVEL = ("Não consegui abrir esta planilha. Confira se é a planilha da Conta Gráfica em .xlsx "
+                           "(sem senha) e tente de novo.")
+
+
+def conferir_planilha(caminho: str, meses: list[str]) -> dict:
+    """Abre a planilha da Conta Gráfica e diz se cada mês está nela. NÃO audita notas nem grava nada.
+
+    Usa a mesma detecção de modelo da comparação (comparacao_registro); sem modelo conhecido,
+    procura o mês no nome das abas, como o comparador genérico. Planilha que não abre
+    vira `ok: False` com o motivo, nunca exceção."""
+    from Src.Services.comparacao_registro import reconhecer_modelo
+    from Src.Services.comparador_conta_grafica import _sheet_corresponde_periodo
+
+    try:
+        achado = reconhecer_modelo(caminho)
+        if achado is not None:
+            m, lido = achado
+            tipo, rotulo = m.tipo, m.rotulo
+            linhas = [{"periodo": p, **m.conferir_mes(lido, p)} for p in meses]
+        else:
+            abas = sorted({str(n) for n in carregar_planilha_comparacao(caminho)["__sheet_name__"]})
+            tipo, rotulo = "generico", ROTULO_GENERICO
+            linhas = []
+            for p in meses:
+                do_mes = [a for a in abas if _sheet_corresponde_periodo(a, p)]
+                linhas.append({"periodo": p, "tem": bool(do_mes), "abas": do_mes, "qtd_notas": None})
+    except Exception:  # noqa: BLE001 — arquivo corrompido, sem senha certa, não-xlsx: vira aviso, não 500
+        logger.warning("Planilha de comparação ilegível na conferência", exc_info=True)
+        return {"ok": False, "modelo": None, "modelo_rotulo": None,
+                "meses": [{"periodo": p, "tem": False, "abas": [], "qtd_notas": None} for p in meses],
+                "aviso": AVISO_PLANILHA_ILEGIVEL}
+
+    if tipo == "generico" and not any(x["tem"] for x in linhas):
+        return {"ok": False, "modelo": tipo, "modelo_rotulo": rotulo, "meses": linhas,
+                "aviso": "Abri o arquivo, mas ele não parece a planilha da Conta Gráfica: não achei nenhuma aba de "
+                         f"{', '.join(meses)}. Confira se escolheu a planilha certa."}
+    faltam = [x["periodo"] for x in linhas if not x["tem"]]
+    if not faltam:
+        aviso = None
+    elif len(faltam) == len(linhas):
+        aviso = f"A planilha abriu, mas não tem {', '.join(faltam)}. Confira se é a planilha deste trimestre."
+    else:
+        aviso = f"A planilha não tem {', '.join(faltam)}. Dá para comparar os outros meses."
+    return {"ok": True, "modelo": tipo, "modelo_rotulo": rotulo, "meses": linhas, "aviso": aviso}
 
 
 def salvar(periodo: str, itens: list[XMLItem]) -> dict:

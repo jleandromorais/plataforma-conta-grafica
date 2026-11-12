@@ -17,7 +17,8 @@ import re
 
 from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
 from Src.Services.comparador_modelo_alexandre import (
-    ModeloAlexandre, NotaPlanilha, _achar_aba, _num, _periodo_bloco, comparar as _comparar_notas,
+    ModeloAlexandre, NotaPlanilha, _achar_aba, _num, _periodo_bloco, abas_por_periodo, comparar as _comparar_notas,
+    conferir_mes as _conferir_mes,
 )
 from Src.Services.supridores import supridor_canonico, token as _token
 
@@ -108,19 +109,24 @@ def ler_modelo(caminho: str) -> ModeloAlexandre | None:
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
     try:
         notas = {}
+        aba_das_notas: dict[str, str] = {}
         for nome in wb.sheetnames:
             periodo = _periodo_da_aba(nome)
             if periodo:
                 lidas = _ler_aba_mes(wb[nome])
                 if lidas:
                     notas[periodo] = lidas
+                    aba_das_notas[periodo] = nome
         if not notas:
             return None
         ws_conta = _achar_aba(wb, ABA_CONTA)
         cgr = _ler_cgr_mensal(ws_conta) if ws_conta is not None else {}
-        return ModeloAlexandre(notas=notas, cgr_conta_grafica=cgr, aba_notas="abas mensais", aba_cgr="Conta Gráfica")
+        abas = abas_por_periodo(aba_das_notas, cgr, ws_conta.title if ws_conta is not None else "")
+        return ModeloAlexandre(notas=notas, cgr_conta_grafica=cgr, aba_notas="abas mensais", aba_cgr="Conta Gráfica",
+                               abas_periodo=abas)
     finally:
         wb.close()
 
 
 comparar = _comparar_notas
+conferir_mes = _conferir_mes

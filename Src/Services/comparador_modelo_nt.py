@@ -121,6 +121,12 @@ def ler_modelo(caminho: str) -> ModeloNT | None:
         wb.close()
 
 
+def conferir_mes(modelo: ModeloNT, periodo: str) -> dict[str, Any]:
+    """O mês tem bloco na aba da NT? A NT é por supridor: não há quantidade de notas."""
+    tem = periodo in modelo.blocos
+    return {"tem": tem, "abas": [modelo.aba] if tem else [], "qtd_notas": None}
+
+
 # ── Comparação ───────────────────────────────────────────────────────────────
 
 def comparar(itens: list[XMLItem], modelo: ModeloNT, periodo: str) -> ResultadoComparacaoNotas:

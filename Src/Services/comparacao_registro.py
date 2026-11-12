@@ -3,7 +3,8 @@
 Para ensinar uma planilha nova:
   1. crie `comparador_modelo_<nome>.py` com `ler_modelo(caminho)` (devolve o modelo
      lido, ou None se a planilha não segue o layout) e `comparar(itens, modelo, periodo)`
-     (devolve um `ResultadoComparacaoNotas`); reaproveite as regras de
+     (devolve um `ResultadoComparacaoNotas`) e `conferir_mes(modelo, periodo)` (devolve
+     `{"tem", "abas", "qtd_notas"}`, usado para conferir a planilha antes de comparar); reaproveite as regras de
      `explicador_diferencas` para dizer o porquê das diferenças;
   2. acrescente uma linha em `MODELOS` abaixo.
 
@@ -36,22 +37,33 @@ class ModeloComparacao:
     tipo: str       # um de TIPOS
     ler: Callable[[str], Any | None]
     comparar: Callable[[list[XMLItem], Any, str], ResultadoComparacaoNotas]
+    conferir_mes: Callable[[Any, str], dict[str, Any]]
 
 
 MODELOS: tuple[ModeloComparacao, ...] = (
-    ModeloComparacao("alexandre", "Modelo Alexandre", "por_nota", _alexandre.ler_modelo, _alexandre.comparar),
-    ModeloComparacao("apuracao", "Conta Gráfica e Apuração de Custos", "por_nota", _apuracao.ler_modelo, _apuracao.comparar),
-    ModeloComparacao("nt", "Modelo NT", "por_supridor", _nt.ler_modelo, _nt.comparar),
+    ModeloComparacao("alexandre", "Modelo Alexandre", "por_nota", _alexandre.ler_modelo, _alexandre.comparar,
+                     _alexandre.conferir_mes),
+    ModeloComparacao("apuracao", "Conta Gráfica e Apuração de Custos", "por_nota", _apuracao.ler_modelo, _apuracao.comparar,
+                     _apuracao.conferir_mes),
+    ModeloComparacao("nt", "Modelo NT", "por_supridor", _nt.ler_modelo, _nt.comparar, _nt.conferir_mes),
 )
+
+
+def reconhecer_modelo(caminho: str) -> tuple[ModeloComparacao, Any] | None:
+    """O primeiro modelo que reconhece a planilha e o que ele leu; None se nenhum reconhece."""
+    for m in MODELOS:
+        lido = m.ler(caminho)
+        if lido is not None:
+            return m, lido
+    return None
 
 
 def comparar_com_modelo(itens: list[XMLItem], caminho: str, periodo: str) -> ResultadoComparacaoNotas | None:
     """Compara com o primeiro modelo que reconhece a planilha; None se nenhum reconhece."""
-    for m in MODELOS:
-        lido = m.ler(caminho)
-        if lido is None:
-            continue
-        r = m.comparar(itens, lido, periodo)
-        r.modelo, r.tipo, r.modelo_rotulo = m.nome, m.tipo, m.rotulo
-        return r
-    return None
+    achado = reconhecer_modelo(caminho)
+    if achado is None:
+        return None
+    m, lido = achado
+    r = m.comparar(itens, lido, periodo)
+    r.modelo, r.tipo, r.modelo_rotulo = m.nome, m.tipo, m.rotulo
+    return r

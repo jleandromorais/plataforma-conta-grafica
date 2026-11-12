@@ -65,6 +65,25 @@ class ComparacaoAuditoria(BaseModel):
     cgr_planilha_conta_grafica: float | None = None
     divergencias_valor: list[dict[str, Any]] = []
     por_empresa: list[dict[str, Any]] = []
+    # Notas que batem nos dois lados (sem divergência): {empresa, tipo, numero, linha_excel, cgr_liquido, cgr_planilha}.
+    # cgr_planilha é None no comparador genérico (só confere presença); vazio no modelo por supridor (NT).
+    notas_em_ambas: list[dict[str, Any]] = []
+
+
+class MesConferido(BaseModel):
+    periodo: str                 # "Jul/2026"
+    tem: bool                    # o mês está na planilha (dá para comparar)
+    abas: list[str]              # abas onde o mês foi achado
+    qtd_notas: int | None = None # notas do mês na planilha; None quando o modelo não lista notas (NT, genérico)
+
+
+class ConferirPlanilhaResponse(BaseModel):
+    """POST /auditoria/planilha/conferir: a planilha abriu e tem os meses? Não audita nem grava."""
+    ok: bool
+    modelo: str | None = None          # "por_nota" | "por_supridor" | "generico"
+    modelo_rotulo: str | None = None   # "Modelo Alexandre", "Modelo NT"...
+    meses: list[MesConferido] = []
+    aviso: str | None = None
 
 
 class ProcessarAuditoriaResponse(BaseModel):
