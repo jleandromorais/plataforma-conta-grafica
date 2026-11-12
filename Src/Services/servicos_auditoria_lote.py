@@ -551,6 +551,81 @@ def prova_real(periodo: str) -> dict:
     }
 
 
+def itens_gravados_como_xml(gravados: list[dict]) -> list[XMLItem]:
+    """Remonta as notas gravadas do mês como XMLItem, para os mesmos comparadores da tela.
+
+    O banco não guarda a alíquota de ICMS nem o caminho do arquivo, mas guarda o CGR de cada nota
+    (negativo na devolução). A alíquota sai desse CGR, então `cgr_liquido_item` devolve
+    exatamente o valor gravado; a devolução vira um caminho com "devolucao". Nota digitada sem
+    valor com tributos ganha um valor que dá o mesmo CGR, com alíquota 0."""
+    from Src.Services.servicos_auditoria import PIS_COFINS_RATE
+
+    itens = []
+    for g in gravados:
+        cgr = float(g.get("cgr_liquido") or 0.0)
+        valor = float(g.get("valor_total") or 0.0)
+        base = valor * (1.0 - PIS_COFINS_RATE)
+        if base > 0 and abs(cgr) <= base:
+            taxa = 1.0 - abs(cgr) / base
+        else:
+            valor, taxa = abs(cgr) / (1.0 - PIS_COFINS_RATE), 0.0
+        vol = float(g.get("volume_total") or 0.0)
+        itens.append(XMLItem(
+            empresa=g.get("empresa") or "", tipo=g.get("tipo") or "NF-e", numero=str(g.get("numero") or ""),
+            valor_total=valor, icms=float(g.get("icms") or 0.0), icms_taxa=taxa,
+            pis=float(g.get("pis") or 0.0), cofins=float(g.get("cofins") or 0.0),
+            volume=int(round(vol)), status="", volume_total=vol,
+            caminho="devolucao" if cgr < 0 else "",
+        ))
+    return itens
+
+
+def comparar_gravado_com_planilha(periodo: str, caminho: str) -> dict:
+    """As notas GRAVADAS do mês contra a planilha da Conta Gráfica, com o mesmo comparador da tela
+    da Auditoria. Resumo para o relatório; nunca levanta (erro vira `erro`). Não grava nada."""
+    from Src.Database.database import DatabasePMPV
+
+    with DatabasePMPV() as db:
+        gravados = db.listar_auditoria_itens(periodo) or []
+    base = {"periodo": periodo, "erro": None, "tem_mes": False, "modelo_rotulo": "", "cgr_notas": None,
+            "fontes_cgr": [], "qtd_em_ambas": 0, "so_na_planilha": [], "so_gravadas": [], "divergencias": [],
+            "supridores": []}
+    if not gravados:
+        return {**base, "erro": "Sem notas gravadas neste mês: não dá para comparar com a planilha."}
+    try:
+        r = comparar_com_planilha(itens_gravados_como_xml(gravados), caminho, periodo)
+    except Exception as e:  # noqa: BLE001 — planilha ilegível vira aviso no relatório
+        logger.warning("Relatório: comparação com a planilha falhou em %s", periodo, exc_info=True)
+        return {**base, "erro": f"Não consegui comparar com a planilha: {e}"}
+    tem_mes = bool(r.notas_mes_na_planilha or r.qtd_em_ambas or r.notas_apenas_conta_grafica
+                   or any(f.get("valor") is not None for f in (r.fontes_cgr or [])))
+    return {
+        **base,
+        "tem_mes": tem_mes,
+        "modelo_rotulo": r.modelo_rotulo or "",
+        "cgr_notas": r.cgr_auditoria,
+        "fontes_cgr": [f for f in (r.fontes_cgr or []) if f.get("valor") is not None],
+        "qtd_em_ambas": r.qtd_em_ambas,
+        "so_na_planilha": [
+            {"empresa": n.get("empresa") or n.get("supridor") or "", "numero": str(n.get("numero") or ""),
+             "linha_excel": n.get("linha_excel"), "cgr_planilha": n.get("cgr_planilha")}
+            for n in r.notas_apenas_conta_grafica],
+        "so_gravadas": [
+            {"empresa": n.get("empresa") or "", "tipo": n.get("tipo") or "", "numero": str(n.get("numero") or ""),
+             "cgr_liquido": n.get("cgr_liquido")}
+            for n in r.notas_apenas_nossa],
+        "divergencias": [
+            {"empresa": d.get("empresa") or "", "numero": str(d.get("numero") or ""), "linha_excel": d.get("linha_excel"),
+             "motivos": list(d.get("motivos") or []), "diferenca_cgr": d.get("diferenca_cgr"),
+             "explicacao": d.get("explicacao") or ""}
+            for d in r.divergencias_valor],
+        # Modelo por supridor (NT): só totais por empresa.
+        "supridores": [
+            {"empresa": s.get("empresa") or "", "diferenca": s.get("diferenca"), "confere": bool(s.get("confere"))}
+            for s in (r.por_empresa or []) if r.tipo == "por_supridor"],
+    }
+
+
 def itens_para_banco(itens: list[XMLItem]) -> list[dict]:
     """Formato de DatabasePMPV.salvar_auditoria_itens, com o CGR líquido
     negativo nas devoluções."""

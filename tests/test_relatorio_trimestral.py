@@ -112,9 +112,76 @@ def test_auditoria_por_empresa_aparece():
     assert "Tirar do cálculo" in txt
 
 
+def _pl(**k):
+    base = {"periodo": "Jul/2026", "erro": None, "tem_mes": True, "modelo_rotulo": "Conta Gráfica e Apuração de Custos",
+            "cgr_notas": 99_913_890.30, "fontes_cgr": [], "qtd_em_ambas": 89, "so_na_planilha": [],
+            "so_gravadas": [], "divergencias": [], "supridores": []}
+    return {**base, **k}
+
+
+def test_planilha_nota_que_falta_aparece_mesmo_com_o_sistema_fechando():
+    """O caso de jul/26: sistema fecha consigo mesmo, mas a TAG 550499 está só na planilha."""
+    p = _prova("Jul/2026")
+    p["planilha"] = _pl(
+        fontes_cgr=[{"rotulo": "Aba Conta Gráfica", "valor": 100_395_210.17}],
+        so_na_planilha=[{"empresa": "TAG", "numero": "550499", "linha_excel": 97, "cgr_planilha": 481_319.89}],
+        divergencias=[{"empresa": "GNLink", "numero": "000.271.226-1", "linha_excel": 42,
+                       "motivos": ["Volume"], "diferenca_cgr": 0.0, "explicacao": "Só o volume difere."}],
+    )
+    d = {"meses": MESES, "provas": [p, _prova("Ago/2026"), _prova("Set/2026")], "com_planilha": True}
+    a = rt.achados(d)
+    altas = [x for x in a if x["gravidade"] == "alta"]
+    assert len(altas) == 2 and all(x["modulo"] == "Planilha" for x in altas)
+    assert any("550499" in x["texto"] and "linha 97" in x["texto"] for x in altas)
+    assert "R$ 481.319,87 a menos" in altas[0]["texto"]
+    assert [x["gravidade"] for x in a if "GNLink" in x["texto"]] == ["atencao"]
+    txt = _texto(rt.montar(d))
+    assert "Não está tudo batendo" in txt and "✗ Não bate" in txt and "550499" in txt
+
+
+def test_planilha_tudo_batendo_e_sem_planilha_avisa():
+    d = {"meses": MESES, "provas": [{**_prova(m), "planilha": _pl()} for m in MESES], "com_planilha": True}
+    assert rt.achados(d) == []
+    assert "Tudo batendo com a planilha oficial" in _texto(rt.montar(d))
+
+    sem = {"meses": MESES, "provas": [_prova(m) for m in MESES]}
+    txt = _texto(rt.montar(sem))
+    assert "Tudo batendo no sistema" in txt and "sem a planilha oficial" in txt
+
+
+def test_itens_gravados_como_xml_devolvem_o_mesmo_cgr():
+    from Src.Services.servicos_auditoria_lote import cgr_liquido_item, itens_gravados_como_xml
+
+    gravados = [
+        {"empresa": "Petrobras", "tipo": "NF-e", "numero": "1", "valor_total": 1000.0, "cgr_liquido": 798.6},
+        {"empresa": "Petrobras", "tipo": "NF-e", "numero": "2", "valor_total": 500.0, "cgr_liquido": -399.3},
+        {"empresa": "TAG", "tipo": "CT-e", "numero": "550499", "valor_total": 0.0, "cgr_liquido": 481319.89},
+    ]
+    itens = itens_gravados_como_xml(gravados)
+    for g, i in zip(gravados, itens):
+        assert abs(cgr_liquido_item(i) - g["cgr_liquido"]) < 0.005
+
+
+def test_api_aceita_planilha(monkeypatch):
+    from Src.api.main import app
+    recebido = {}
+
+    def falso(meses, planilha=None):
+        recebido["planilha"] = planilha
+        return {"meses": meses, "provas": [_prova(m) for m in meses]}
+
+    monkeypatch.setattr(rt, "dados_do_trimestre", falso)
+    with TestClient(app) as c:
+        r = c.post("/api/relatorio-trimestral/gerar", params={"periodo": "Ago/2026"},
+                   files={"planilha": ("cg.xlsx", b"x", "application/octet-stream")})
+    assert r.status_code == 200
+    assert recebido["planilha"] and recebido["planilha"].endswith(".xlsx")
+
+
 def test_api_devolve_docx(monkeypatch):
     from Src.api.main import app
-    monkeypatch.setattr(rt, "dados_do_trimestre", lambda meses: {"meses": meses, "provas": [_prova(m) for m in meses]})
+    monkeypatch.setattr(rt, "dados_do_trimestre",
+                        lambda meses, planilha=None: {"meses": meses, "provas": [_prova(m) for m in meses]})
     with TestClient(app) as c:
         r = c.post("/api/relatorio-trimestral/gerar", params={"periodo": "Ago/2026"})
     assert r.status_code == 200

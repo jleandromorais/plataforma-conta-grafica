@@ -57,10 +57,13 @@ _TONS = {
 
 # ── Leitura ───────────────────────────────────────────────────────────────────
 
-def dados_do_trimestre(meses: list[str]) -> dict:
+def dados_do_trimestre(meses: list[str], planilha: str | None = None) -> dict:
     """Provas reais dos meses (nada é gravado). A de cada mês traz os valores
     gravados, se cada parte (CGR, CGF, RET, RP) confere com as suas notas e a
-    prova real da Auditoria inteira (CGR por empresa)."""
+    prova real da Auditoria inteira (CGR por empresa).
+
+    Com `planilha` (caminho da planilha da Conta Gráfica), as notas gravadas de
+    cada mês também são comparadas com ela, pelo mesmo comparador da Auditoria."""
     from Src.Services import servicos_auditoria_lote
     from Src.Services.servicos_scg import ServicosSCG
 
@@ -72,8 +75,10 @@ def dados_do_trimestre(meses: list[str]) -> dict:
         prova["auditoria"] = aud
         prova["notas_digitadas"] = aud.get("notas_digitadas") or []
         prova["possiveis_duplicatas_valor"] = aud.get("possiveis_duplicatas_valor") or []
+        if planilha and prova["gravado"]:
+            prova["planilha"] = servicos_auditoria_lote.comparar_gravado_com_planilha(m, planilha)
         lista.append(prova)
-    return {"meses": meses, "provas": lista}
+    return {"meses": meses, "provas": lista, "com_planilha": bool(planilha)}
 
 
 # ── Interpretação ─────────────────────────────────────────────────────────────
@@ -95,6 +100,70 @@ def _estado(p: dict, chave: str) -> str:
     if not _tem(o):
         return "sem"
     return "ok" if o["confere"] else "erro"
+
+
+def _estado_planilha(pl: dict | None) -> str:
+    """"ok", "erro", "sem_mes", "falhou" ou "" (sem planilha) da comparação do mês com a planilha."""
+    if not pl:
+        return ""
+    if pl.get("erro"):
+        return "falhou"
+    if not pl.get("tem_mes"):
+        return "sem_mes"
+    cgr = pl.get("cgr_notas")
+    total_difere = cgr is not None and any(abs(cgr - f["valor"]) > TOL for f in pl.get("fontes_cgr") or [])
+    problemas = (pl.get("so_na_planilha") or pl.get("so_gravadas")
+                 or any(abs(x.get("diferenca_cgr") or 0) > TOL for x in pl.get("divergencias") or [])
+                 or any(not s["confere"] for s in pl.get("supridores") or []))
+    return "erro" if total_difere or problemas else "ok"
+
+
+def _achados_planilha(m: str, pl: dict, add) -> None:
+    if pl.get("erro"):
+        add(m, "Planilha", "atencao", pl["erro"], "Conferir se a planilha é a da Conta Gráfica (.xlsx, sem senha).")
+        return
+    if not pl.get("tem_mes"):
+        add(m, "Planilha", "atencao", "A planilha escolhida não tem este mês, então ele não foi comparado.",
+            "Gerar de novo com a planilha que tem este mês.")
+        return
+    cgr = pl.get("cgr_notas")
+    for f in pl.get("fontes_cgr") or []:
+        dif = (cgr or 0.0) - f["valor"]
+        if cgr is not None and abs(dif) > TOL:
+            lado = "a menos" if dif < 0 else "a mais"
+            add(m, "Planilha", "alta",
+                f"O CGR das notas gravadas ({brl(cgr)}) difere da planilha · {f['rotulo']} ({brl(f['valor'])}): "
+                f"{brl(abs(dif))} {lado} no sistema.",
+                "Ver as notas abaixo (só na planilha, só no sistema, valor diferente): elas explicam a diferença.")
+    for n in pl.get("so_na_planilha") or []:
+        linha = f"linha {n['linha_excel']}, " if n.get("linha_excel") else ""
+        valor = f"CGR {brl(n['cgr_planilha'])}" if n.get("cgr_planilha") is not None else "sem CGR"
+        add(m, "Planilha", "alta",
+            f"A nota {n['numero']} de {n['empresa']} está na planilha ({linha}{valor}) e não está gravada no sistema.",
+            "Se o fornecedor não mandou a nota, usar “Incluir esta nota” no Comparar com a planilha do Painel.")
+    for n in pl.get("so_gravadas") or []:
+        valor = f" ({brl(n['cgr_liquido'])})" if n.get("cgr_liquido") is not None else ""
+        add(m, "Planilha", "alta",
+            f"A nota {n['tipo']} {n['numero']} de {n['empresa']}{valor} está gravada no sistema e não está na planilha.",
+            "Confirmar se a nota é deste mês. Se for, avisar quem mantém a planilha; se não, tirar do cálculo.")
+    for x in pl.get("divergencias") or []:
+        dif = x.get("diferenca_cgr") or 0.0
+        linha = f" (linha {x['linha_excel']})" if x.get("linha_excel") else ""
+        motivo = ", ".join(x.get("motivos") or []) or "valores"
+        texto = f"A nota {x['numero']} de {x['empresa']}{linha} difere da planilha em: {motivo}."
+        if x.get("explicacao"):
+            texto += f" {x['explicacao']}"
+        if abs(dif) > TOL:
+            add(m, "Planilha", "alta", texto + f" Diferença no CGR: {brl(dif)}.",
+                "Abrir o documento e ver qual valor está certo; corrigir a nota ou a planilha.")
+        else:
+            add(m, "Planilha", "atencao", texto + " O CGR é igual: não muda o total.",
+                "Só conferir. Se a planilha estiver errada, corrigir lá.")
+    for s in pl.get("supridores") or []:
+        if not s["confere"]:
+            add(m, "Planilha", "alta",
+                f"O total de {s['empresa']} no sistema difere da planilha em {brl(s.get('diferenca') or 0.0)}.",
+                "Abrir o Comparar com a planilha do mês e ver as notas desse supridor.")
 
 
 def achados(d: dict) -> list[dict]:
@@ -156,6 +225,8 @@ def achados(d: dict) -> list[dict]:
                 f"Nota {n['tipo']} {n['numero']} de {n['empresa']} ({brl(n['cgr_liquido'])}) foi incluída à mão "
                 f"porque não veio nos arquivos. Motivo: {n['motivo'] or '(não informado)'}.",
                 "Guardar o comprovante. Se o mês for reprocessado pela pasta, incluir a nota de novo.")
+        if p.get("planilha"):
+            _achados_planilha(m, p["planilha"], add)
     return saida
 
 
@@ -391,21 +462,31 @@ def montar(d: dict) -> bytes:
               "Nada foi gravado ao gerar este relatório.", tamanho=9, cor=_CINZA_TEXTO)
 
     # ── Veredito ──
+    com_planilha = bool(d.get("com_planilha"))
+    sem_planilha = ([] if com_planilha else
+                    ["Gerado sem a planilha oficial: o sistema foi conferido com ele mesmo. Nota que falta nos "
+                     "arquivos e na planilha não aparece aqui. Para comparar, escolha a planilha no Painel do Ciclo "
+                     "antes de gerar."])
     if not gravados:
         _caixa(doc, "Sem dados para conferir", ["Nenhum mês do trimestre tem fechamento gravado."], "neutro")
     elif altas:
         _caixa(doc, f"Não está tudo batendo: {len(altas)} ponto(s) não fecham",
-               ["Pelo menos uma conta refeita pelo sistema dá um valor diferente do gravado. "
-                "Veja a seção 5 para cada caso e o que fazer."]
-               + ([f"Há também {len(atencao)} ponto(s) para conferir."] if atencao else []), "erro")
+               ["Pelo menos uma conta dá um valor diferente do gravado"
+                + (" ou da planilha oficial" if com_planilha else "")
+                + ". Veja a seção 6 para cada caso e o que fazer."]
+               + ([f"Há também {len(atencao)} ponto(s) para conferir."] if atencao else []) + sem_planilha, "erro")
     elif atencao:
         _caixa(doc, f"As contas fecham, com {len(atencao)} ponto(s) para conferir",
-               ["Tudo o que o sistema conseguiu refazer bate com o gravado, mas há partes que não dá para provar "
-                "ou que merecem um olhar (seção 5)."], "atencao")
+               ["Tudo o que o sistema conseguiu refazer bate, mas há partes que não dá para provar "
+                "ou que merecem um olhar (seção 6)."] + sem_planilha, "atencao")
+    elif com_planilha:
+        _caixa(doc, "Tudo batendo com a planilha oficial",
+               [f"As contas de {len(gravados)} mês(es) fecham com as notas gravadas, parte por parte, e as notas "
+                "batem com a planilha da Conta Gráfica. Nenhuma incongruência encontrada."], "ok")
     else:
-        _caixa(doc, "Tudo batendo",
+        _caixa(doc, "Tudo batendo no sistema",
                [f"As contas de {len(gravados)} mês(es) fecham com as notas gravadas, parte por parte. "
-                "Nenhuma incongruência encontrada."], "ok")
+                "Nenhuma incongruência encontrada."] + sem_planilha, "ok")
 
     partes = [_estado(p, k) for p in gravados for k in ("cgr", "cgf", "ret", "rp")]
     conferem = sum(1 for e in partes if e == "ok")
@@ -448,11 +529,14 @@ def montar(d: dict) -> bytes:
     _titulo(doc, "3. Está tudo batendo? Conferência mês a mês")
     _par(doc, "Cada parte do fechamento é refeita pelo sistema com o que foi gravado (notas, resumo, documentos) "
               "e comparada com o valor do fechamento.", tamanho=10)
+    selo_planilha = {"ok": ("✓ Bate", "ok"), "erro": ("✗ Não bate", "erro"), "sem_mes": ("— Sem o mês", "atencao"),
+                     "falhou": ("! Não comparou", "atencao")}
+    n_cols = 6 if com_planilha else 5
     linhas = []
     for p in provas:
         nome_mes = mes_ano(p["periodo"]).capitalize()
         if not p["gravado"]:
-            linhas.append([nome_mes, *[("— Sem fechamento", "neutro")] * 5])
+            linhas.append([nome_mes, *[("— Sem fechamento", "neutro")] * n_cols])
             continue
         selos = [_SELO[_estado(p, k)] for k in ("cgr", "cgf", "ret", "rp")]
         if p.get("scg_gravado") is None:
@@ -461,15 +545,58 @@ def montar(d: dict) -> bytes:
             scg = ("✓ Fecha", "ok")
         else:
             scg = ("✗ Não fecha", "erro")
-        linhas.append([nome_mes, *selos, scg])
-    _tabela(doc, ["Mês", "CGR", "CGF", "RET", "RP", "SCG"], linhas, [3.1] + [2.7] * 5, centro={1, 2, 3, 4, 5})
+        extra = [selo_planilha.get(_estado_planilha(p.get("planilha")), ("—", "neutro"))] if com_planilha else []
+        linhas.append([nome_mes, *selos, scg, *extra])
+    larg_mes = 2.6 if com_planilha else 3.1
+    _tabela(doc, ["Mês", "CGR", "CGF", "RET", "RP", "SCG", *(["Planilha"] if com_planilha else [])], linhas,
+            [larg_mes] + [(_LARGURA - larg_mes) / n_cols] * n_cols, centro=set(range(1, n_cols + 1)))
     _par(doc, "✓ Confere: a conta refeita bate com o gravado (até R$ 1,00 de arredondamento). "
-              "✗ Não confere: a conta refeita dá outro valor (detalhe na seção 5). "
-              "— Sem notas: o mês foi gravado só com o total, então o sistema não consegue abrir a conta.",
+              "✗ Não confere: a conta refeita dá outro valor (detalhe na seção 6). "
+              "— Sem notas: o mês foi gravado só com o total, então o sistema não consegue abrir a conta."
+              + (" Planilha: as notas gravadas comparadas com a planilha oficial (seção 4)." if com_planilha else ""),
          tamanho=9, cor=_CINZA_TEXTO)
 
-    # ── 4. Auditoria do CGR ──
-    _titulo(doc, "4. Auditoria do CGR por mês")
+    # ── 4. Planilha oficial ──
+    _titulo(doc, "4. Comparação com a planilha oficial")
+    if not com_planilha:
+        _par(doc, "Este relatório foi gerado sem a planilha da Conta Gráfica. As seções acima conferem o sistema "
+                  "com ele mesmo: uma nota que não veio nos arquivos fica fora do CGR gravado e também da conta "
+                  "refeita, então não aparece como diferença. Para ver isso, escolha a planilha no Painel do Ciclo "
+                  "(Comparar com a planilha) e gere o relatório de novo.", tamanho=10)
+    else:
+        _par(doc, "As notas gravadas de cada mês foram comparadas com a planilha pelo mesmo comparador da tela "
+                  "da Auditoria.", tamanho=10)
+        for p in provas:
+            pl = p.get("planilha")
+            _titulo(doc, mes_ano(p["periodo"]).capitalize(), 2)
+            if not p["gravado"] or not pl:
+                _par(doc, "Sem fechamento gravado.", tamanho=10, cor=_CINZA_TEXTO)
+                continue
+            if pl.get("erro") or not pl.get("tem_mes"):
+                _par(doc, pl.get("erro") or "A planilha escolhida não tem este mês.", tamanho=10, cor=_CINZA_TEXTO)
+                continue
+            cgr = pl.get("cgr_notas")
+            linhas = [["CGR das notas gravadas no sistema", _v(cgr), ""]]
+            for f in pl.get("fontes_cgr") or []:
+                dif = (cgr or 0.0) - f["valor"]
+                linhas.append([f"Planilha · {f['rotulo']}", brl(f["valor"]),
+                               (brl(dif), "ok" if abs(dif) <= TOL else "erro")])
+            _tabela(doc, ["CGR", "Valor", "Diferença (sistema − planilha)"], linhas, [8.0, 4.0, 4.6],
+                    direita={1, 2})
+            dif_valor = [x for x in pl.get("divergencias") or []]
+            _cartoes(doc, [
+                (str(pl.get("qtd_em_ambas") or 0), "notas batem", "ok"),
+                (str(len(dif_valor)), "valor diferente", "atencao" if dif_valor else "neutro"),
+                (str(len(pl.get("so_gravadas") or [])), "só no sistema", "erro" if pl.get("so_gravadas") else "neutro"),
+                (str(len(pl.get("so_na_planilha") or [])), "só na planilha",
+                 "erro" if pl.get("so_na_planilha") else "neutro"),
+            ])
+            if pl.get("modelo_rotulo"):
+                _par(doc, f"Planilha lida como: {pl['modelo_rotulo']}. Cada nota diferente está na seção 6.",
+                     tamanho=9, cor=_CINZA_TEXTO)
+
+    # ── 5. Auditoria do CGR ──
+    _titulo(doc, "5. Auditoria do CGR por mês")
     _par(doc, "O CGR é a soma das NF-e de compra de gás e dos CT-e de gasoduto (TAG, Mastergás), líquidos de "
               "impostos e já descontadas as devoluções. CT-e das outras transportadoras é frete e fica fora.",
          tamanho=10)
@@ -509,10 +636,10 @@ def montar(d: dict) -> bytes:
         if p.get("notas_digitadas"):
             extras.append(f"{len(p['notas_digitadas'])} nota(s) incluída(s) à mão")
         if extras:
-            _par(doc, f"Neste mês: {' e '.join(extras)}. Detalhes na seção 5.", tamanho=9.5, cor=_CINZA_TEXTO)
+            _par(doc, f"Neste mês: {' e '.join(extras)}. Detalhes na seção 6.", tamanho=9.5, cor=_CINZA_TEXTO)
 
-    # ── 5. Incongruências ──
-    _titulo(doc, "5. Incongruências e o que fazer")
+    # ── 6. Incongruências ──
+    _titulo(doc, "6. Incongruências e o que fazer")
     if not ach:
         _par(doc, "Nenhuma incongruência encontrada.")
     grupos = [("alta", "Não fecha", "erro", altas), ("atencao", "Para conferir", "atencao", atencao),
@@ -525,12 +652,12 @@ def montar(d: dict) -> bytes:
                 [[(curto(a["mes"]), tom), a["modulo"], a["texto"], a["acao"]] for a in grupo],
                 [1.7, 2.5, 7.4, 5.0])
 
-    # ── 6. Como ler ──
-    _titulo(doc, "6. Como ler este relatório")
+    # ── 7. Como ler ──
+    _titulo(doc, "7. Como ler este relatório")
     _par(doc, "“Confere” quer dizer que a conta fecha com o que está gravado, não que as notas estejam certas. "
               "Se uma nota não veio nos arquivos do mês, o CGR fica abaixo do esperado até ela ser incluída à mão, "
-              "o que aparece em “Registros”. Para validar contra a planilha oficial, use “Comparar com a planilha” "
-              "no Painel do Ciclo.", tamanho=10)
+              "o que aparece em “Registros”. Quem pega esse caso é a comparação com a planilha oficial (seção 4).",
+         tamanho=10)
     _par(doc, "SCG negativo: o gás custou menos do que foi faturado e o saldo volta ao consumidor na tarifa. "
               "SCG positivo: o gás custou mais e o saldo é recuperado na tarifa (Parcela de Recuperação).",
          tamanho=10)

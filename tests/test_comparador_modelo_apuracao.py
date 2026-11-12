@@ -91,6 +91,36 @@ def test_o_mes_escolhido_define_a_aba(planilha):
     assert any("Mês provavelmente errado" in a and "Ago/2026" in a for a in jul.avisos)
 
 
+def test_relatorio_compara_as_notas_gravadas_com_a_planilha(planilha, monkeypatch):
+    """Relatório trimestral: as notas GRAVADAS (sem alíquota nem caminho) passam pelo mesmo comparador
+    e acham a nota que só está na planilha, sem inventar diferença de alíquota nas que batem."""
+    import Src.Database.database as banco
+
+    gravados = [
+        {"empresa": "TAG", "tipo": "CT-e", "numero": "4491", "valor_total": 1000.0, "icms": 120.0,
+         "volume_total": 0.0, "cgr_liquido": _cgr(1000.0)},
+        {"empresa": "GNLink", "tipo": "NF-e", "numero": "000.271.226-1", "valor_total": 2000.0, "icms": 240.0,
+         "volume_total": 0.0, "cgr_liquido": _cgr(2000.0)},
+    ]
+
+    class BancoFalso:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def listar_auditoria_itens(self, _periodo):
+            return gravados
+
+    monkeypatch.setattr(banco, "DatabasePMPV", BancoFalso)
+    r = lote.comparar_gravado_com_planilha("Jul/2026", planilha)
+    assert r["erro"] is None and r["tem_mes"]
+    assert [n["numero"] for n in r["so_na_planilha"]] == ["550499"]
+    assert r["qtd_em_ambas"] == 2 and r["so_gravadas"] == [] and r["divergencias"] == []
+    assert abs(r["cgr_notas"] - (_cgr(1000.0) + _cgr(2000.0))) < 0.01
+
+
 def test_valor_diferente_vem_com_explicacao_por_nota(planilha):
     itens = [_item(numero="4491", valor=1500.0)]
     r = lote.comparar_com_planilha(itens, planilha, "Jul/2026")
