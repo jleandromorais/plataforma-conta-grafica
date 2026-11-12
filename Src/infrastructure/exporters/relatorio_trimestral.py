@@ -25,7 +25,12 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-from Src.infrastructure.exporters.nota_tecnica import brl, curto, mes_ano
+from Src.infrastructure.exporters.nota_tecnica import brl as _brl, curto, mes_ano
+
+
+def brl(v: float) -> str:
+    """R$ com 2 casas, sem "-R$ 0,00" quando a diferença é só resto de arredondamento."""
+    return _brl(round(v, 2) + 0.0)
 
 _COMPONENTES = [("cgr", "CGR · custo do gás realizado"), ("cgf", "CGF · custo do gás faturado"),
                 ("rpv", "RPV · CGR menos CGF"), ("ret", "RET · encargos de transporte"),
@@ -43,8 +48,12 @@ _ACAO_MODULO = {
 TOL = 1.0  # R$: abaixo disso é arredondamento
 
 _LARGURA = 16.6  # cm úteis da página A4 com margens de 2,2 cm
-_AZUL, _AZUL_HEX = RGBColor(0x1F, 0x38, 0x64), "1F3864"
-_CINZA_TEXTO = RGBColor(0x59, 0x59, 0x59)
+# Cores que funcionam no Word claro E no modo escuro: títulos num azul médio (o azul-marinho sumia
+# no fundo preto), texto miúdo num cinza médio, e toda célula de tabela com fundo próprio.
+_AZUL = RGBColor(0x2E, 0x75, 0xB6)
+_AZUL_HEX = "1F3864"  # cabeçalho das tabelas (fundo fixo, texto branco)
+_CINZA_TEXTO = RGBColor(0x80, 0x80, 0x80)
+_TEXTO_CELULA = RGBColor(0x26, 0x26, 0x26)
 # tom → (fundo, cor do texto)
 _TONS = {
     "ok": ("E2F0D9", "375623"),
@@ -333,13 +342,16 @@ def _tabela(doc, cabecalho: list[str], linhas: list[list], larguras: list[float]
             else:
                 alinha = (WD_ALIGN_PARAGRAPH.RIGHT if j in direita else
                           WD_ALIGN_PARAGRAPH.CENTER if (j in centro or tom) else WD_ALIGN_PARAGRAPH.LEFT)
-                negrito, cor = (i - 1) in destaque, None
+                # Toda célula tem fundo e cor de texto fixos: sem isso, o modo escuro do Word pinta de preto.
+                negrito, cor = (i - 1) in destaque, _TEXTO_CELULA
                 if tom:
                     fundo, hexcor = _TONS[tom]
                     _sombra(c, fundo)
                     negrito, cor = True, RGBColor.from_string(hexcor)
                 elif (i - 1) in destaque:
                     _sombra(c, "D9E2F3")
+                else:
+                    _sombra(c, "FFFFFF" if i % 2 else "F7F9FC")
                 _escrever(c, texto, negrito=negrito, cor=cor, alinha=alinha)
             c.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
     _espaco(doc)
@@ -449,6 +461,11 @@ def montar(d: dict) -> bytes:
     sec.top_margin, sec.bottom_margin = Cm(2.0), Cm(2.0)
     doc.styles["Normal"].font.name = "Calibri"
     doc.styles["Normal"].font.size = Pt(10.5)
+    # Português do Brasil: sem isso o Word corrige como inglês e sublinha "Confere", "Fecha"...
+    rpr = doc.styles["Normal"].element.get_or_add_rPr()
+    lang = OxmlElement("w:lang")
+    lang.set(qn("w:val"), "pt-BR"), lang.set(qn("w:eastAsia"), "pt-BR"), lang.set(qn("w:bidi"), "ar-SA")
+    rpr.append(lang)
     _rodape(sec, f"Relatório Trimestral da Conta Gráfica · {periodo_txt}")
 
     # ── Capa ──
