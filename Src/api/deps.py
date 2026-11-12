@@ -8,6 +8,7 @@ from typing import Iterator
 
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.application.use_cases.sr_use_cases import SRUseCases
+from Src.Services.servicos_periodos import ServicosPeriodos
 from Src.Services.servicos_scg import ServicosSCG
 from Src.Services.servicos_pr import ServicosPR
 from Src.Services.servicos_pv import ServicosPV
@@ -64,6 +65,14 @@ def get_servicos_sr() -> Iterator[ServicosSR]:
 def get_servicos_consolidacao() -> Iterator[ServicosConsolidacao]:
     with ServicosConsolidacao() as servico:
         yield servico
+
+
+def get_servicos_periodos() -> Iterator[ServicosPeriodos]:
+    servico = ServicosPeriodos()
+    try:
+        yield servico
+    finally:
+        servico.fechar()
 
 
 def get_sr_use_cases() -> Iterator[SRUseCases]:

@@ -736,31 +736,56 @@ class DatabasePMPV:
         self.cursor.execute(f"DELETE FROM consolidacao WHERE periodo IN ({placeholders})", variantes)
         self.conn.commit()
 
-    def apagar_periodo_completo(self, periodo: str) -> Dict[str, int]:
+    # Tabelas cuja coluna `periodo` guarda o nome do período. Ficam de fora:
+    # `sr_trimestre` (coluna `trimestre`+`mes`, guarda trimestres reais) e
+    # `vp_mensal` só entra porque também é chaveada por `periodo`.
+    TABELAS_COM_PERIODO = (
+        "consolidacao",
+        "pmpv_mensal",
+        "vp_mensal",
+        "sr_resultados",
+        "pr_resultados",
+        "pv_resultados",
+        "cgf_resumo",
+        "auditoria_itens",
+        "ret_itens",
+        "concilia_itens",
+        "excel_final_execucoes",
+    )
+
+    def _filtro_periodo(self, periodo: str, ignorar_caixa: bool) -> tuple[str, tuple[str, ...]]:
+        """Trecho WHERE (com `?`) e valores para achar o período e suas variantes."""
         variantes = self._variantes_periodo(periodo)
+        placeholders = ", ".join("?" for _ in variantes)
+        colate = " COLLATE NOCASE" if ignorar_caixa else ""
+        return f"periodo{colate} IN ({placeholders})", variantes
+
+    def contar_periodo_completo(self, periodo: str, ignorar_caixa: bool = False) -> Dict[str, int]:
+        """Quantas linhas `apagar_periodo_completo` removeria, por tabela. NÃO apaga nada."""
+        filtro, variantes = self._filtro_periodo(periodo, ignorar_caixa)
+        if not variantes:
+            return {}
+        contagem: Dict[str, int] = {}
+        for tabela in self.TABELAS_COM_PERIODO:
+            self.cursor.execute(f"SELECT COUNT(*) FROM {tabela} WHERE {filtro}", variantes)
+            contagem[tabela] = int(self.cursor.fetchone()[0])
+        return contagem
+
+    def apagar_periodo_completo(self, periodo: str, ignorar_caixa: bool = False) -> Dict[str, int]:
+        """Apaga o período em todas as tabelas de TABELAS_COM_PERIODO, numa transação só."""
+        filtro, variantes = self._filtro_periodo(periodo, ignorar_caixa)
         if not variantes:
             return {}
 
-        placeholders = ", ".join("?" for _ in variantes)
-        tabelas = (
-            "consolidacao",
-            "pmpv_mensal",
-            "sr_resultados",
-            "pr_resultados",
-            "pv_resultados",
-            "cgf_resumo",
-            "auditoria_itens",
-            "ret_itens",
-            "concilia_itens",
-            "excel_final_execucoes",
-        )
-
         removidos: Dict[str, int] = {}
-        for tabela in tabelas:
-            self.cursor.execute(f"DELETE FROM {tabela} WHERE periodo IN ({placeholders})", variantes)
-            removidos[tabela] = int(self.cursor.rowcount or 0)
-
-        self.conn.commit()
+        try:
+            for tabela in self.TABELAS_COM_PERIODO:
+                self.cursor.execute(f"DELETE FROM {tabela} WHERE {filtro}", variantes)
+                removidos[tabela] = int(self.cursor.rowcount or 0)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()  # tudo ou nada: não deixa o período meio apagado
+            raise
         return removidos
         
         
