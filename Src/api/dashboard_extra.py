@@ -29,23 +29,35 @@ def _linhas(sql: str) -> list[dict]:
         return [dict(r) for r in db.cursor.fetchall()]
 
 
+def _nova_empresa() -> dict:
+    return dict(notas=0, nfe=0, cte=0, valor_total=0.0, icms=0.0, pis_cofins=0.0, cgr_liquido=0.0)
+
+
+def _ordenar_empresas(por_empresa: dict[str, dict]) -> list[dict]:
+    return sorted(({"empresa": k, **v} for k, v in por_empresa.items()), key=lambda x: x["cgr_liquido"], reverse=True)
+
+
 def empresas(ano: str | None) -> dict:
-    por_empresa: dict[str, dict] = defaultdict(lambda: dict(notas=0, nfe=0, cte=0, valor_total=0.0, icms=0.0, pis_cofins=0.0, cgr_liquido=0.0))
+    """Totais por empresa do filtro e, em `meses`, as mesmas contas mês a mês
+    (a tela agrupa em trimestre ou ano e escolhe o período)."""
+    por_empresa: dict[str, dict] = defaultdict(_nova_empresa)
+    por_mes: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(_nova_empresa))
     for r in _linhas("SELECT periodo, empresa, tipo, valor_total, icms, pis, cofins, cgr_liquido FROM auditoria_itens"):
         if not _no_filtro(r["periodo"], ano):
             continue
-        e = por_empresa[(r["empresa"] or "Sem empresa").strip() or "Sem empresa"]
-        e["notas"] += 1
-        if (r["tipo"] or "").upper().replace("-", "") == "CTE":
-            e["cte"] += 1
-        else:
-            e["nfe"] += 1
-        e["valor_total"] += r["valor_total"] or 0
-        e["icms"] += r["icms"] or 0
-        e["pis_cofins"] += (r["pis"] or 0) + (r["cofins"] or 0)
-        e["cgr_liquido"] += r["cgr_liquido"] or 0
-    lista = sorted(({"empresa": k, **v} for k, v in por_empresa.items()), key=lambda x: x["cgr_liquido"], reverse=True)
-    return {"ano_filtro": ano, "empresas": lista, "total_cgr_liquido": sum(x["cgr_liquido"] for x in lista)}
+        nome = (r["empresa"] or "Sem empresa").strip() or "Sem empresa"
+        cte = (r["tipo"] or "").upper().replace("-", "") == "CTE"
+        for e in (por_empresa[nome], por_mes[r["periodo"]][nome]):
+            e["notas"] += 1
+            e["cte" if cte else "nfe"] += 1
+            e["valor_total"] += r["valor_total"] or 0
+            e["icms"] += r["icms"] or 0
+            e["pis_cofins"] += (r["pis"] or 0) + (r["cofins"] or 0)
+            e["cgr_liquido"] += r["cgr_liquido"] or 0
+    lista = _ordenar_empresas(por_empresa)
+    meses = [{"periodo": p, "empresas": _ordenar_empresas(por_mes[p])} for p in sorted(por_mes, key=_chave)]
+    return {"ano_filtro": ano, "empresas": lista, "total_cgr_liquido": sum(x["cgr_liquido"] for x in lista),
+            "meses": meses}
 
 
 def ret(ano: str | None) -> dict:

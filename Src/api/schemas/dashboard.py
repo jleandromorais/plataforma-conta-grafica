@@ -40,10 +40,16 @@ class EmpresaCGR(BaseModel):
     cgr_liquido: float
 
 
+class EmpresasDoMes(BaseModel):
+    periodo: str                        # "Set/2026"
+    empresas: list[EmpresaCGR]          # do maior CGR líquido para o menor
+
+
 class DashboardEmpresas(BaseModel):
     ano_filtro: str | None = None
     empresas: list[EmpresaCGR]          # do maior CGR líquido para o menor
     total_cgr_liquido: float
+    meses: list[EmpresasDoMes] = []     # as mesmas contas mês a mês, em ordem cronológica
 
 
 class RetMes(BaseModel):
