@@ -120,6 +120,16 @@ def test_relatorio_compara_as_notas_gravadas_com_a_planilha(planilha, monkeypatc
     assert r["qtd_em_ambas"] == 2 and r["so_gravadas"] == [] and r["divergencias"] == []
     assert abs(r["cgr_notas"] - (_cgr(1000.0) + _cgr(2000.0))) < 0.01
 
+    # Lida uma vez só (como o relatório faz para o trimestre): mesmo resultado, sem reabrir o arquivo.
+    lida = lote.ler_planilha_para_comparar(planilha)
+    assert lida is not None and lida[0].nome == "apuracao"
+    leituras = []
+    monkeypatch.setattr(registro, "reconhecer_modelo", lambda c: leituras.append(c))
+    r2 = lote.comparar_gravado_com_planilha("Jul/2026", planilha, lida)
+    assert leituras == []
+    assert {k: r2[k] for k in ("so_na_planilha", "qtd_em_ambas", "cgr_notas", "modelo_rotulo")} == \
+           {k: r[k] for k in ("so_na_planilha", "qtd_em_ambas", "cgr_notas", "modelo_rotulo")}
+
 
 def test_valor_diferente_vem_com_explicacao_por_nota(planilha):
     itens = [_item(numero="4491", valor=1500.0)]

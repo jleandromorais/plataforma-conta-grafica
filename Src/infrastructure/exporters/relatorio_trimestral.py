@@ -77,6 +77,13 @@ def dados_do_trimestre(meses: list[str], planilha: str | None = None) -> dict:
     from Src.Services.servicos_scg import ServicosSCG
 
     scg = ServicosSCG()
+    # A planilha é lida UMA vez para o trimestre (reler por mês levava minutos numa planilha do ano todo).
+    lida, erro_leitura = None, None
+    if planilha:
+        try:
+            lida = servicos_auditoria_lote.ler_planilha_para_comparar(planilha)
+        except Exception as e:  # noqa: BLE001 — vira aviso em cada mês, o relatório sai mesmo assim
+            erro_leitura = f"Não consegui abrir a planilha: {e}"
     lista = []
     for m in meses:
         prova = scg.prova_real(m)
@@ -85,7 +92,11 @@ def dados_do_trimestre(meses: list[str], planilha: str | None = None) -> dict:
         prova["notas_digitadas"] = aud.get("notas_digitadas") or []
         prova["possiveis_duplicatas_valor"] = aud.get("possiveis_duplicatas_valor") or []
         if planilha and prova["gravado"]:
-            prova["planilha"] = servicos_auditoria_lote.comparar_gravado_com_planilha(m, planilha)
+            prova["planilha"] = (
+                {"periodo": m, "erro": erro_leitura, "tem_mes": False, "fontes_cgr": [], "so_na_planilha": [],
+                 "so_gravadas": [], "divergencias": [], "supridores": []}
+                if erro_leitura else
+                servicos_auditoria_lote.comparar_gravado_com_planilha(m, planilha, lida))
         lista.append(prova)
     return {"meses": meses, "provas": lista, "com_planilha": bool(planilha)}
 

@@ -580,9 +580,20 @@ def itens_gravados_como_xml(gravados: list[dict]) -> list[XMLItem]:
     return itens
 
 
-def comparar_gravado_com_planilha(periodo: str, caminho: str) -> dict:
+def ler_planilha_para_comparar(caminho: str):
+    """Lê a planilha UMA vez e devolve (modelo, lido) para comparar vários meses; None se nenhum
+    modelo conhecido a reconhece (aí cada mês usa o comparador genérico). Ler é a parte cara:
+    a planilha traz todos os meses do ano, e cada modelo percorre as abas."""
+    from Src.Services.comparacao_registro import reconhecer_modelo
+
+    return reconhecer_modelo(caminho)
+
+
+def comparar_gravado_com_planilha(periodo: str, caminho: str, lida=None) -> dict:
     """As notas GRAVADAS do mês contra a planilha da Conta Gráfica, com o mesmo comparador da tela
-    da Auditoria. Resumo para o relatório; nunca levanta (erro vira `erro`). Não grava nada."""
+    da Auditoria. Resumo para o relatório; nunca levanta (erro vira `erro`). Não grava nada.
+
+    `lida`: o (modelo, lido) de `ler_planilha_para_comparar`, para não reler a planilha a cada mês."""
     from Src.Database.database import DatabasePMPV
 
     with DatabasePMPV() as db:
@@ -593,7 +604,13 @@ def comparar_gravado_com_planilha(periodo: str, caminho: str) -> dict:
     if not gravados:
         return {**base, "erro": "Sem notas gravadas neste mês: não dá para comparar com a planilha."}
     try:
-        r = comparar_com_planilha(itens_gravados_como_xml(gravados), caminho, periodo)
+        itens = itens_gravados_como_xml(gravados)
+        if lida is not None:
+            m, lido = lida
+            r = m.comparar(itens, lido, periodo)
+            r.modelo, r.tipo, r.modelo_rotulo = m.nome, m.tipo, m.rotulo
+        else:
+            r = comparar_com_planilha(itens, caminho, periodo)
     except Exception as e:  # noqa: BLE001 — planilha ilegível vira aviso no relatório
         logger.warning("Relatório: comparação com a planilha falhou em %s", periodo, exc_info=True)
         return {**base, "erro": f"Não consegui comparar com a planilha: {e}"}
