@@ -34,6 +34,15 @@ class PRSrAnterior(BaseModel):
     sr: float
 
 
+class SRAutomatico(BaseModel):
+    """SR do trimestre civil recalculado sozinho depois de salvar o SCG ou um módulo."""
+    trimestre: str                # ex.: "Jul/2026_Set/2026"
+    atualizado: bool              # False = nada gravado; ver `pendencias`
+    sr_antes: float | None = None
+    sr: float | None = None
+    pendencias: list[str] = []
+
+
 class PRAutomatico(BaseModel):
     """PR e PV regravados ao salvar o SCG ou o SR (servicos_pr_automatico)."""
     meses_pr: list[str]
@@ -43,3 +52,4 @@ class PRAutomatico(BaseModel):
     pv_antes: float | None
     pv: float | None
     pendencias: list[str]
+    sr_automatico: SRAutomatico | None = None  # None = o SR não foi recalculado nesta chamada

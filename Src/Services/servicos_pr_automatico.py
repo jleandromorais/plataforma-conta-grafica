@@ -1,5 +1,7 @@
 """PR e PV atualizados junto com o SCG e o SR.
 
+Depois do SCG, o SR do trimestre civil também é recalculado (`atualizar_sr_do_mes`).
+
 O PR de um trimestre do ciclo (Quadro 7) sai do SCG e do SR do trimestre civil
 que termina 2 meses antes, e o PV (Quadro 8) sai desse PR. Quando o analista
 salva o SCG de um mês ou o SR de um trimestre, a API chama `atualizar_do_mes`:
@@ -14,7 +16,9 @@ from __future__ import annotations
 import logging
 
 from Src.common.periodos import is_periodo_valido, normalizar_periodo, periodos_do_trimestre
+from Src.application.use_cases.sr_use_cases import SRUseCases
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
+from Src.Services import servicos_selic
 from Src.Services.servicos_pr import ServicosPR
 from Src.Services.servicos_pv import ServicosPV
 
@@ -119,11 +123,76 @@ def atualizar_sem_falhar(periodo: str) -> dict:
                 "pendencias": [f"Não foi possível atualizar o PR e o PV: {motivo}. Salve pela tela do PR."]}
 
 
-def atualizar_dos_meses(periodos: list[str]) -> list[dict]:
-    """PR e PV depois de salvar Auditoria, CGF, RET ou RP de `periodos`.
+def meses_do_trimestre_civil(periodo: str) -> list[str]:
+    """Os 3 meses do trimestre civil de `periodo`: Ago/2026 → Jul/2026, Ago/2026, Set/2026."""
+    mes, ano = periodo.strip().split("/")
+    inicio = _MESES.index(mes.capitalize())
+    inicio -= inicio % 3
+    return [f"{_MESES[inicio + k]}/{ano}" for k in range(3)]
 
-    Esses módulos mudam o SCG da consolidação, e o PR sai dele: sem isto, o PR e o PV
-    gravados ficam velhos até alguém salvar o SCG ou o SR de novo. Meses do mesmo
+
+# Colunas que o `SRUseCases.salvar_trimestre` grava (a proposta traz mais coisas, só para a tela).
+_CAMPOS_SR = ("mes", "vp", "vf", "pr", "selic_mensal", "diferenca", "sr_parcela", "sr_selic", "sr_anterior", "total")
+
+
+def atualizar_sr_do_mes(periodo: str) -> dict:
+    """Recalcula e grava o SR do trimestre civil de `periodo`, pela regra de sempre: a mesma
+    proposta da tela SR (VP do PMPV, VF do CGF, PR do trimestre fiscal de M−3, SELIC do BC).
+
+    Devolve {trimestre, atualizado, sr_antes, sr, pendencias}. Se faltar algo (VP, CGF, PR de
+    M−3 ou SELIC), NADA é gravado e o motivo vem em `pendencias`: a falta nunca vira zero."""
+    labels = meses_do_trimestre_civil(periodo)
+    resultado = {"trimestre": f"{labels[0]}_{labels[-1]}", "atualizado": False,
+                 "sr_antes": None, "sr": None, "pendencias": []}
+    with SRUseCases() as uc:
+        gravados = uc.buscar_trimestre(labels)
+        if gravados:
+            resultado["sr_antes"] = sum(float(g.get("sr_selic") or 0.0) for g in gravados)
+        proposta = uc.propor_trimestre(labels, buscar=servicos_selic.buscar_bcb)
+        if not proposta["pode_gravar"]:
+            resultado["pendencias"] = [f"SR de {labels[0]} a {labels[-1]} não atualizado: {b}"
+                                       for b in proposta["bloqueios"]]
+            return resultado
+        linhas = [{c: linha[c] for c in _CAMPOS_SR} for linha in proposta["linhas"]]
+        resultado["sr"] = uc.salvar_trimestre(labels, labels[-1], linhas)  # mesma referência da tela SR
+        resultado["atualizado"] = True
+    return resultado
+
+
+def atualizar_sr_sem_falhar(periodo: str) -> dict:
+    """Como `atualizar_sr_do_mes`, mas um problema no SR vira pendência (o SCG já foi salvo)."""
+    try:
+        return atualizar_sr_do_mes(periodo)
+    except Exception as exc:  # noqa: BLE001 — o salvamento principal já aconteceu
+        logger.exception("SR automático falhou para %s", periodo)
+        motivo = str(exc) if isinstance(exc, ValueError) else "erro inesperado (veja o log da API)"
+        try:
+            labels = meses_do_trimestre_civil(periodo)
+            trimestre = f"{labels[0]}_{labels[-1]}"
+        except (ValueError, IndexError):
+            trimestre = ""
+        return {"trimestre": trimestre, "atualizado": False, "sr_antes": None, "sr": None,
+                "pendencias": [f"Não foi possível atualizar o SR: {motivo}. Salve pela tela do SR."]}
+
+
+def atualizar_sr_e_pr_sem_falhar(periodo: str) -> dict:
+    """SR do trimestre civil de `periodo` e, em seguida, o PR e o PV que o usam.
+
+    O SR vem primeiro porque o PR lê o SR salvo. Se o SR não pôde ser recalculado, o motivo
+    entra nas `pendencias` e o PR segue com o SR que já estava salvo (se não houver, ele mesmo
+    avisa). O resultado é o do PR, com o do SR em `sr_automatico`."""
+    sr = atualizar_sr_sem_falhar(periodo)
+    resultado = atualizar_sem_falhar(periodo)
+    resultado["sr_automatico"] = sr
+    resultado["pendencias"] = sr["pendencias"] + list(resultado.get("pendencias", []))
+    return resultado
+
+
+def atualizar_dos_meses(periodos: list[str]) -> list[dict]:
+    """SR, PR e PV depois de salvar Auditoria, CGF, RET ou RP de `periodos`.
+
+    Esses módulos mudam o SCG da consolidação, e o SR e o PR saem dele: sem isto, o que está
+    gravado fica velho até alguém salvar o SCG ou o SR de novo. Meses do mesmo
     trimestre civil valem uma atualização só; período inválido é ignorado (o próprio
     "salvar" já recusa). Nunca levanta erro: o que não deu vira pendência na resposta."""
     por_trimestre: dict[str, str] = {}
@@ -132,7 +201,7 @@ def atualizar_dos_meses(periodos: list[str]) -> list[dict]:
             continue
         canonico = normalizar_periodo(periodo)
         por_trimestre.setdefault(meses_do_pr_do_civil(canonico)[0], canonico)
-    return [atualizar_sem_falhar(p) for p in por_trimestre.values()]
+    return [atualizar_sr_e_pr_sem_falhar(p) for p in por_trimestre.values()]
 
 
 def atualizar_pv(periodos: list[str], repo: SqlitePRRepository | None = None) -> list[dict]:

@@ -81,26 +81,28 @@ class ServicosConsolidacao:
     def buscar_consolidacao(self, periodo: str) -> dict[str, Any] | None:
         return self._normalizar_dados(self.repo.buscar_consolidacao(periodo))
 
+    # Todo "salvar" termina em recalcular_scg: assim a coluna `scg` gravada nunca fica
+    # para trás do que os módulos (CGR, CGF, RET, RP) acabaram de gravar.
     def salvar_cgr(self, periodo: str, valor: float) -> dict[str, Any]:
         self.repo.atualizar_cgr(periodo, valor)
-        return self.recalcular_rpv(periodo)
+        return self.recalcular_scg(periodo)
 
     def salvar_cgf(self, periodo: str, valor: float) -> dict[str, Any]:
         self.repo.atualizar_cgf(periodo, valor)
-        return self.recalcular_rpv(periodo)
+        return self.recalcular_scg(periodo)
 
     def salvar_ret(self, periodo: str, valor: float) -> dict[str, Any]:
         self.repo.atualizar_ret(periodo, valor)
-        return self.buscar_consolidacao(periodo)
+        return self.recalcular_scg(periodo)
 
     def salvar_rp(self, periodo: str, valor: float) -> dict[str, Any]:
         self.repo.atualizar_rp(periodo, valor)
-        return self.buscar_consolidacao(periodo)
+        return self.recalcular_scg(periodo)
 
     def salvar_valores(self, periodo: str, **campos: float) -> dict[str, Any]:
         if campos:
             self.repo.atualizar_campos_consolidacao(periodo, **campos)
-        return self.recalcular_rpv(periodo)
+        return self.recalcular_scg(periodo)
 
     def recalcular_rpv(self, periodo: str) -> dict[str, Any]:
         dados = self.buscar_consolidacao(periodo) or {
@@ -123,3 +125,35 @@ class ServicosConsolidacao:
         )
         self.repo.salvar_scg(periodo, scg)
         return self.buscar_consolidacao(periodo)
+
+    def reparar_scg_historico(self, aplicar: bool = False) -> dict[str, Any]:
+        """Acerta a coluna `scg` crua dos meses antigos que ficaram para trás.
+
+        Só mexe em mês com CGR, CGF, RET e RP todos preenchidos (diferentes de zero);
+        mês incompleto é ignorado e o motivo volta em `ignorados`. Sem `aplicar`
+        (o padrão) só simula: nada é gravado. Usa `recalcular_scg`, a mesma conta de sempre."""
+        meses: list[dict[str, Any]] = []
+        ignorados: list[dict[str, str]] = []
+        sem_divergencia = 0
+        vistos: set[str] = set()
+        for item in self.repo.listar_periodos():
+            periodo = item["periodo"]
+            bruto = self.repo.buscar_consolidacao_bruta(periodo)
+            if not bruto or periodo in vistos:
+                continue  # período que só existe em outras tabelas (sem consolidação)
+            vistos.add(periodo)
+            faltam = [c.upper() for c in ("cgr", "cgf", "ret", "rp") if not bruto.get(c)]
+            if faltam:
+                ignorados.append({"periodo": periodo, "motivo": f"falta {', '.join(faltam)}"})
+                continue
+            calculado = self.calcular_scg(bruto["cgr"], bruto["cgf"], bruto["ret"], bruto["rp"])
+            gravado = bruto.get("scg")
+            if gravado is not None and abs(float(gravado) - calculado) <= 0.005:
+                sem_divergencia += 1
+                continue
+            if aplicar:
+                self.recalcular_scg(periodo)
+            meses.append({"periodo": periodo,
+                          "scg_gravado": None if gravado is None else float(gravado),
+                          "scg_calculado": calculado})
+        return {"aplicado": aplicar, "meses": meses, "ignorados": ignorados, "sem_divergencia": sem_divergencia}

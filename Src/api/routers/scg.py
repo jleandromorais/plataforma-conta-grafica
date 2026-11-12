@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from Src.api.deps import get_servicos_scg
+from Src.api.deps import get_servicos_consolidacao, get_servicos_scg
 from Src.api.schemas.scg import (
     ProvaRealSCG,
     RPVResponse,
@@ -10,10 +10,12 @@ from Src.api.schemas.scg import (
     SCGComparacao,
     SCGHistoricoLinha,
     SCGPeriodo,
+    SCGReparoResponse,
     SCGSalvoResponse,
     SCGValores,
 )
 from Src.Services import servicos_pr_automatico
+from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.servicos_scg import ServicosSCG
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
 
@@ -90,8 +92,18 @@ def salvar(
     dados = servico.salvar_e_calcular(payload.periodo, payload.cgr, payload.cgf, payload.ret, payload.rp)
     return SCGSalvoResponse(
         periodo=payload.periodo, **{k: dados[k] for k in ("cgr", "cgf", "rpv", "ret", "rp", "scg")},
-        pr_automatico=servicos_pr_automatico.atualizar_sem_falhar(payload.periodo),
+        pr_automatico=servicos_pr_automatico.atualizar_sr_e_pr_sem_falhar(payload.periodo),
     )
+
+
+@router.post("/reparar-historico", response_model=SCGReparoResponse)
+def reparar_historico(
+    aplicar: bool = False,
+    servico: ServicosConsolidacao = Depends(get_servicos_consolidacao),
+) -> SCGReparoResponse:
+    """Acerta o SCG gravado dos meses antigos que têm CGR, CGF, RET e RP preenchidos.
+    Sem `aplicar=true` só SIMULA: NÃO grava nada. Mês incompleto nunca é gravado."""
+    return SCGReparoResponse(**servico.reparar_scg_historico(aplicar=aplicar))
 
 
 @router.post("/calcular", response_model=SCGPeriodo)

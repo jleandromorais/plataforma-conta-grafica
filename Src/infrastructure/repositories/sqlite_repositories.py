@@ -32,6 +32,10 @@ class SqliteConsolidacaoRepository(ConsolidacaoRepository):
     def buscar_consolidacao(self, periodo: str):
         return self.db.buscar_consolidacao(periodo)
 
+    def buscar_consolidacao_bruta(self, periodo: str):
+        """Linha como está gravada, sem recalcular RPV/SCG (só o reparo do histórico usa)."""
+        return self.db.buscar_consolidacao_bruta(periodo)
+
     def atualizar_cgr(self, periodo: str, valor: float):
         self.db.atualizar_cgr(periodo, valor)
 

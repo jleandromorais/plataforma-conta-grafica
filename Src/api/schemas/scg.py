@@ -19,6 +19,25 @@ class SCGSalvoResponse(SCGPeriodo):
     pr_automatico: PRAutomatico  # PR e PV do trimestre, regravados junto
 
 
+class SCGReparoMes(BaseModel):
+    periodo: str
+    scg_gravado: float | None = None   # coluna crua antes do reparo (None = nunca gravada)
+    scg_calculado: float               # RPV + RET + RP, o valor que fica depois do reparo
+
+
+class SCGReparoIgnorado(BaseModel):
+    periodo: str
+    motivo: str                        # ex.: "falta RP"
+
+
+class SCGReparoResponse(BaseModel):
+    """Resultado de POST /scg/reparar-historico (simulação ou reparo de verdade)."""
+    aplicado: bool                     # False = só simulou, nada foi gravado
+    meses: list[SCGReparoMes] = []     # meses com o scg gravado diferente do calculado
+    ignorados: list[SCGReparoIgnorado] = []
+    sem_divergencia: int = 0
+
+
 class SalvarManualRequest(BaseModel):
     periodo: str
     cgr: float

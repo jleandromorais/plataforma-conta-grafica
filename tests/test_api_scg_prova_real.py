@@ -68,6 +68,48 @@ def test_scg_alterado_por_fora_nao_confere(client):
     assert p["confere"] is False
 
 
+def _gravar_cru(periodo: str, cgr: float, cgf: float, ret: float, rp: float, scg: float) -> None:
+    """Mês como ficou em produção: 4 campos preenchidos e a coluna `scg` crua velha."""
+    with DatabasePMPV() as db:
+        db.criar_periodo_consolidacao(periodo)
+        db.atualizar_campos_consolidacao(periodo, cgr=cgr, cgf=cgf, ret=ret, rp=rp, scg=scg)
+
+
+def test_mes_com_campos_iguais_e_scg_cru_zero_nao_confere(client):
+    _gravar_cru("Ago/2026", 1000.0, 400.0, 30.0, -20.0, 0.0)
+    p = _prova(client, "Ago/2026").json()
+    assert p["scg_gravado"] == 0.0 and p["scg_calculado"] == pytest.approx(610.0)
+    assert p["diferenca"] == pytest.approx(610.0) and p["confere"] is False   # "a salvar"
+
+
+def test_reparar_historico_simula_e_depois_conserta(client):
+    _gravar_cru("Ago/2026", 1000.0, 400.0, 30.0, -20.0, 0.0)
+    _gravar_cru("Set/2026", 800.0, 300.0, 10.0, 0.0, 0.0)   # falta o RP: não pode ser gravado
+
+    simulacao = client.post("/api/scg/reparar-historico").json()   # padrão: só simula
+    assert simulacao["aplicado"] is False
+    assert [m["periodo"] for m in simulacao["meses"]] == ["Ago/2026"]
+    assert simulacao["ignorados"] == [{"periodo": "Set/2026", "motivo": "falta RP"}]
+    assert _prova(client, "Ago/2026").json()["confere"] is False   # nada foi gravado
+
+    feito = client.post("/api/scg/reparar-historico", params={"aplicar": True}).json()
+    assert feito["aplicado"] is True
+    assert _prova(client, "Ago/2026").json()["confere"] is True
+    assert _prova(client, "Set/2026").json()["scg_gravado"] == 0.0   # incompleto continua intocado
+
+
+def test_salvar_pelos_modulos_deixa_a_prova_real_conferindo(client):
+    # Salvar cada módulo (pelo serviço, como o CGF/RET/RP fazem) passa a gravar o scg cru.
+    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    with ServicosConsolidacao() as c:
+        c.salvar_cgr("Ago/2026", 1000.0)
+        c.salvar_cgf("Ago/2026", 400.0)
+        c.salvar_ret("Ago/2026", 30.0)
+        c.salvar_rp("Ago/2026", -20.0)
+    p = _prova(client, "Ago/2026").json()
+    assert p["scg_gravado"] == pytest.approx(610.0) and p["confere"] is True
+
+
 def test_origens_refletem_os_modulos(client):
     _salvar(client, "Mar/2026", 1000.0, 0.0, 0.0, 0.0)
     _salvar(client, "Abr/2026", 1000.0, 0.0, 0.0, 0.0)
