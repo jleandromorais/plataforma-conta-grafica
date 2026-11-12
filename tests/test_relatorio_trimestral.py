@@ -55,13 +55,61 @@ def test_mes_sem_itens_e_atencao_e_nota_digitada_e_registro():
     reg = [x for x in a if x["gravidade"] == "info"][0]
     assert "550499" in reg["texto"] and "Copergás não enviou" in reg["texto"]
     txt = _texto(rt.montar(d))
-    assert "550499" in txt and "sem notas" in txt
+    assert "550499" in txt and "Sem notas" in txt
 
 
 def test_mes_sem_fechamento():
     d = {"meses": MESES, "provas": [_prova("Jul/2026", gravado=False)]}
     assert rt.achados(d)[0]["gravidade"] == "alta"
     rt.montar(d)
+
+
+def test_trimestre_limpo_diz_tudo_batendo():
+    d = {"meses": MESES, "provas": [_prova(m) for m in MESES]}
+    txt = _texto(rt.montar(d))
+    assert "Tudo batendo" in txt
+    assert "12 de 12" in txt  # partes que conferem
+
+
+def test_scg_nao_gravado_usa_conta_refeita_e_avisa():
+    """Bug antigo: o total somava a coluna `scg` crua; mês sem ela entrava como R$ 0,00."""
+    p = _prova("Ago/2026")
+    p["scg_gravado"], p["diferenca"], p["confere"] = None, None, False
+    d = {"meses": MESES, "provas": [_prova("Jul/2026"), p, _prova("Set/2026")]}
+    a = [x for x in rt.achados(d) if x["modulo"] == "SCG"]
+    assert [x["gravidade"] for x in a] == ["atencao"]
+    txt = _texto(rt.montar(d))
+    assert "R$ 36,00" in txt  # 3 × (100 − 90 + 5 − 3)
+    assert "SCG não gravado" in txt
+
+
+def test_scg_gravado_diferente_nao_fecha_e_relatorio_usa_a_conta():
+    p = _prova("Jul/2026")
+    p["scg_gravado"], p["diferenca"], p["confere"] = 500.0, 12.0 - 500.0, False
+    d = {"meses": MESES, "provas": [p, _prova("Ago/2026"), _prova("Set/2026")]}
+    a = rt.achados(d)
+    assert [(x["modulo"], x["gravidade"]) for x in a] == [("SCG", "alta")]
+    txt = _texto(rt.montar(d))
+    assert "Não está tudo batendo" in txt and "R$ 36,00" in txt
+
+
+def test_auditoria_por_empresa_aparece():
+    p = _prova("Jul/2026")
+    p["auditoria"] = {
+        "qtd_notas": 3, "compras": 110.0, "devolucoes": -10.0, "frete_fora_do_cgr": 7.0,
+        "cgr_das_notas": 100.0, "cgr_gravado": 100.0, "diferenca": 0.0,
+        "por_empresa": [{"empresa": "GNlink", "qtd_nfe": 2, "qtd_cte": 0, "compras": 110.0, "devolucoes": -10.0,
+                         "frete_fora_do_cgr": 0.0, "cgr": 100.0},
+                        {"empresa": "Transportes X", "qtd_nfe": 0, "qtd_cte": 1, "compras": 0.0, "devolucoes": 0.0,
+                         "frete_fora_do_cgr": 7.0, "cgr": 0.0}],
+    }
+    p["possiveis_duplicatas_valor"] = [{"grupo": "NF-e · GNlink", "valor": 55.0, "qtd": 2,
+                                        "notas": ["NF-e 265", "NF-e 255"], "ids": [1, 2]}]
+    d = {"meses": MESES, "provas": [p, _prova("Ago/2026"), _prova("Set/2026")]}
+    txt = _texto(rt.montar(d))
+    assert "GNlink" in txt and "Transportes X" in txt
+    assert "NF-e 265, NF-e 255" in txt
+    assert "Tirar do cálculo" in txt
 
 
 def test_api_devolve_docx(monkeypatch):
