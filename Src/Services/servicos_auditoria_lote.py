@@ -16,10 +16,10 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import defaultdict
-from datetime import date
 from pathlib import Path
 from typing import Callable
 
+from Src.common.periodos import ano_do_caminho
 from Src.common.duplicatas import possiveis_duplicatas_por_valor
 from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
@@ -38,7 +38,7 @@ def _sem_acento(s: str) -> str:
 
 
 def periodo_do_caminho(caminho: str) -> str:
-    """Detecta 'Jan/2026' a partir do nome das pastas no caminho."""
+    """Detecta 'Jan/2026' a partir do nome das pastas no caminho ("" se o mês ou o ano não aparecem)."""
     tokens: list[str] = []
     for parte in Path(caminho).parts:
         tokens.extend(re.split(r'[\s\-_\.]+', parte.upper()))
@@ -49,9 +49,8 @@ def periodo_do_caminho(caminho: str) -> str:
             break
     if not mes_num:
         return ""
-    anos = re.findall(r'\b(20\d{2})\b', caminho)
-    ano = int(anos[-1]) if anos else date.today().year
-    return f"{_MESES_ABREV[mes_num - 1]}/{ano}"
+    ano = ano_do_caminho(caminho)
+    return f"{_MESES_ABREV[mes_num - 1]}/{ano}" if ano else ""
 
 
 # Pastas que vêm junto no .zip do mês mas são de OUTRA etapa do ciclo (mesmas

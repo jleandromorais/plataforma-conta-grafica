@@ -142,6 +142,23 @@ def _normalizar_ano(ano: str) -> str:
     return ano_limpo
 
 
+_ANO_COMPLETO = re.compile(r"\b(20\d{2})\b")
+_MES_E_ANO_CURTO = re.compile(
+    r"(?<![a-z])(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*[\s\-_.]*(\d{2})(?!\d)"
+)
+
+
+def ano_do_caminho(caminho: str) -> int | None:
+    """Ano que o nome das pastas indica: o último de 4 dígitos ("out-2025") ou, na falta dele,
+    o de 2 dígitos colado ao nome do mês ("10 out-25"). Sem ano no caminho devolve None:
+    nunca chuta o ano de hoje (isso lia a pasta de 2025 como 2026)."""
+    completos = _ANO_COMPLETO.findall(caminho)
+    if completos:
+        return int(completos[-1])
+    curtos = _MES_E_ANO_CURTO.findall(sem_acento(caminho).lower())
+    return 2000 + int(curtos[-1]) if curtos else None
+
+
 def normalizar_periodo(periodo: str | None) -> str:
     texto = _limpar_texto(periodo)
     if not texto:

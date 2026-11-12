@@ -1,11 +1,10 @@
 import re
 import unicodedata
-from datetime import date
 from pathlib import Path
 
 import pandas as pd
 from Src.Database.database import DatabasePMPV
-from Src.common.periodos import is_periodo_valido
+from Src.common.periodos import ano_do_caminho, is_periodo_valido
 from Src.common.precisao import arredondar_tarifa, arredondar_volume
 
 TOL_PROVA_REAL_RS = 1.0   # R$: abaixo disso é arredondamento
@@ -430,9 +429,8 @@ class ServicosCGF:
                 return ""
             ano = int(m.group(2)) if len(m.group(2)) == 4 else 2000 + int(m.group(2))
             return f"{_ABREVS[int(m.group(1)) - 1]}/{ano}"
-        anos = re.findall(r'\b(20\d{2})\b', caminho)
-        ano = int(anos[-1]) if anos else date.today().year
-        return f"{_ABREVS[mes_num - 1]}/{ano}"
+        ano = ano_do_caminho(caminho)
+        return f"{_ABREVS[mes_num - 1]}/{ano}" if ano else ""
 
 
 _MESES_DETECT = {

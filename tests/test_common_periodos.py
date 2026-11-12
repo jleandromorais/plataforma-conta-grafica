@@ -106,3 +106,36 @@ class TestVariantesPeriodo:
     def test_sem_duplicatas(self):
         variantes = variantes_periodo("Jan/2026")
         assert len(variantes) == len(set(variantes))
+
+
+# --- Ano lido do nome das pastas (a pasta "10 out-25" era lida como 2026 = ano de hoje) ---
+
+import pytest
+
+from Src.common.periodos import ano_do_caminho
+from Src.Services.servicos_auditoria_lote import periodo_do_caminho
+from Src.Services.servicos_cgf import ServicosCGF
+
+
+@pytest.mark.parametrize("caminho, esperado", [
+    ("RPV/CGR/10 out-2025 Notas Fiscais/Eneva/a.xml", 2025),   # 4 dígitos
+    ("RPV/CGR/10 out-25 Notas Fiscais/Eneva/a.xml", 2025),     # 2 dígitos colado ao mês
+    ("RPV/CGR/01 jan-26 Notas Fiscais", 2026),
+    ("56. Agosto 2026/Petrobras", 2026),
+    ("Janeiro/GALP/n.xml", None),                              # sem ano: não chuta o de hoje
+    ("RPV - Recuperação do Preço de Venda/CGR/Notas", None),   # "set"/"mar" dentro de palavras não valem
+])
+def test_ano_do_caminho(caminho, esperado):
+    assert ano_do_caminho(caminho) == esperado
+
+
+def test_periodo_do_caminho_da_auditoria_usa_o_ano_da_pasta_e_nao_o_de_hoje():
+    assert periodo_do_caminho("RPV/CGR/10 out-25 Notas Fiscais/Eneva/a.xml") == "Out/2025"
+    assert periodo_do_caminho("RPV/CGR/12 dez-2025 Notas Fiscais/TAG/a.xml") == "Dez/2025"
+    assert periodo_do_caminho("Janeiro/GALP/n.xml") == ""  # mês sem ano: não detectado
+
+
+def test_periodo_do_nome_do_cgf_usa_o_ano_da_pasta_e_nao_o_de_hoje():
+    assert ServicosCGF.periodo_do_nome_arquivo("CGF/Janeiro 25/x.xlsx") == "Jan/2025"
+    assert ServicosCGF.periodo_do_nome_arquivo("CGF/Dez-2025/NF.xlsx") == "Dez/2025"
+    assert ServicosCGF.periodo_do_nome_arquivo("CGF/Janeiro/NF.xlsx") == ""
