@@ -293,7 +293,7 @@ plataforma-conta-grafica/
 │   ├── api/                         # API FastAPI: main.py, routers/, schemas/, auth.py, errors.py, serve.py
 │   ├── main_dashboard.py            # Janela principal do desktop (PlataformaFinanceira)
 │   ├── Views/                       # 10 telas CustomTkinter
-│   ├── Services/                    # Regras de negócio por módulo (fonte única de cálculo)
+│   ├── Services/                    # Fórmulas (fonte única), uma pasta por etapa: tarifa, auditoria, cgf, ret, rp, apuracao, comparacao
 │   ├── Database/                    # Persistência SQLite (DatabasePMPV)
 │   ├── application/                 # Casos de uso (Clean Architecture)
 │   ├── domain/                      # Contratos e interfaces (ports)
@@ -330,18 +330,14 @@ plataforma-conta-grafica/
 │   │   ├── tela_pr.py
 │   │   ├── tela_pv.py
 │   │   └── dashboard_resumo.py      # Visão consolidada por período
-│   ├── Services/
-│   │   ├── servicos_pmpv.py
-│   │   ├── servicos_concilia.py
-│   │   ├── servicos_ret.py
-│   │   ├── servicos_auditoria.py
-│   │   ├── servicos_cgf.py
-│   │   ├── servicos_rpv.py
-│   │   ├── servicos_sr.py
-│   │   ├── servicos_scg.py
-│   │   ├── servicos_pr.py           # PR = (SGR + SR) / VP
-│   │   ├── servicos_pv.py           # PV = PMPV + PR
-│   │   ├── servicos_consolidacao.py
+│   ├── Services/                    # Uma pasta por etapa do ciclo
+│   │   ├── tarifa/                  # servicos_pmpv, servicos_pr (PR = (SCG + SR) / VP), servicos_pr_automatico,
+│   │   │                            # servicos_pv (PV = PMPV + PR), servicos_margem, servicos_selic
+│   │   ├── auditoria/               # servicos_auditoria, servicos_auditoria_lote (CGR), supridores
+│   │   ├── cgf/                     # servicos_cgf
+│   │   ├── ret/                     # servicos_ret, servicos_ret_lote
+│   │   ├── rp/                      # servicos_concilia, servicos_concilia_lote
+│   │   ├── apuracao/                # servicos_rpv, servicos_scg, servicos_sr, servicos_consolidacao, servicos_periodos
 │   │   └── comparacao/              # Comparadores da Auditoria (NT, Alexandre, Apuração) e explicador de diferenças
 │   ├── Database/
 │   │   └── database.py              # DatabasePMPV — 12 tabelas
@@ -438,7 +434,7 @@ Documentação interativa: `http://localhost:8080/docs` com a API rodando.
 
 **Erros:** a API responde em português, dizendo o que fazer (`ValueError` → 422, banco travado → 503, erro inesperado → 500 com um `codigo` que aparece no log).
 
-**SELIC:** `Src/Services/servicos_selic.py` usa a série SGS **11** (fator diário) do Banco Central — a mesma conta das planilhas da ARPE. A série 4390 não serve (só 2 casas). Trimestre ainda aberto não recebe SELIC parcial; se o BC não responder, a tela do SR pede para digitar à mão.
+**SELIC:** `Src/Services/tarifa/servicos_selic.py` usa a série SGS **11** (fator diário) do Banco Central — a mesma conta das planilhas da ARPE. A série 4390 não serve (só 2 casas). Trimestre ainda aberto não recebe SELIC parcial; se o BC não responder, a tela do SR pede para digitar à mão.
 
 ### Rodar a API no seu computador
 

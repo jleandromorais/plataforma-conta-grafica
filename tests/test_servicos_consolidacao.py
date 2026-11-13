@@ -1,5 +1,5 @@
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
 
 class TestServicosConsolidacao:

@@ -10,10 +10,10 @@ import pandas as pd
 from Src.config import ui_theme as ui
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.comparacao.comparador_conta_grafica import ComparadorContaGrafica
-from Src.Services.servicos_auditoria import XMLItem
-from Src.Services import servicos_auditoria_lote as lote
+from Src.Services.auditoria.servicos_auditoria import XMLItem
+from Src.Services.auditoria import servicos_auditoria_lote as lote
 from Src.infrastructure.exporters.excel_auditoria import ExcelAuditoria
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.common.formatting import format_brl as _fmt_brl
 from Src.Database.database import DatabasePMPV

@@ -5,7 +5,7 @@ Fórmula: PV = PMPV + PR
 """
 import pytest
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_pv import ServicosPV
+from Src.Services.tarifa.servicos_pv import ServicosPV
 
 
 class TestServicosPV:

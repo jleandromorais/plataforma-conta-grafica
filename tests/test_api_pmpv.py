@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_pmpv import ExcelPMPV, RegrasPMPV
+from Src.Services.tarifa.servicos_pmpv import ExcelPMPV, RegrasPMPV
 
 MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho",
          "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
@@ -189,6 +189,61 @@ def test_prova_real_detecta_resultado_gravado_diferente(client):
 
 def test_prova_real_sessao_inexistente_404(client):
     assert client.get("/api/pmpv/prova-real", params={"sessao_id": 999}).status_code == 404
+
+
+def _salvar(client, nome, dados=DADOS, periodos=PERIODOS):
+    resultado = client.post("/api/pmpv/calcular", json=_payload_calculo()).json()
+    return client.post("/api/pmpv/salvar", json={
+        "nome": nome, "dados_por_mes": dados, "resultado": resultado, "periodos": periodos,
+    }).json()["sessao_id"]
+
+
+def _sessao_do_trimestre(client, periodos):
+    return client.get("/api/pmpv/sessao-do-trimestre", params={"periodos": ",".join(periodos)})
+
+
+def test_sessao_do_trimestre_devolve_as_empresas_salvas_de_cada_mes(client):
+    # Nome com 3 sublinhados, como a tela web grava ("Fev - Abr" → "Fev___Abr").
+    sid = _salvar(client, "PMPV_Fev___Abr_2026")
+    r = _sessao_do_trimestre(client, PERIODOS)
+    assert r.status_code == 200
+    s = r.json()
+    assert (s["encontrada"], s["sessao_id"], s["nome"]) == (True, sid, "PMPV_Fev___Abr_2026")
+    assert s["data_criacao"] and s["conta_grafica"] == pytest.approx(-0.021)
+    assert list(s["meses"]) == PERIODOS
+    fev = {l["empresa"]: l for l in s["meses"]["Fev/2026"]}
+    assert set(fev) == {"PETROBRAS", "GALP"}
+    assert (fev["PETROBRAS"]["molecula"], fev["PETROBRAS"]["volume"]) == (2.1, 1_200_000)   # volume = QDC digitado
+    assert [l["empresa"] for l in s["meses"]["Abr/2026"]] == ["PETROBRAS", "BRAVA"]
+
+
+def test_sessao_do_trimestre_usa_a_mais_recente_e_nao_mistura_trimestres(client):
+    _salvar(client, "PMPV_Fev_Abr_2026")
+    nova = {**DADOS, "Mês 1": [_linha("ENEVA", 1.5, 0.1, 0.0, 10)]}
+    sid_novo = _salvar(client, "PMPV_Fev_Abr_2026", dados=nova)
+    _salvar(client, "PMPV_Mai___Jul_2026", periodos=["Mai/2026", "Jun/2026", "Jul/2026"])
+
+    s = _sessao_do_trimestre(client, PERIODOS).json()
+    assert s["sessao_id"] == sid_novo
+    assert [l["empresa"] for l in s["meses"]["Fev/2026"]] == ["ENEVA"]
+    # Outro ano do mesmo trimestre: nada salvo.
+    assert _sessao_do_trimestre(client, ["Fev/2027", "Mar/2027", "Abr/2027"]).json() == {
+        "encontrada": False, "sessao_id": None, "nome": None, "data_criacao": None,
+        "pmpv": None, "conta_grafica": None, "preco_final": None, "meses": {},
+    }
+
+
+def test_sessao_do_trimestre_nov_jan_vira_o_ano(client):
+    sid = _salvar(client, "PMPV_Nov___Jan_2025", periodos=["Nov/2025", "Dez/2025", "Jan/2026"])
+    s = _sessao_do_trimestre(client, ["Nov/2025", "Dez/2025", "Jan/2026"]).json()
+    assert (s["encontrada"], s["sessao_id"]) == (True, sid)
+    assert list(s["meses"]) == ["Nov/2025", "Dez/2025", "Jan/2026"]
+
+
+def test_sessao_do_trimestre_ignora_nome_de_sessao_antiga_e_pede_3_meses(client):
+    _salvar(client, "PMPV_13042026_0906")   # formato antigo do desktop: não diz o trimestre
+    assert _sessao_do_trimestre(client, PERIODOS).json()["encontrada"] is False
+    assert _sessao_do_trimestre(client, ["Fev/2026"]).status_code == 422
 
 
 def test_margem_regulatoria_conhecida_salva_e_ausente(client):

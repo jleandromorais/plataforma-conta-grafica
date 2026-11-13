@@ -2,7 +2,7 @@ import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 
 from Src.config import ui_theme as ui
-from Src.Services.servicos_pv import ServicosPV
+from Src.Services.tarifa.servicos_pv import ServicosPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 

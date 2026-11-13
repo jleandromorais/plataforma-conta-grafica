@@ -20,8 +20,8 @@ from Src.api.schemas.cgf import (
     ProvaRealCGF,
 )
 from Src.api.schemas.comum import ProblemaArquivo
-from Src.Services import servicos_pr_automatico
-from Src.Services.servicos_cgf import ServicosCGF
+from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.cgf.servicos_cgf import ServicosCGF
 from Src.common.periodos import normalizar_periodo
 
 router = APIRouter(prefix="/cgf", tags=["CGF"])

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from Src.Services.servicos_concilia import RegrasConcilia, PdfItem
+from Src.Services.rp.servicos_concilia import RegrasConcilia, PdfItem
 
 
 class TestCleanOcrText:
@@ -136,7 +136,7 @@ class TestProcessarArquivos:
 
         logs = []
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("Valor Total: R$ 1.500,00", "PDFPLUMBER"),
         ):
             itens = RegrasConcilia.processar_arquivos([arq], "Receita", logs.append)
@@ -155,7 +155,7 @@ class TestProcessarArquivos:
         arq = tmp_path / "vazio.pdf"
         arq.write_bytes(b"%PDF")
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("", "OCR"),
         ):
             itens = RegrasConcilia.processar_arquivos([arq], "Despesa", lambda _m: None)
@@ -166,7 +166,7 @@ class TestProcessarArquivos:
         arq = tmp_path / "x.pdf"
         arq.write_bytes(b"")
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             side_effect=RuntimeError("io fail"),
         ):
             itens = RegrasConcilia.processar_arquivos([arq], "Receita", lambda _m: None)
@@ -177,7 +177,7 @@ class TestProcessarArquivos:
         arq = tmp_path / "x.pdf"
         arq.write_bytes(b"")
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("sem valor identificável aqui", "PDFPLUMBER"),
         ):
             itens = RegrasConcilia.processar_arquivos([arq], "Despesa", lambda _m: None)
@@ -190,7 +190,7 @@ class TestProcessarArquivos:
             a.write_bytes(b"")
         logs = []
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
         ):
             RegrasConcilia.processar_arquivos([arq1, arq2], "Receita", logs.append)
@@ -206,7 +206,7 @@ class TestProcessarArquivos:
             a.parent.mkdir(parents=True, exist_ok=True)
             a.write_bytes(b"")
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
         ):
             itens = RegrasConcilia.processar_arquivos([top, desk], "Despesa", lambda _m: None, raiz=tmp_path)
@@ -223,7 +223,7 @@ class TestProcessarArquivos:
             a.parent.mkdir(parents=True, exist_ok=True)
             a.write_bytes(b"")
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
         ):
             itens = RegrasConcilia.processar_arquivos([antiga, atual, outra], "Receita", lambda _m: None, raiz=tmp_path)
@@ -241,7 +241,7 @@ class TestProcessarArquivos:
             a.write_bytes(b"")
         par = [original, atualizada] if ordem == "original_primeiro" else [atualizada, original]
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
         ):
             itens = RegrasConcilia.processar_arquivos([cancelada, *par, sem_nd], "Despesa", lambda _m: None)
@@ -258,7 +258,7 @@ class TestProcessarArquivos:
         for f in (a, b):
             f.write_bytes(b"")
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             return_value=("Valor Total: R$ 10,00", "PDFPLUMBER"),
         ):
             itens = RegrasConcilia.processar_arquivos([b, a], "Receita", lambda _m: None)
@@ -268,7 +268,7 @@ class TestProcessarArquivos:
         arq = tmp_path / "x.pdf"
         arq.write_bytes(b"")
         with patch(
-            "Src.Services.servicos_concilia.read_pdf_text",
+            "Src.Services.rp.servicos_concilia.read_pdf_text",
             side_effect=RuntimeError("e" * 80),
         ):
             itens = RegrasConcilia.processar_arquivos([arq], "Receita", lambda _m: None)

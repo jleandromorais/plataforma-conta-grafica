@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from Src.Services.servicos_scg import ServicosSCG
+from Src.Services.apuracao.servicos_scg import ServicosSCG
 
 
 @pytest.fixture
 def servico():
-    with patch("Src.Services.servicos_scg.ServicosConsolidacao") as mock_cls:
+    with patch("Src.Services.apuracao.servicos_scg.ServicosConsolidacao") as mock_cls:
         mock_cls.return_value = MagicMock()
         yield ServicosSCG()
 

@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from Src.Services import servicos_pr_automatico as auto
-from Src.Services.servicos_pr import ServicosPR, meses_apurados_do_pr
+from Src.Services.tarifa import servicos_pr_automatico as auto
+from Src.Services.tarifa.servicos_pr import ServicosPR, meses_apurados_do_pr
 
 
 @pytest.mark.parametrize("periodo, meses_pr", [

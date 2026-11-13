@@ -14,7 +14,7 @@ from Src.api.schemas.pv import (
     PVTrimestreSalvarResponse,
     ProvaRealPV,
 )
-from Src.Services.servicos_pv import ServicosPV
+from Src.Services.tarifa.servicos_pv import ServicosPV
 
 router = APIRouter(prefix="/pv", tags=["PV"])
 

@@ -21,8 +21,8 @@ from Src.api.schemas.sr import (
     SRVpVfResponse,
 )
 from Src.application.use_cases.sr_use_cases import SRUseCases
-from Src.Services import servicos_pr_automatico, servicos_selic
-from Src.Services.servicos_sr import ServicosSR
+from Src.Services.tarifa import servicos_pr_automatico, servicos_selic
+from Src.Services.apuracao.servicos_sr import ServicosSR
 
 router = APIRouter(prefix="/sr", tags=["SR"])
 

@@ -1,7 +1,7 @@
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_auditoria import empresa_integra_cgr
-from Src.Services.servicos_concilia import FATOR_PIS_COFINS
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.auditoria.servicos_auditoria import empresa_integra_cgr
+from Src.Services.rp.servicos_concilia import FATOR_PIS_COFINS
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.common.formatting import format_brl
 
 TOL_PROVA_REAL_RS = 1.0  # R$: abaixo disso é arredondamento
@@ -100,8 +100,10 @@ class ServicosSCG:
         Lê a linha crua do banco: a leitura normal já recalcula RPV e SCG na hora, e isso
         esconderia um SCG alterado por fora. `origens.*`: mês sem itens (ou sem resumo do CGF)
         não dá para provar (`tem_* = False`, `valor = None`)."""
-        from Src.Services import servicos_auditoria_lote, servicos_concilia_lote, servicos_ret_lote
-        from Src.Services.servicos_cgf import ServicosCGF
+        from Src.Services.auditoria import servicos_auditoria_lote
+        from Src.Services.rp import servicos_concilia_lote
+        from Src.Services.ret import servicos_ret_lote
+        from Src.Services.cgf.servicos_cgf import ServicosCGF
         from Src.common.periodos import is_periodo_valido
 
         if not is_periodo_valido(periodo):

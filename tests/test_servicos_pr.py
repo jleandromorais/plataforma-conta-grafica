@@ -6,7 +6,7 @@ SGR é tratado como SCG por compatibilidade com o sistema atual.
 """
 import pytest
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_pr import ServicosPR
+from Src.Services.tarifa.servicos_pr import ServicosPR
 
 
 class TestServicosPR:

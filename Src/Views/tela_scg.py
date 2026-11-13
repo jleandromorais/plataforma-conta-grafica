@@ -3,7 +3,7 @@ from __future__ import annotations
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from Src.config import ui_theme as ui
-from Src.Services.servicos_scg import ServicosSCG
+from Src.Services.apuracao.servicos_scg import ServicosSCG
 from Src.Database.database import DatabasePMPV
 from Src.common.formatting import format_brl_plain
 from Src.common.periodos import TRIMESTRES_CIVIS, MESES_ABREVS as MESES_ANO

@@ -22,8 +22,8 @@ from Src.common.periodos import (
 from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import SRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
-from Src.Services import servicos_selic
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.tarifa import servicos_selic
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
 
 def labels_trimestre(meses: list[str], ano: int) -> list[str]:

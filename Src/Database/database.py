@@ -620,7 +620,7 @@ class DatabasePMPV:
 
     def calcular_e_salvar_rpv(self, periodo: str) -> float:
         """Compatibilidade legada: delega o cálculo oficial ao serviço."""
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
         periodo = self._normalizar_periodo(periodo)
         dados = self.buscar_consolidacao(periodo) or {}
@@ -639,7 +639,7 @@ class DatabasePMPV:
         
     def calcular_scg(self, periodo: str) -> float:
         """Compatibilidade legada: delega o cálculo oficial ao serviço."""
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
         periodo = self._normalizar_periodo(periodo)
         dados = self.buscar_consolidacao(periodo)

@@ -113,8 +113,8 @@ class TestVariantesPeriodo:
 import pytest
 
 from Src.common.periodos import ano_do_caminho
-from Src.Services.servicos_auditoria_lote import periodo_do_caminho
-from Src.Services.servicos_cgf import ServicosCGF
+from Src.Services.auditoria.servicos_auditoria_lote import periodo_do_caminho
+from Src.Services.cgf.servicos_cgf import ServicosCGF
 
 
 @pytest.mark.parametrize("caminho, esperado", [

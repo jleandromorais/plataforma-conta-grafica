@@ -11,8 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_auditoria_lote as lote
-from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem
+from Src.Services.auditoria import servicos_auditoria_lote as lote
+from Src.Services.auditoria.servicos_auditoria import RegrasAuditoria, XMLItem
 
 CABECALHO = ["Mês", "Supridor", "Nota Fiscal", "Vol m³", "Compra R$ c/tributos", "Compra R$ s/tributos", "Custo", "ICMS", "PIS"]
 TRIMESTRE = "Jul/2026,Ago/2026,Set/2026"

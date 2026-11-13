@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from Src.common.duplicatas import possiveis_duplicatas_por_valor
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_auditoria_lote as auditoria_lote
+from Src.Services.auditoria import servicos_auditoria_lote as auditoria_lote
 
 
 def _achar(itens, **kw):
@@ -197,7 +197,7 @@ def test_auditoria_tirar_a_copia_regrava_o_cgr(client):
     ]
     with DatabasePMPV() as db:
         db.salvar_auditoria_itens("Mar/2026", itens)
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     with ServicosConsolidacao() as c:
         c.salvar_cgr("Mar/2026", 100000.0)
     p = auditoria_lote.prova_real("Mar/2026")
@@ -220,7 +220,7 @@ def test_auditoria_tirar_nota_inexistente_recusa(client):
 # ---------- Incluir nota que só está na planilha (Auditoria/CGR) ----------
 
 def _gravar_cgr_mar(itens, cgr):
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     with DatabasePMPV() as db:
         db.salvar_auditoria_itens("Mar/2026", itens)
     with ServicosConsolidacao() as c:

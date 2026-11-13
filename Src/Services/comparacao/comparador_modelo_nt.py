@@ -22,8 +22,8 @@ from typing import Any
 from Src.common.periodos import normalizar_periodo
 from Src.Services.comparacao import explicador_diferencas as exp
 from Src.Services.comparacao.comparador_conta_grafica import ResultadoComparacaoNotas
-from Src.Services.servicos_auditoria import XMLItem
-from Src.Services.supridores import supridor_canonico, token as _token
+from Src.Services.auditoria.servicos_auditoria import XMLItem
+from Src.Services.auditoria.supridores import supridor_canonico, token as _token
 
 ABA_SCG = "q5scg"        # início do nome da aba, sem acento/símbolos ("Q5 - SCG - Anexo A")
 FONTE = "NT"             # como a planilha é chamada nas explicações

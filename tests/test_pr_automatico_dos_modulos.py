@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_pr_automatico as auto
+from Src.Services.tarifa import servicos_pr_automatico as auto
 
 
 @pytest.fixture()
@@ -113,7 +113,7 @@ PR_SR = {"Mai - Jul/2026": -0.0200, "Ago - Out/2026": -0.0300}
 
 @pytest.fixture()
 def banco_sr(tmp_path, monkeypatch):
-    from Src.Services import servicos_selic
+    from Src.Services.tarifa import servicos_selic
     caminho = str(tmp_path / "sr_auto.db")
     with DatabasePMPV(db_path=caminho):
         pass
@@ -168,7 +168,7 @@ def test_sr_com_pendencia_nao_grava_nada(banco_sr):
 
 
 def test_sr_sem_internet_vira_pendencia_e_nao_zera(banco_sr, monkeypatch):
-    from Src.Services import servicos_selic
+    from Src.Services.tarifa import servicos_selic
 
     def falha(meses, hoje=None, buscar=None):
         raise servicos_selic.SelicIndisponivel("O BC não respondeu.")
@@ -214,7 +214,7 @@ def test_salvar_cgf_regrava_o_pr_velho_e_o_pv(client, tmp_path):
     Só a apuração (leitura do SCG/SR/VP) é fixa; a gravação do PR e do PV é a real."""
     from unittest.mock import patch
 
-    from Src.Services.servicos_pr import ServicosPR
+    from Src.Services.tarifa.servicos_pr import ServicosPR
 
     caminho = str(tmp_path / "pr_modulos.db")
     with DatabasePMPV(db_path=caminho) as db:

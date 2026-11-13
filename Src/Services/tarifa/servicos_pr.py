@@ -4,7 +4,7 @@ from Src.application.use_cases.sr_use_cases import vp_do_mes
 from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import PRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository, SqliteSRRepository
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
 _MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
@@ -63,7 +63,7 @@ class ServicosPR:
 
     def obter_periodos(self) -> list[dict]:
         """Retorna períodos cadastrados na consolidação (fonte do SCG/SGR)."""
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
         return ServicosConsolidacao().obter_periodos()
 
     def obter_todos_periodos(self) -> list[str]:
@@ -83,7 +83,7 @@ class ServicosPR:
         return periodos
 
     def criar_periodo(self, nome: str):
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
         ServicosConsolidacao().criar_periodo(nome.strip())
 
     def buscar_dados_periodo(self, periodo: str) -> dict[str, float] | None:
@@ -91,7 +91,7 @@ class ServicosPR:
         Agrega SGR/SCG, SR e VP do banco para o período.
         Busca SCG da tabela consolidacao, SR e VP da tabela sr_resultados.
         """
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
         dados_cons = ServicosConsolidacao().buscar_consolidacao(periodo)
         scg = (dados_cons or {}).get("scg") or 0.0
@@ -112,7 +112,7 @@ class ServicosPR:
 
         Retorna totais + detalhamento por mês + PR final.
         """
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
         servicos_cons = ServicosConsolidacao()
 
         # Primeira passagem: coleta dados de todos os meses

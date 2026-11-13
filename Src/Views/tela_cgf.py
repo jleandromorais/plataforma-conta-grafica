@@ -8,7 +8,7 @@ from datetime import datetime, date
 logger = logging.getLogger(__name__)
 
 from Src.config import ui_theme as ui
-from Src.Services.servicos_cgf import ServicosCGF
+from Src.Services.cgf.servicos_cgf import ServicosCGF
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import (
     registrar_execucao_excel_final,

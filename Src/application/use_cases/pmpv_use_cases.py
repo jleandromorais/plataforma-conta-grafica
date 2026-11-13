@@ -10,7 +10,7 @@ from typing import Any
 
 from Src.domain.ports.repositories import PMPVRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePMPVRepository
-from Src.Services.servicos_pmpv import ExcelPMPV, RegrasPMPV
+from Src.Services.tarifa.servicos_pmpv import ExcelPMPV, RegrasPMPV
 
 
 class PMPVUseCases:
@@ -107,6 +107,41 @@ class PMPVUseCases:
         for periodo, linhas in zip(periodos, dados_por_mes.values()):
             vp = sum(float(l.get("volume", 0) or 0) for l in linhas)
             self.repo.salvar_vp_periodo(periodo, vp, sessao_id)
+
+    def buscar_sessao_do_trimestre(self, periodos: list[str]) -> dict[str, Any] | None:
+        """A sessão salva mais recente dos 3 meses pedidos, com as empresas de cada mês.
+
+        Serve para a tela PMPV mostrar o que já foi gravado ao trocar de trimestre.
+        A sessão é achada pelo nome que o PMPV grava ("PMPV_Mai___Jul_2026"); nomes em
+        outro formato (sessões antigas do desktop) não entram. Sem sessão → None.
+        Volta {"sessao_id", "nome", "data_criacao", "pmpv", "conta_grafica", "preco_final",
+        "meses": {"Mai/2026": [linhas], ...}}; `volume` de cada linha é o QDC (m³/dia),
+        como foi digitado.
+        """
+        from Src.application.use_cases.sr_use_cases import periodos_da_sessao
+        from Src.common.periodos import normalizar_periodo
+
+        alvo = [normalizar_periodo(p) for p in periodos]
+        sessao = next((s for s in self.repo.listar_sessoes_id_nome()
+                       if periodos_da_sessao(s.get("nome", "")) == alvo), None)
+        if sessao is None:
+            return None
+        resumo = next((h for h in self.repo.listar_historico() if h.get("id") == sessao["id"]), {})
+        campos = ("empresa", "molecula", "transporte", "logistica", "volume")
+        meses = {
+            periodo: [{c: (linha.get(c) or (0.0 if c != "empresa" else "")) for c in campos}
+                      for linha in self.repo.carregar_dados_mes(sessao["id"], i) or []]
+            for i, periodo in enumerate(alvo, start=1)
+        }
+        return {
+            "sessao_id": sessao["id"],
+            "nome": sessao["nome"],
+            "data_criacao": resumo.get("data_criacao"),
+            "pmpv": resumo.get("pmpv"),
+            "conta_grafica": resumo.get("conta_grafica"),
+            "preco_final": resumo.get("preco_final"),
+            "meses": meses,
+        }
 
     def buscar_trimestre_ativo(self) -> list[str]:
         return self.repo.buscar_trimestre_ativo()

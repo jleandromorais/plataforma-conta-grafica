@@ -4,8 +4,8 @@ from __future__ import annotations
 import pytest
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_concilia_lote as lote
-from Src.Services.servicos_concilia import PdfItem
+from Src.Services.rp import servicos_concilia_lote as lote
+from Src.Services.rp.servicos_concilia import PdfItem
 
 
 @pytest.fixture()

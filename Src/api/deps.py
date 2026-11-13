@@ -8,13 +8,13 @@ from typing import Iterator
 
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.application.use_cases.sr_use_cases import SRUseCases
-from Src.Services.servicos_periodos import ServicosPeriodos
-from Src.Services.servicos_scg import ServicosSCG
-from Src.Services.servicos_pr import ServicosPR
-from Src.Services.servicos_pv import ServicosPV
-from Src.Services.servicos_rpv import ServicosRPV
-from Src.Services.servicos_sr import ServicosSR
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.apuracao.servicos_periodos import ServicosPeriodos
+from Src.Services.apuracao.servicos_scg import ServicosSCG
+from Src.Services.tarifa.servicos_pr import ServicosPR
+from Src.Services.tarifa.servicos_pv import ServicosPV
+from Src.Services.apuracao.servicos_rpv import ServicosRPV
+from Src.Services.apuracao.servicos_sr import ServicosSR
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
 
 def get_pmpv_use_cases() -> Iterator[PMPVUseCases]:

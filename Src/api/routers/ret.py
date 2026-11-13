@@ -23,9 +23,9 @@ from Src.api.schemas.ret import (
 from Src.api.schemas.duplicatas import RemoverNotaRequest, RemoverNotaResponse
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
-from Src.Services import servicos_pr_automatico
-from Src.Services import servicos_ret_lote as lote_ret
-from Src.Services.servicos_ret import PIS_COFINS_RATE, RegrasRET
+from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.ret import servicos_ret_lote as lote_ret
+from Src.Services.ret.servicos_ret import PIS_COFINS_RATE, RegrasRET
 from Src.common.periodos import normalizar_periodo
 
 router = APIRouter(prefix="/ret", tags=["RET"])

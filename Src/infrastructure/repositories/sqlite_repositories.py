@@ -105,6 +105,12 @@ class SqlitePMPVRepository(PMPVRepository):
     def salvar_trimestre_ativo(self, meses):
         self.db.salvar_trimestre_ativo(meses)
 
+    def listar_sessoes_id_nome(self):
+        return self.db.listar_sessoes_id_nome()
+
+    def carregar_dados_mes(self, sessao_id: int, mes: int):
+        return self.db.carregar_dados_mes(sessao_id, mes)
+
     def fechar(self):
         self.db.fechar()
 

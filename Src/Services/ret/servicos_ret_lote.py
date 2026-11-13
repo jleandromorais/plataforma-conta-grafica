@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from Src.common.duplicatas import possiveis_duplicatas_por_valor
-from Src.Services.servicos_ret import RegrasRET
+from Src.Services.ret.servicos_ret import RegrasRET
 
 _PASTAS_FORA_DO_RET = ("NOTAS FISCAIS", "NOTA FISCAL")
 
@@ -63,7 +63,7 @@ def agrupar_por_mes(dados: list[dict], periodo_padrao: str = "") -> dict[str, li
 def salvar_meses(grupos: dict[str, list[dict]]) -> list[dict]:
     """Grava o RET de cada mês na consolidação e substitui os itens do mês."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     from Src.common.periodos import is_periodo_valido
 
     invalidos = [p for p in grupos if not is_periodo_valido(p)]
@@ -93,7 +93,7 @@ def remover_documento(periodo: str, item_id: int) -> dict:
     """Tira UM documento gravado do mês (a cópia repetida, por exemplo) e regrava o RET sem ele.
     O RET novo sai da MESMA conta da prova real. O chamador atualiza o SCG/PR (atualizar_dos_meses)."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     from Src.common.periodos import is_periodo_valido
 
     if not is_periodo_valido(periodo):

@@ -357,7 +357,7 @@ class TelaSR(ctk.CTkFrame):
                 pr_row = db.buscar_sr(meses_tri[i])
                 pr_salvo = float((pr_row or {}).get("pr") or 0.0)
                 if pr_salvo == 0.0 and vp > 0:
-                    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+                    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
                     dados_cons = ServicosConsolidacao().buscar_consolidacao(meses_tri[i])
                     scg_m = float((dados_cons or {}).get("scg") or 0.0)
                     sr_m  = float((pr_row or {}).get("sr") or 0.0)

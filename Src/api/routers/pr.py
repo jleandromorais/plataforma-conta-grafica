@@ -10,8 +10,8 @@ from Src.api.schemas.pr import (
     PRSrAnterior,
     PRTrimestralRequest,
 )
-from Src.Services.servicos_pr import ServicosPR
-from Src.Services.servicos_pr_automatico import atualizar_pv_do_pr
+from Src.Services.tarifa.servicos_pr import ServicosPR
+from Src.Services.tarifa.servicos_pr_automatico import atualizar_pv_do_pr
 
 router = APIRouter(prefix="/pr", tags=["PR"])
 

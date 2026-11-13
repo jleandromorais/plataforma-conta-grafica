@@ -42,7 +42,7 @@ Exemplo: no Processar, o Painel salva o CGF de Mar/2026.
    v
  Src/api/schemas/cgf.py ..... formulário: CGFSalvarRequest confere os campos
    v
- Src/Services/servicos_cgf.py contador: salvar_com_pmpv() faz volume x PMPV
+ Src/Services/cgf/servicos_cgf.py contador: salvar_com_pmpv() faz volume x PMPV
    v
  Src/Database/database.py ... arquivo-morto: grava em "consolidacao" e "cgf_resumo"
    ^
@@ -176,7 +176,7 @@ O Painel usa as quatro rotas deste arquivo: `historico` ao abrir; `processar`, `
 
 ```python
 from Src.api.schemas.cgf import (CGFCalcularRSRequest, ..., CGFSalvarResponse)  # formulários
-from Src.Services.servicos_cgf import ServicosCGF                                # o contador
+from Src.Services.cgf.servicos_cgf import ServicosCGF                                # o contador
 
 router = APIRouter(prefix="/cgf", tags=["CGF"])   # tudo aqui começa com /cgf
 _EXTENSOES = {".xlsx", ".xls", ".xlsm", ".csv"}   # tipos de arquivo aceitos no upload
@@ -325,7 +325,7 @@ class CGFHistoricoLinha(CGFVolumes):
 
 ---
 
-## 6. `Src/Services/servicos_cgf.py` — o contador do CGF
+## 6. `Src/Services/cgf/servicos_cgf.py` — o contador do CGF
 
 Este arquivo é a **fonte única da verdade** do CGF: a conta só existe aqui.
 
@@ -833,7 +833,7 @@ def test_salvar_exige_pmpv(client):
 <details>
 <summary>Resposta</summary>
 
-A recusa acontece em `Src/Services/servicos_cgf.py:324-325`, com `ValueError("Sem PMPV para ...")`. Quem transforma em 422 é `Src/api/errors.py:30-32`. O teste que garante isso é `test_salvar_exige_pmpv`, em `tests/test_api_cgf.py:194`.
+A recusa acontece em `Src/Services/cgf/servicos_cgf.py:324-325`, com `ValueError("Sem PMPV para ...")`. Quem transforma em 422 é `Src/api/errors.py:30-32`. O teste que garante isso é `test_salvar_exige_pmpv`, em `tests/test_api_cgf.py:194`.
 </details>
 
 **3.** Com valores fictícios: faturadas = 1.000 m³ (já sem consumo próprio), canceladas = 30 m³, devoluções = 50 m³. Qual é o volume final, e em qual linha está a conta?
@@ -841,7 +841,7 @@ A recusa acontece em `Src/Services/servicos_cgf.py:324-325`, com `ValueError("Se
 <details>
 <summary>Resposta</summary>
 
-O volume final é 1.000 − 50 = **950 m³**. As canceladas não descontam. A conta está em `Src/Services/servicos_cgf.py:258`.
+O volume final é 1.000 − 50 = **950 m³**. As canceladas não descontam. A conta está em `Src/Services/cgf/servicos_cgf.py:258`.
 </details>
 
 **4.** Ao abrir, o Painel chama `GET /api/cgf/historico`. De quais duas tabelas vêm os dados de cada linha?
@@ -857,5 +857,5 @@ Os volumes vêm de `cgf_resumo` (`listar_cgf_resumos`, `database.py:1090`). O va
 <details>
 <summary>Resposta</summary>
 
-Não grava. O router (`Src/api/routers/pr.py:53-60`) só chama `servico.apurar_trimestre`. Esse método (`Src/Services/servicos_pr.py:185` em diante) **lê** do banco o SR salvo, o SCG e o VP, calcula o PR e devolve. Ele não chama nenhuma função de salvar. É POST só porque recebe no corpo do pedido a lista dos 3 meses.
+Não grava. O router (`Src/api/routers/pr.py:53-60`) só chama `servico.apurar_trimestre`. Esse método (`Src/Services/tarifa/servicos_pr.py:185` em diante) **lê** do banco o SR salvo, o SCG e o VP, calcula o PR e devolve. Ele não chama nenhuma função de salvar. É POST só porque recebe no corpo do pedido a lista dos 3 meses.
 </details>

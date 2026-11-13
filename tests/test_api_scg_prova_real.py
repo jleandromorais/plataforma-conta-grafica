@@ -100,7 +100,7 @@ def test_reparar_historico_simula_e_depois_conserta(client):
 
 def test_salvar_pelos_modulos_deixa_a_prova_real_conferindo(client):
     # Salvar cada módulo (pelo serviço, como o CGF/RET/RP fazem) passa a gravar o scg cru.
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     with ServicosConsolidacao() as c:
         c.salvar_cgr("Ago/2026", 1000.0)
         c.salvar_cgf("Ago/2026", 400.0)

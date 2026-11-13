@@ -8,8 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_ret_lote as lote_ret
-from Src.Services.servicos_ret import RegrasRET
+from Src.Services.ret import servicos_ret_lote as lote_ret
+from Src.Services.ret.servicos_ret import RegrasRET
 
 RAIZ = Path(__file__).resolve().parents[1]
 PASTA_TRI = RAIZ / "SCG-26 - Copia" / "RET - Recuperação de Encargos de Transporte" / "RET-jan-mar-26"

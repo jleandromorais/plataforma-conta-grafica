@@ -12,8 +12,8 @@ from itertools import combinations
 from typing import Any, Callable
 
 from Src.Services.comparacao.comparador_conta_grafica import _normalizar_numero_nota
-from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem
-from Src.Services.supridores import supridor_canonico
+from Src.Services.auditoria.servicos_auditoria import RegrasAuditoria, XMLItem
+from Src.Services.auditoria.supridores import supridor_canonico
 
 TOL_VALOR = 1.00         # R$ — abaixo disso é arredondamento
 TOL_VOLUME = 1.0         # m³
@@ -55,13 +55,13 @@ def aviso_total(avisos: list[str], fonte: str, auditoria: float, referencia: flo
 # ── Notas por supridor ───────────────────────────────────────────────────────
 
 def _sinal(item: XMLItem) -> float:
-    from Src.Services.servicos_auditoria_lote import eh_devolucao
+    from Src.Services.auditoria.servicos_auditoria_lote import eh_devolucao
     return -1.0 if eh_devolucao(item) else 1.0
 
 
 def agrupar_por_supridor(itens: list[XMLItem]) -> dict[str, list[XMLItem]]:
     """Só o que entra no CGR (NF-e e CT-e de gasoduto), agrupado pelo nome canônico."""
-    from Src.Services.servicos_auditoria_lote import integra_cgr
+    from Src.Services.auditoria.servicos_auditoria_lote import integra_cgr
 
     out: dict[str, list[XMLItem]] = defaultdict(list)
     for it in itens:

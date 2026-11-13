@@ -12,8 +12,8 @@ from datetime import datetime
 
 # --- IMPORTAÇÕES DA NOVA ARQUITETURA ---
 from Src.config import ui_theme as ui
-from Src.Services.servicos_concilia import RegrasConcilia
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.rp.servicos_concilia import RegrasConcilia
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.infrastructure.exporters.excel_concilia import ExcelConcilia
 from Src.common.formatting import format_brl_plain
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre

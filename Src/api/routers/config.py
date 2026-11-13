@@ -4,10 +4,10 @@ from fastapi import APIRouter
 
 from Src.api.schemas.config import TaxasConfig, TrimestreConfig
 from Src.common.periodos import TRIMESTRES_CIVIS, TRIMESTRES_FISCAIS_ABREVS
-from Src.Services.servicos_auditoria import COFINS_RATE, PIS_RATE
-from Src.Services.servicos_auditoria import PIS_COFINS_RATE as PIS_COFINS_RATE_AUDITORIA
-from Src.Services.servicos_ret import PIS_COFINS_RATE as PIS_COFINS_RATE_RET
-from Src.Services.servicos_ret import TAXA_EUR_BRL
+from Src.Services.auditoria.servicos_auditoria import COFINS_RATE, PIS_RATE
+from Src.Services.auditoria.servicos_auditoria import PIS_COFINS_RATE as PIS_COFINS_RATE_AUDITORIA
+from Src.Services.ret.servicos_ret import PIS_COFINS_RATE as PIS_COFINS_RATE_RET
+from Src.Services.ret.servicos_ret import TAXA_EUR_BRL
 
 router = APIRouter(prefix="/config", tags=["Config"])
 

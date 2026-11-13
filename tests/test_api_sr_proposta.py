@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_selic
+from Src.Services.tarifa import servicos_selic
 
 MESES = ["Jan/2026", "Fev/2026", "Mar/2026"]
 VP = [48143000.0, 42224000.0, 46748000.0]
@@ -148,7 +148,7 @@ def test_pr_estimado_bloqueia(client, banco):
     # Sem PR salvo no módulo PR, mas com VP e SCG do mês, o carregamento só consegue ESTIMAR o PR
     # por (SCG + SR) ÷ VP. Essa estimativa não pode ser gravada (já deu SR errado em Fev/26).
     _popular(banco, prs=False)
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     with ServicosConsolidacao() as cons:   # o SCG é a soma de RPV + RET + RP: grava o RET e ele recalcula
         cons.salvar_valores("Fev/2026", ret=3_318_892.52)
     j = _propor(client)

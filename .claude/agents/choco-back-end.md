@@ -52,7 +52,7 @@ Sucesso = **bater centavo a centavo** com a planilha oficial (modelo do Alexandr
 - **Dois trimestres que não se misturam:** SCG/CGR/CGF/RET/RP/SR usam o **civil** (Jan–Mar, Abr–Jun…); PMPV/PR/PV usam o **do ciclo tarifário** (Nov–Jan, Fev–Abr, Mai–Jul, Ago–Out). O civil apurado define o PR 2 meses depois (Abr–Jun → Ago–Out). Utilitários em `Src/common/periodos.py`.
 - **Comparadores** (`Src/Services/comparacao/`: `comparador_*.py`, `diferencas_auditoria.py`, `explicador_diferencas.py`): confrontam o resultado com a NT, a planilha do Alexandre e a apuração, **por nota e por supridor** — nunca só "bate/não bate".
 - **Precisão:** `Src/common/precisao.py`. Não arredonde no meio do cálculo.
-- Supridores conhecidos em `Src/Services/supridores.py` (Petrobras, Brava, Eneva, Galp, GNLink, Orizon, Petrorecôncavo, TAG, Mastergás…).
+- Supridores conhecidos em `Src/Services/auditoria/supridores.py` (Petrobras, Brava, Eneva, Galp, GNLink, Orizon, Petrorecôncavo, TAG, Mastergás…).
 
 ## 3. Mapa do código
 

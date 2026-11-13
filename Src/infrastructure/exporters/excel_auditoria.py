@@ -35,7 +35,7 @@ class ExcelAuditoria:
     @staticmethod
     def gerar_relatorio_auditoria(resultados, nome_arquivo, cgr_total: float = 0.0, comparacao=None):
         """Gera relatório Excel completo e formatado com todos os dados auditados."""
-        from Src.Services.servicos_auditoria import PIS_COFINS_RATE
+        from Src.Services.auditoria.servicos_auditoria import PIS_COFINS_RATE
 
         wb = Workbook()
         ws = wb.active

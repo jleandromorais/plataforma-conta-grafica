@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 
 from Src.common.periodos import normalizar_periodo, variantes_periodo, _ABREV_TO_FULL
-from Src.Services.servicos_auditoria import XMLItem, RegrasAuditoria
+from Src.Services.auditoria.servicos_auditoria import XMLItem, RegrasAuditoria
 
 
 def _token(texto: str) -> str:

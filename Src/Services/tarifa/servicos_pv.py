@@ -36,12 +36,12 @@ class ServicosPV:
         return parse_brl(texto)
 
     def obter_periodos(self) -> list[dict]:
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
         return ServicosConsolidacao().obter_periodos()
 
     def criar_periodo(self, nome: str):
-        from Src.Services.servicos_consolidacao import ServicosConsolidacao
+        from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
         ServicosConsolidacao().criar_periodo(nome.strip())
 

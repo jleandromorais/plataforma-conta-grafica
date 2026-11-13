@@ -1,5 +1,5 @@
 """Auditoria CGR — mesmas regras da tela desktop (tela_auditoria.py), via
-Src/Services/servicos_auditoria_lote.py.
+Src/Services/auditoria/servicos_auditoria_lote.py.
 
 A pasta enviada tem uma subpasta por empresa, com XMLs e/ou PDFs de NF-e e
 CT-e. O navegador manda cada arquivo com o caminho relativo no nome
@@ -34,11 +34,11 @@ from Src.api.schemas.auditoria import (
     SalvarAuditoriaResponse,
     TotaisAuditoria,
 )
-from Src.Services import servicos_auditoria_lote as lote
-from Src.Services import servicos_pr_automatico
+from Src.Services.auditoria import servicos_auditoria_lote as lote
+from Src.Services.tarifa import servicos_pr_automatico
 from Src.Services.comparacao.diferencas_auditoria import comparar_com_gravado
 from Src.infrastructure.exporters.excel_auditoria import ExcelAuditoria
-from Src.Services.servicos_auditoria import XMLItem
+from Src.Services.auditoria.servicos_auditoria import XMLItem
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
 
 router = APIRouter(prefix="/auditoria", tags=["Auditoria"])

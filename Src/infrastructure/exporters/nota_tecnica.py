@@ -509,8 +509,8 @@ def montar(d: dict) -> bytes:
 def dados_do_ciclo(meses_apurados: list[str]) -> dict:
     """Busca nos serviços tudo o que a minuta usa para o trimestre civil apurado."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_pr import ServicosPR
-    from Src.Services.servicos_pv import ServicosPV
+    from Src.Services.tarifa.servicos_pr import ServicosPR
+    from Src.Services.tarifa.servicos_pv import ServicosPV
     from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS
 
     mp = meses_do_pr(meses_apurados)

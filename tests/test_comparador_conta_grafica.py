@@ -13,7 +13,7 @@ from Src.Services.comparacao.comparador_conta_grafica import (
     _sheet_corresponde_periodo,
     _tokens_periodo,
 )
-from Src.Services.servicos_auditoria import XMLItem
+from Src.Services.auditoria.servicos_auditoria import XMLItem
 
 
 # ════════════════════════════════════════════════════════════════════════════

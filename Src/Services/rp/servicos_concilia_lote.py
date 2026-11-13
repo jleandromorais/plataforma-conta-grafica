@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from Src.common.duplicatas import possiveis_duplicatas_por_valor
-from Src.Services.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConcilia, eh_top
+from Src.Services.rp.servicos_concilia import FATOR_PIS_COFINS, PdfItem, RegrasConcilia, eh_top
 
 
 def pdfs_da_pasta(pasta: Path | None) -> list[Path]:
@@ -82,7 +82,7 @@ def totais(itens: list[PdfItem]) -> dict:
 def salvar(periodo: str, itens: list[PdfItem]) -> dict:
     """Grava o RP do período (consolidação) e substitui os itens do período."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     from Src.common.periodos import is_periodo_valido
 
     if not is_periodo_valido(periodo):
@@ -107,7 +107,7 @@ def _tipo_e_numero(nome: str) -> tuple[str, str, str | None]:
     """(tipo, número, chave) da ND pelo nome do arquivo, com a MESMA extração do dedupe do
     processar_arquivos (`_numero_nd`). Sem ND → ("OUTRA", "", None). Nota "cancelado" não
     tem chave: ela fica fora da dedupe (entra negativa) e não conta como repetida."""
-    from Src.Services.servicos_concilia import _numero_nd, _sem_acento
+    from Src.Services.rp.servicos_concilia import _numero_nd, _sem_acento
 
     nd = _numero_nd(nome)
     if not nd:
@@ -141,7 +141,7 @@ def remover_nota(periodo: str, item_id: int) -> dict:
     """Tira UMA nota gravada do mês (a cópia repetida, por exemplo) e regrava o RP sem ela.
     O RP novo sai da MESMA conta da prova real. O chamador atualiza o SCG/PR (atualizar_dos_meses)."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     from Src.common.periodos import is_periodo_valido
 
     if not is_periodo_valido(periodo):

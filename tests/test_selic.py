@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from Src.api.errors import registrar_exception_handlers
 from Src.api.routers import sr as rota_sr
-from Src.Services import servicos_selic as s
+from Src.Services.tarifa import servicos_selic as s
 
 DIARIOS = json.loads((Path(__file__).parent / "fixtures" / "bcb_sgs11_2025-07_2026-03.json").read_text(encoding="utf-8"))
 FATORES = s.fatores_mensais(DIARIOS)

@@ -46,6 +46,18 @@ class SalvarPMPVResponse(BaseModel):
     pv_automatico: list[PVAutomatico] = []  # PV dos trimestres desses meses, regravado junto
 
 
+class SessaoDoTrimestre(BaseModel):
+    """O que já foi salvo para um trimestre: a tela PMPV preenche a tabela com isto ao trocar de trimestre."""
+    encontrada: bool
+    sessao_id: int | None = None
+    nome: str | None = None
+    data_criacao: str | None = None
+    pmpv: float | None = None
+    conta_grafica: float | None = None
+    preco_final: float | None = None
+    meses: dict[str, list[LinhaEmpresa]] = {}   # "Mai/2026" → empresas; `volume` = QDC (m³/dia)
+
+
 class PMPVHistoricoLinha(BaseModel):
     id: int
     nome: str

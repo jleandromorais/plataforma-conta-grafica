@@ -23,8 +23,8 @@ from openpyxl.chart import LineChart, Reference
 from openpyxl.chart.series import DataPoint
 
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_auditoria import empresa_integra_cgr
-from Src.Services.servicos_concilia import FATOR_PIS_COFINS
+from Src.Services.auditoria.servicos_auditoria import empresa_integra_cgr
+from Src.Services.rp.servicos_concilia import FATOR_PIS_COFINS
 from Src.common.formatting import format_brl, format_brl4, format_brl_plain
 from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, TRIMESTRES_CIVIS, is_periodo_valido
 from Src.infrastructure.exporters.excel_styles import (
@@ -430,8 +430,8 @@ class ExcelConsolidado:
         """SCG, SR, PR e PV do trimestre civil `meses`, como os Quadros da NT.
         O PR/PV são os do trimestre do PR que este trimestre alimenta
         (Jan–Mar → Mai–Jul)."""
-        from Src.Services.servicos_pr import ServicosPR
-        from Src.Services.servicos_pv import ServicosPV
+        from Src.Services.tarifa.servicos_pr import ServicosPR
+        from Src.Services.tarifa.servicos_pv import ServicosPV
 
         scg = [{"periodo": m, **(db.buscar_consolidacao(m) or {})} for m in meses]
         sr = db.buscar_sr_trimestre(f"{meses[0]}_{meses[-1]}") or []

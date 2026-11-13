@@ -7,9 +7,9 @@ import pandas as pd
 import pytest
 
 from Src.Services.comparacao import comparador_modelo_alexandre as alex
-from Src.Services import servicos_auditoria_lote as lote
+from Src.Services.auditoria import servicos_auditoria_lote as lote
 from Src.Services.comparacao.comparador_conta_grafica import ComparadorContaGrafica, _periodo_de_data
-from Src.Services.servicos_auditoria import XMLItem
+from Src.Services.auditoria.servicos_auditoria import XMLItem
 
 
 def _nf(empresa, numero, valor, aliq=0.12, volume=1000, caminho="nf.xml", tipo="NF-e"):

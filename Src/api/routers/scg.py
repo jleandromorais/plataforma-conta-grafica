@@ -14,9 +14,9 @@ from Src.api.schemas.scg import (
     SCGSalvoResponse,
     SCGValores,
 )
-from Src.Services import servicos_pr_automatico
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
-from Src.Services.servicos_scg import ServicosSCG
+from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.apuracao.servicos_scg import ServicosSCG
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
 
 router = APIRouter(prefix="/scg", tags=["SCG"])

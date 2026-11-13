@@ -15,8 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_auditoria_lote as lote
-from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem
+from Src.Services.auditoria import servicos_auditoria_lote as lote
+from Src.Services.auditoria.servicos_auditoria import RegrasAuditoria, XMLItem
 from tests.test_servicos_auditoria import CTE_XML_NORMAL, NFE_XML
 
 RAIZ = Path(__file__).resolve().parents[1]

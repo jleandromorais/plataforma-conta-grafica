@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox
 from Src.config import ui_theme as ui
-from Src.Services.servicos_rpv import ServicosRPV
+from Src.Services.apuracao.servicos_rpv import ServicosRPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.common.formatting import format_brl_plain
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado

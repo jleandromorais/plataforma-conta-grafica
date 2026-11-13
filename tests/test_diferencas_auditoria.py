@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_auditoria_lote as lote
+from Src.Services.auditoria import servicos_auditoria_lote as lote
 from Src.Services.comparacao.diferencas_auditoria import comparar_com_gravado
-from Src.Services.servicos_auditoria import XMLItem
+from Src.Services.auditoria.servicos_auditoria import XMLItem
 
 
 def _item(empresa, numero, valor, tipo="NF-e", taxa=0.12, status="OK", caminho=None):

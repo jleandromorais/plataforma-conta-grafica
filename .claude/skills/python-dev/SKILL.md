@@ -81,7 +81,7 @@ Src/
            with DatabasePMPV() as db:
                ...
 
-   # 3. Services/servicos_novo.py
+   # 3. Services/<etapa>/servicos_novo.py  (tarifa, auditoria, cgf, ret, rp, apuracao ou comparacao)
    class ServicosNovo:
        def __init__(self, repo: NovoRepository | None = None):
            self._repo = repo or SqliteNovoRepository()
@@ -211,7 +211,7 @@ Quando receber uma tarefa:
 | O que preciso | Onde fica |
 |---|---|
 | Adicionar campo ao banco | `Src/Database/database.py` → método da tabela |
-| Novo cálculo | `Src/Services/servicos_consolidacao.py` (método `@staticmethod`) |
+| Novo cálculo | `Src/Services/apuracao/servicos_consolidacao.py` (método `@staticmethod`) |
 | Nova tela | `Src/Views/tela_novo.py` + registrar em `Src/main_dashboard.py` |
 | Novo repositório | `Src/domain/ports/repositories.py` + `Src/infrastructure/repositories/sqlite_repositories.py` |
 | Exportar Excel | `Src/infrastructure/exporters/` |

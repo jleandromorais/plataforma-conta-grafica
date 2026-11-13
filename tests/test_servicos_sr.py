@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from Src.Services.servicos_sr import ServicosSR
+from Src.Services.apuracao.servicos_sr import ServicosSR
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ class TestBuscarVpVf:
 class TestInicializacao:
     def test_repo_default(self):
         # Sem passar repo, ele constrói um SqliteSRRepository sozinho.
-        from Src.Services import servicos_sr as mod
+        from Src.Services.apuracao import servicos_sr as mod
         from unittest.mock import patch
         with patch.object(mod, "SqliteSRRepository") as mock_cls:
             s = ServicosSR()

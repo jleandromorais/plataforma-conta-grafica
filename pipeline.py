@@ -153,7 +153,7 @@ def _competencia_bate(caminho: Path, periodo: str) -> bool:
     mês). Sem esse filtro, `rglob()` somaria documentos de competências
     diferentes num único total, distorcendo o fechamento do período pedido.
     """
-    from Src.Services.servicos_ret import _extrair_mes_caminho
+    from Src.Services.ret.servicos_ret import _extrair_mes_caminho
 
     mes_num, ano = _extrair_mes_caminho(str(caminho))
     if not mes_num:
@@ -163,7 +163,7 @@ def _competencia_bate(caminho: Path, periodo: str) -> bool:
 
 def _etapa_auditoria(periodo: str, pasta: Path, cfg: dict) -> dict:
     """Lê XMLs de NF-e/CT-e, calcula CGR líquido e salva no banco."""
-    from Src.Services.servicos_auditoria import RegrasAuditoria
+    from Src.Services.auditoria.servicos_auditoria import RegrasAuditoria
     from Src.Database.database import DatabasePMPV
 
     empresa = cfg.get("EMPRESA_PADRAO", "COPERGÁS")
@@ -218,7 +218,7 @@ def _etapa_auditoria(periodo: str, pasta: Path, cfg: dict) -> dict:
 
 def _etapa_ret(periodo: str, pasta: Path, cfg: dict) -> dict:
     """Lê PDFs de encargos (EAT/EC), calcula RET e salva no banco."""
-    from Src.Services.servicos_ret import RegrasRET
+    from Src.Services.ret.servicos_ret import RegrasRET
     from Src.Database.database import DatabasePMPV
 
     if not pasta.exists():
@@ -253,7 +253,7 @@ def _etapa_ret(periodo: str, pasta: Path, cfg: dict) -> dict:
 
 def _etapa_cgf(periodo: str, pasta: Path, cfg: dict) -> dict:
     """Lê Excels de volume faturado/cancelado/devoluções, calcula VF e salva."""
-    from Src.Services.servicos_cgf import ServicosCGF
+    from Src.Services.cgf.servicos_cgf import ServicosCGF
     from Src.Database.database import DatabasePMPV
 
     if not pasta.exists():
@@ -304,7 +304,7 @@ def _etapa_cgf(periodo: str, pasta: Path, cfg: dict) -> dict:
 
 def _etapa_concilia(periodo: str, pasta: Path, cfg: dict) -> dict:
     """Lê PDFs de penalidades (Receita/Despesa), calcula RP e salva."""
-    from Src.Services.servicos_concilia import RegrasConcilia
+    from Src.Services.rp.servicos_concilia import RegrasConcilia
     from Src.Database.database import DatabasePMPV
 
     if not pasta.exists():
@@ -368,7 +368,7 @@ def _etapa_concilia(periodo: str, pasta: Path, cfg: dict) -> dict:
 
 def _etapa_pmpv(periodo: str, pasta: Path, cfg: dict, trimestre: list[str]) -> dict:
     """Lê Excel de Memória de Cálculo, calcula PMPV e salva no banco."""
-    from Src.Services.servicos_pmpv import RegrasPMPV, ExcelPMPV
+    from Src.Services.tarifa.servicos_pmpv import RegrasPMPV, ExcelPMPV
     from Src.Database.database import DatabasePMPV
 
     valor_cg = float(cfg.get("PMPV_VALOR_CG", "0.0"))
@@ -470,7 +470,7 @@ def _etapa_pmpv(periodo: str, pasta: Path, cfg: dict, trimestre: list[str]) -> d
 
 def _etapa_consolidar(periodo: str, resultados: dict) -> dict:
     """Junta todos os módulos: RPV = CGR − CGF | SCG = RPV + RET + RP."""
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
     cgr     = resultados["auditoria"].get("cgr", 0.0)
     ret     = resultados["ret"].get("ret", 0.0)

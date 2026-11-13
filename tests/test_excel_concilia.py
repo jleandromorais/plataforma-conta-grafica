@@ -6,7 +6,7 @@ import pytest
 from openpyxl import load_workbook
 
 from Src.infrastructure.exporters.excel_concilia import ExcelConcilia
-from Src.Services.servicos_concilia import PdfItem
+from Src.Services.rp.servicos_concilia import PdfItem
 
 
 def _item(file_name="a.pdf", category="Receita", amount=100.0, status="OK", method="m"):

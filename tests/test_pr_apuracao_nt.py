@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from Src.Services import servicos_pr
-from Src.Services.servicos_pr import ServicosPR, meses_apurados_do_pr
+from Src.Services.tarifa import servicos_pr
+from Src.Services.tarifa.servicos_pr import ServicosPR, meses_apurados_do_pr
 
 # Q5 - SCG - Anexo A (BI16:BK16, BI19:BK19) e Q6 - SR (AV10:AX10)
 JAN_MAR_26 = [
@@ -92,7 +92,7 @@ def test_api_apurar(monkeypatch):
 
 
 def test_pv_trimestre_usa_pmpv_em_4_casas():
-    from Src.Services.servicos_pv import ServicosPV
+    from Src.Services.tarifa.servicos_pv import ServicosPV
     repo = MagicMock()
     repo.buscar_pmpv_mensal.return_value = 2.282982647346896  # como está gravado no banco
     repo.buscar_pr.return_value = {"pr": -0.0001}

@@ -34,7 +34,7 @@ empresa. É a **fonte primária** de dados para todos os cálculos posteriores.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço principal | `Src/Services/servicos_pmpv.py` → `ExcelPMPV`, `ServicosPMPV` |
+| Serviço principal | `Src/Services/tarifa/servicos_pmpv.py` → `ExcelPMPV`, `ServicosPMPV` |
 | Use case | `Src/application/use_cases/pmpv_use_cases.py` |
 | View | `Src/Views/tela_pmpv.py` |
 | Exportação | `Src/infrastructure/exporters/excel_handler_pmpv.py` |
@@ -58,7 +58,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_consolidacao.py` (campo `cgr`) |
+| Serviço | `Src/Services/apuracao/servicos_consolidacao.py` (campo `cgr`) |
 | View | `Src/Views/tela_scg.py` (entrada manual do CGR) |
 
 - Valor informado ou importado que representa o custo real gerenciável do período.
@@ -70,7 +70,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_cgf.py` → `ServicosCGF` |
+| Serviço | `Src/Services/cgf/servicos_cgf.py` → `ServicosCGF` |
 | View | `Src/Views/tela_cgf.py` |
 
 - Lê planilhas Excel/CSV e normaliza valores numéricos (pt-BR → float).
@@ -82,7 +82,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_rpv.py` → `ServicosRPV` |
+| Serviço | `Src/Services/apuracao/servicos_rpv.py` → `ServicosRPV` |
 | Cálculo puro | `ServicosConsolidacao.calcular_rpv(cgr, cgf)` |
 | View | `Src/Views/tela_rpv.py` |
 
@@ -95,7 +95,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_ret.py` |
+| Serviço | `Src/Services/ret/servicos_ret.py` |
 | View | `Src/Views/tela_ret.py` |
 | Exportação | `Src/infrastructure/exporters/excel_ret.py` |
 
@@ -109,7 +109,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_consolidacao.py` (campo `rp`) |
+| Serviço | `Src/Services/apuracao/servicos_consolidacao.py` (campo `rp`) |
 | View | `Src/Views/tela_scg.py` (entrada junto ao CGR) |
 
 - Valor informado manualmente para o período.
@@ -121,7 +121,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_scg.py` → `ServicosSCG` |
+| Serviço | `Src/Services/apuracao/servicos_scg.py` → `ServicosSCG` |
 | Cálculo puro | `ServicosConsolidacao.calcular_scg(cgr, cgf, ret, rp)` |
 | View | `Src/Views/tela_scg.py` |
 
@@ -135,7 +135,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_sr.py` → `ServicosSR` |
+| Serviço | `Src/Services/apuracao/servicos_sr.py` → `ServicosSR` |
 | View | `Src/Views/tela_sr.py` |
 
 - **Fórmula:** `SR = (VP − VF) × PR`
@@ -156,7 +156,7 @@ e calcular a Parcela de Recuperação final.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_consolidacao.py` → `ServicosConsolidacao` |
+| Serviço | `Src/Services/apuracao/servicos_consolidacao.py` → `ServicosConsolidacao` |
 | Exportação | `Src/infrastructure/exporters/excel_consolidado.py` |
 | View | `Src/Views/tela_scg.py` |
 
@@ -170,7 +170,7 @@ e calcular a Parcela de Recuperação final.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_sr.py` → `ServicosSR.buscar_vp_vf` |
+| Serviço | `Src/Services/apuracao/servicos_sr.py` → `ServicosSR.buscar_vp_vf` |
 | Repositório | `SRRepository.listar_sessoes_com_volumes()` |
 | View | `Src/Views/tela_sr.py` |
 
@@ -183,8 +183,8 @@ e calcular a Parcela de Recuperação final.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_pr.py` → `ServicosPR` (usa SCG + SR) |
-|          | `Src/Services/servicos_pv.py` → `ServicosPV` (agrega PMPV + PR) |
+| Serviço | `Src/Services/tarifa/servicos_pr.py` → `ServicosPR` (usa SCG + SR) |
+|          | `Src/Services/tarifa/servicos_pv.py` → `ServicosPV` (agrega PMPV + PR) |
 | View | `Src/Views/tela_pr.py`, `Src/Views/tela_pv.py` |
 
 - Agrega os três componentes do trimestre:
@@ -199,7 +199,7 @@ e calcular a Parcela de Recuperação final.
 
 | Artefato | Caminho atual |
 |---|---|
-| Serviço | `Src/Services/servicos_pr.py` → `ServicosPR` |
+| Serviço | `Src/Services/tarifa/servicos_pr.py` → `ServicosPR` |
 | View | `Src/Views/tela_pr.py` |
 
 - **Fórmula:** `PR = (SCG + SR) / VP`

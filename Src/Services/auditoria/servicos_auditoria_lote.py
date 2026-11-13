@@ -23,7 +23,7 @@ from typing import Callable
 from Src.common.periodos import ano_do_caminho
 from Src.common.duplicatas import possiveis_duplicatas_por_valor
 from Src.Services.comparacao.comparador_conta_grafica import _normalizar_numero_nota
-from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
+from Src.Services.auditoria.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
 
 logger = logging.getLogger(__name__)
 
@@ -369,7 +369,7 @@ def salvar(periodo: str, itens: list[XMLItem]) -> dict:
     """Grava o CGR líquido do período (consolidação → recalcula RPV) e
     substitui os itens auditados do período."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 
     from Src.common.periodos import is_periodo_valido
 
@@ -417,7 +417,7 @@ def remover_nota(periodo: str, item_id: int) -> dict:
     (e o RPV, que sai do CGR). O CGR novo é a soma do `cgr_liquido` gravado das notas que entram
     no CGR, a MESMA conta da prova real. O chamador atualiza o SCG/PR (atualizar_dos_meses)."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     from Src.common.periodos import is_periodo_valido
 
     if not is_periodo_valido(periodo):
@@ -450,7 +450,7 @@ def incluir_nota(periodo: str, *, empresa: str, numero: str, cgr_liquido: float,
     Se o mês for auditado e gravado de novo pelos arquivos, a nota digitada sai (o salvar substitui
     as notas do mês): aí é preciso incluí-la outra vez."""
     from Src.Database.database import DatabasePMPV
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     from Src.common.periodos import is_periodo_valido
 
     if not is_periodo_valido(periodo):
@@ -558,7 +558,7 @@ def itens_gravados_como_xml(gravados: list[dict]) -> list[XMLItem]:
     (negativo na devolução). A alíquota sai desse CGR, então `cgr_liquido_item` devolve
     exatamente o valor gravado; a devolução vira um caminho com "devolucao". Nota digitada sem
     valor com tributos ganha um valor que dá o mesmo CGR, com alíquota 0."""
-    from Src.Services.servicos_auditoria import PIS_COFINS_RATE
+    from Src.Services.auditoria.servicos_auditoria import PIS_COFINS_RATE
 
     itens = []
     for g in gravados:

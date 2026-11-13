@@ -18,9 +18,9 @@ import logging
 from Src.common.periodos import is_periodo_valido, normalizar_periodo, periodos_do_trimestre
 from Src.application.use_cases.sr_use_cases import SRUseCases
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository
-from Src.Services import servicos_selic
-from Src.Services.servicos_pr import ServicosPR
-from Src.Services.servicos_pv import ServicosPV
+from Src.Services.tarifa import servicos_selic
+from Src.Services.tarifa.servicos_pr import ServicosPR
+from Src.Services.tarifa.servicos_pv import ServicosPV
 
 logger = logging.getLogger(__name__)
 

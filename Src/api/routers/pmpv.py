@@ -17,14 +17,15 @@ from Src.api.schemas.pmpv import (
     PMPVMensalResponse,
     ProvaRealPMPV,
     SalvarPMPVRequest,
+    SessaoDoTrimestre,
     SalvarPMPVResponse,
     TrimestreAtivoRequest,
     TrimestreAtivoResponse,
 )
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
-from Src.Services.servicos_margem import buscar_margem, salvar_margem, tarifa_media
-from Src.Services.servicos_pmpv import prova_real_sessao
-from Src.Services.servicos_pr_automatico import atualizar_pv_sem_falhar
+from Src.Services.tarifa.servicos_margem import buscar_margem, salvar_margem, tarifa_media
+from Src.Services.tarifa.servicos_pmpv import prova_real_sessao
+from Src.Services.tarifa.servicos_pr_automatico import atualizar_pv_sem_falhar
 
 router = APIRouter(prefix="/pmpv", tags=["PMPV"])
 
@@ -101,6 +102,20 @@ def listar_periodos(uc: PMPVUseCases = Depends(get_pmpv_use_cases)) -> list:
 def historico(uc: PMPVUseCases = Depends(get_pmpv_use_cases)) -> list[PMPVHistoricoLinha]:
     """Sessões salvas com PMPV, Conta Gráfica, preço final e VP — da mais recente à mais antiga."""
     return [PMPVHistoricoLinha(**h) for h in uc.repo.listar_historico()]
+
+
+@router.get("/sessao-do-trimestre", response_model=SessaoDoTrimestre)
+def sessao_do_trimestre(
+    periodos: str,
+    uc: PMPVUseCases = Depends(get_pmpv_use_cases),
+) -> SessaoDoTrimestre:
+    """A sessão salva mais recente do trimestre (ex.: ?periodos=Mai/2026,Jun/2026,Jul/2026),
+    com as empresas de cada mês. Sem sessão salva: `encontrada = false` (não é erro)."""
+    lista = [p.strip() for p in periodos.split(",") if p.strip()]
+    if len(lista) != 3:
+        raise ValueError("Informe os 3 meses do trimestre, ex.: Mai/2026,Jun/2026,Jul/2026.")
+    sessao = uc.buscar_sessao_do_trimestre(lista)
+    return SessaoDoTrimestre(encontrada=True, **sessao) if sessao else SessaoDoTrimestre(encontrada=False)
 
 
 @router.get("/prova-real", response_model=ProvaRealPMPV)

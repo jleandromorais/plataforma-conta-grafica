@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from Src.application.use_cases.sr_use_cases import SRUseCases
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_selic
+from Src.Services.tarifa import servicos_selic
 
 TRI = "Jan/2026_Mar/2026"
 MESES = ["Jan/2026", "Fev/2026", "Mar/2026"]

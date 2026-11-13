@@ -20,7 +20,7 @@ from Src.Services.comparacao.comparador_modelo_alexandre import (
     ModeloAlexandre, NotaPlanilha, _achar_aba, _num, _periodo_bloco, abas_por_periodo, comparar as _comparar_notas,
     conferir_mes as _conferir_mes,
 )
-from Src.Services.supridores import supridor_canonico, token as _token
+from Src.Services.auditoria.supridores import supridor_canonico, token as _token
 
 ABA_CONTA = "contagrafica"
 ROTULO_CGR = "custodogasrealizado"

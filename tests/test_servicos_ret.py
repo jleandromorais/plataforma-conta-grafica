@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from Src.Services.servicos_ret import RegrasRET, PIS_COFINS_RATE, TAXA_EUR_BRL, _extrair_mes_caminho
+from Src.Services.ret.servicos_ret import RegrasRET, PIS_COFINS_RATE, TAXA_EUR_BRL, _extrair_mes_caminho
 
 
 class TestConstantes:
@@ -209,6 +209,6 @@ Valor Total (com tributos) (R$): 39.090,86
     (TEXTO_PETRORECONCAVO, 39090.86),   # lia a quantidade (139.849,00) como valor
 ])
 def test_valor_total_de_pdf_com_numero_quebrado_por_espaco(monkeypatch, texto, esperado):
-    monkeypatch.setattr("Src.Services.servicos_ret.read_pdf_text", lambda *a, **k: (texto, "TEXTO"))
+    monkeypatch.setattr("Src.Services.ret.servicos_ret.read_pdf_text", lambda *a, **k: (texto, "TEXTO"))
     dados = RegrasRET.extrair_dados_pdf(r"C:\RET\EAT fev26\EAT\ND 000 - COPERGAS.pdf")
     assert dados["valor_total"] == pytest.approx(esperado)

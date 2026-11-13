@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_cgf import ServicosCGF
+from Src.Services.cgf.servicos_cgf import ServicosCGF
 
 RAIZ = Path(__file__).resolve().parents[1]
 NF_JAN = RAIZ / "Excel" / "NF jan-26"

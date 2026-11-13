@@ -1,4 +1,4 @@
-from Src.Services.servicos_cgf import ServicosCGF
+from Src.Services.cgf.servicos_cgf import ServicosCGF
 
 
 class TestServicosCGF:

@@ -2,7 +2,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from Src.common.excel_salvar import salvar_workbook
-from Src.Services.servicos_concilia import FATOR_PIS_COFINS
+from Src.Services.rp.servicos_concilia import FATOR_PIS_COFINS
 from pathlib import Path
 
 class ExcelConcilia:

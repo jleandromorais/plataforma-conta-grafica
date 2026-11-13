@@ -20,7 +20,7 @@ from starlette.background import BackgroundTask
 from Src.common.excel_final_destino import obter_periodos_trimestre
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
-from Src.Services.servicos_cgf import ServicosCGF
+from Src.Services.cgf.servicos_cgf import ServicosCGF
 
 router = APIRouter(prefix="/excel-final", tags=["Excel Final"])
 

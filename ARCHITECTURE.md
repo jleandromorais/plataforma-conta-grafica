@@ -19,7 +19,7 @@ externos, como banco, tela, arquivos ou HTTP. Quem depende de quem:
           ┌───────────────────▼────────────────────┐
           │   Use Cases + Services (aplicação)      │  fluxos e FÓRMULAS
           │   Src/application/use_cases/            │
-          │   Src/Services/servicos_*.py            │
+          │   Src/Services/<etapa>/servicos_*.py    │
           │   Src/Services/comparacao/              │
           └───────────────────┬────────────────────┘
                               │ dependem só do contrato (Protocol)
@@ -51,9 +51,13 @@ garante que o site, o `.exe` e o `pipeline.py` deem o mesmo resultado.
 | `Src/Views/` | Entrada (desktop) | Telas customtkinter (`tela_*.py`, `dashboard_resumo.py`). Não devem ter regra de negócio nem SQL |
 | `Src/main_dashboard.py` | Entrada (desktop) | Janela principal do app desktop |
 | `Src/application/use_cases/` | Aplicação | Fluxos de várias etapas: `pmpv_use_cases.py`, `sr_use_cases.py` (carregar e propor o SR do trimestre), `dashboard_use_cases.py` |
-| `Src/Services/servicos_*.py` | Aplicação | **As fórmulas**: PMPV, Auditoria/CGR, CGF, RET, RP (concilia), RPV, SCG, SR, PR, PV, SELIC, margem, consolidação, períodos. Os `*_lote.py` processam uma pasta inteira de uma vez; `servicos_pr_automatico.py` regrava PR e PV quando um módulo é salvo |
+| `Src/Services/tarifa/` | Aplicação | **Fórmulas da tarifa** (trimestres Nov–Jan, Fev–Abr…): `servicos_pmpv`, `servicos_pr`, `servicos_pr_automatico` (regrava PR e PV quando um módulo é salvo), `servicos_pv`, `servicos_margem`, `servicos_selic` |
+| `Src/Services/auditoria/` | Aplicação | CGR: `servicos_auditoria` (regras fiscais de NF-e/CT-e), `servicos_auditoria_lote` (pasta inteira), `supridores` (cadastro e identificação dos supridores) |
+| `Src/Services/cgf/` | Aplicação | `servicos_cgf`: volume faturado e CGF em R$ |
+| `Src/Services/ret/` | Aplicação | `servicos_ret`, `servicos_ret_lote`: encargos de transporte |
+| `Src/Services/rp/` | Aplicação | `servicos_concilia`, `servicos_concilia_lote`: RP (receitas e despesas de penalidade) |
+| `Src/Services/apuracao/` | Aplicação | **Fórmulas da apuração** (trimestres civis): `servicos_rpv`, `servicos_scg`, `servicos_sr`, `servicos_consolidacao`, `servicos_periodos` |
 | `Src/Services/comparacao/` | Aplicação | Comparadores da Auditoria com as planilhas oficiais (NT, modelo Alexandre, Apuração de Custos), `comparacao_registro.py` (escolhe o comparador pelo modelo da planilha), `diferencas_auditoria.py` e `explicador_diferencas.py` (onde e por que difere) |
-| `Src/Services/supridores.py` | Aplicação | Cadastro e identificação dos supridores |
 | `Src/domain/ports/` | Domínio | Contratos (`Protocol`): `ConsolidacaoRepository`, `PMPVRepository`, `SRRepository`, `PRRepository` |
 | `Src/infrastructure/repositories/` | Infraestrutura | `sqlite_repositories.py`: os contratos implementados sobre o SQLite |
 | `Src/infrastructure/exporters/` | Infraestrutura | Arquivos gerados: Excel de cada módulo (`excel_auditoria.py`, `excel_concilia.py`, `excel_ret.py`), Excel Final (`excel_consolidado.py`, `excel_sheets/`, `excel_styles.py`), PMPV (`excel_handler_pmpv.py`), Nota Técnica em Word (`nota_tecnica.py`, `modelos/`), relatório do trimestre em Word (`relatorio_trimestral.py`) |
@@ -85,6 +89,8 @@ Rotas novas da API seguem o mesmo caminho: `router → schema Pydantic → Use C
 (contrato em `docs/SPEC_BACKEND_FASTAPI.md`). A rota não faz conta: só traduz HTTP para chamada de Service.
 
 Arquivos gerados (Excel, Word, PDF) vão em `infrastructure/exporters/`, não em `Services/`.
+Service novo entra na pasta da etapa a que pertence (`tarifa/`, `auditoria/`, `cgf/`, `ret/`, `rp/`,
+`apuracao/`, `comparacao/`); não deixe arquivo solto na raiz de `Services/`.
 
 ## Fonte única de verdade (cálculos)
 

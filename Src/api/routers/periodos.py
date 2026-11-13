@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from Src.api.deps import get_servicos_periodos
 from Src.api.schemas.periodos import LimpezaPeriodoResponse
-from Src.Services.servicos_periodos import PeriodoProtegidoError, ServicosPeriodos
+from Src.Services.apuracao.servicos_periodos import PeriodoProtegidoError, ServicosPeriodos
 
 router = APIRouter(prefix="/periodos", tags=["Períodos"])
 

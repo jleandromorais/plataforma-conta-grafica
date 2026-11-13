@@ -1,4 +1,4 @@
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.common.formatting import format_brl, parse_brl as _parse_brl
 
 TOL_PROVA_REAL_RS = 1.0  # R$: abaixo disso é arredondamento
@@ -48,8 +48,8 @@ class ServicosRPV:
         `origem_cgr` / `origem_cgf`: o CGR gravado bate com a soma das notas? O CGF gravado
         bate com volume × PMPV? Mês sem notas (ou sem resumo) vira `None`: não dá para provar.
         """
-        from Src.Services import servicos_auditoria_lote as lote
-        from Src.Services.servicos_cgf import ServicosCGF
+        from Src.Services.auditoria import servicos_auditoria_lote as lote
+        from Src.Services.cgf.servicos_cgf import ServicosCGF
 
         dados = self.consolidacao.buscar_consolidacao(periodo) or {}
         gravado = bool(dados)

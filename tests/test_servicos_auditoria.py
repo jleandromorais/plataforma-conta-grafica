@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from Src.Services.servicos_auditoria import (
+from Src.Services.auditoria.servicos_auditoria import (
     RegrasAuditoria,
     XMLItem,
     PIS_RATE,
@@ -274,7 +274,7 @@ class TestParsePdfDacte:
             def __exit__(self, *a):
                 return False
 
-        monkeypatch.setattr("Src.Services.servicos_auditoria.pdfplumber.open", lambda _p: Pdf())
+        monkeypatch.setattr("Src.Services.auditoria.servicos_auditoria.pdfplumber.open", lambda _p: Pdf())
         f = tmp_path / "01025250001001_NF_4533_29260906248349001367570010000045331191734702.pdf"
         f.write_bytes(b"%PDF")
         d = RegrasAuditoria.parse_pdf_ocr(f)
@@ -297,7 +297,7 @@ def _pdf_com_texto(monkeypatch, texto):
         def __exit__(self, *a):
             return False
 
-    monkeypatch.setattr("Src.Services.servicos_auditoria.pdfplumber.open", lambda _p: Pdf())
+    monkeypatch.setattr("Src.Services.auditoria.servicos_auditoria.pdfplumber.open", lambda _p: Pdf())
 
 
 class TestParsePdfCaracterizacao:

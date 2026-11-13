@@ -8,8 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_concilia_lote as lote
-from Src.Services.servicos_concilia import PdfItem
+from Src.Services.rp import servicos_concilia_lote as lote
+from Src.Services.rp.servicos_concilia import PdfItem
 
 RAIZ = Path(__file__).resolve().parents[1]
 JAN = RAIZ / "SCG-26 - Copia" / "RP - Recuperação de Penalidades" / "Jan-26"
@@ -161,7 +161,7 @@ def test_prova_real_periodo_invalido_422(client):
 
 
 def test_prova_real_rp_alterado_por_fora(client):
-    from Src.Services.servicos_consolidacao import ServicosConsolidacao
+    from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
     rp = _salvar(client, "Fev/2026", ITENS_BASE)
     with ServicosConsolidacao() as c:
         c.salvar_rp("Fev/2026", rp + 50.0)

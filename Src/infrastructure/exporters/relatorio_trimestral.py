@@ -73,8 +73,8 @@ def dados_do_trimestre(meses: list[str], planilha: str | None = None) -> dict:
 
     Com `planilha` (caminho da planilha da Conta Gráfica), as notas gravadas de
     cada mês também são comparadas com ela, pelo mesmo comparador da Auditoria."""
-    from Src.Services import servicos_auditoria_lote
-    from Src.Services.servicos_scg import ServicosSCG
+    from Src.Services.auditoria import servicos_auditoria_lote
+    from Src.Services.apuracao.servicos_scg import ServicosSCG
 
     scg = ServicosSCG()
     # A planilha é lida UMA vez para o trimestre (reler por mês levava minutos numa planilha do ano todo).

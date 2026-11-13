@@ -1,5 +1,5 @@
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_pmpv import RegrasPMPV
+from Src.Services.tarifa.servicos_pmpv import RegrasPMPV
 
 
 class TestRegrasPMPV:

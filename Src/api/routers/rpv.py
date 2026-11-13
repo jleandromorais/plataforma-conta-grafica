@@ -11,7 +11,7 @@ from Src.api.schemas.rpv import (
     RPVSalvarResponse,
     ProvaRealRPV,
 )
-from Src.Services.servicos_rpv import ServicosRPV
+from Src.Services.apuracao.servicos_rpv import ServicosRPV
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
 
 router = APIRouter(prefix="/rpv", tags=["RPV"])

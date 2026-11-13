@@ -8,7 +8,7 @@ from datetime import datetime
 import logging
 
 from Src.config import ui_theme as ui
-from Src.Services.servicos_pmpv import ExcelPMPV
+from Src.Services.tarifa.servicos_pmpv import ExcelPMPV
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.infrastructure.exporters.excel_consolidado import ExcelConsolidado
 from Src.common.excel_final_destino import registrar_execucao_excel_final, novo_excel_final

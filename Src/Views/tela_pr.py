@@ -8,7 +8,7 @@ from datetime import datetime as _dt
 logger = logging.getLogger(__name__)
 
 from Src.config import ui_theme as ui
-from Src.Services.servicos_pr import ServicosPR
+from Src.Services.tarifa.servicos_pr import ServicosPR
 from Src.Database.database import DatabasePMPV
 from Src.common.excel_final_destino import registrar_execucao_excel_final
 from Src.common.formatting import format_brl_plain, parse_brl

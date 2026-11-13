@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 
 from Src.infrastructure.exporters.excel_auditoria import ExcelAuditoria
 from Src.Services.comparacao.comparador_conta_grafica import ResultadoComparacaoNotas
-from Src.Services.servicos_auditoria import XMLItem
+from Src.Services.auditoria.servicos_auditoria import XMLItem
 
 
 def _mk_item(numero="1", empresa="ACME", tipo="NF-e", valor=1000.0, icms_taxa=0.12) -> XMLItem:

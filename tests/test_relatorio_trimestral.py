@@ -150,7 +150,7 @@ def test_planilha_tudo_batendo_e_sem_planilha_avisa():
 
 
 def test_itens_gravados_como_xml_devolvem_o_mesmo_cgr():
-    from Src.Services.servicos_auditoria_lote import cgr_liquido_item, itens_gravados_como_xml
+    from Src.Services.auditoria.servicos_auditoria_lote import cgr_liquido_item, itens_gravados_como_xml
 
     gravados = [
         {"empresa": "Petrobras", "tipo": "NF-e", "numero": "1", "valor_total": 1000.0, "cgr_liquido": 798.6},

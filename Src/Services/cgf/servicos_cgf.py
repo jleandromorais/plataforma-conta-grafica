@@ -9,7 +9,7 @@ from Src.common.precisao import arredondar_tarifa, arredondar_volume
 
 TOL_PROVA_REAL_RS = 1.0   # R$: abaixo disso é arredondamento
 TOL_VOLUME_M3 = 0.01      # m³: o volume final é gravado com 2 casas
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePMPVRepository
 
 class ServicosCGF:

@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services import servicos_pr_automatico as auto
+from Src.Services.tarifa import servicos_pr_automatico as auto
 
 
 @pytest.fixture()

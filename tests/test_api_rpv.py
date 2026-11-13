@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
-from Src.Services.servicos_rpv import ServicosRPV
+from Src.Services.apuracao.servicos_rpv import ServicosRPV
 
 
 @pytest.fixture()

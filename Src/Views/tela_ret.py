@@ -6,9 +6,9 @@ from datetime import datetime
 from pathlib import Path
 
 from Src.config import ui_theme as ui
-from Src.Services.servicos_ret import RegrasRET
-from Src.Services import servicos_ret_lote as lote_ret
-from Src.Services.servicos_consolidacao import ServicosConsolidacao
+from Src.Services.ret.servicos_ret import RegrasRET
+from Src.Services.ret import servicos_ret_lote as lote_ret
+from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.Database.database import DatabasePMPV
 from Src.common.formatting import format_brl

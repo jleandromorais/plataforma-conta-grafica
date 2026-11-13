@@ -5,7 +5,7 @@ import openpyxl
 import pytest
 
 from Src.Services.comparacao import comparador_modelo_nt as nt
-from Src.Services.servicos_auditoria import XMLItem
+from Src.Services.auditoria.servicos_auditoria import XMLItem
 
 
 def _item(empresa="Petrobras", tipo="NF-e", numero="1", valor=1000.0, taxa=0.12, vol=100.0,
@@ -14,7 +14,7 @@ def _item(empresa="Petrobras", tipo="NF-e", numero="1", valor=1000.0, taxa=0.12,
 
 
 def _cgr(valor, taxa=0.12):
-    from Src.Services.servicos_auditoria import RegrasAuditoria
+    from Src.Services.auditoria.servicos_auditoria import RegrasAuditoria
     return RegrasAuditoria.calcular_s_tributos(valor, taxa)
 
 

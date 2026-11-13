@@ -54,7 +54,7 @@ def valores_planilha(arquivo: Path) -> dict[str, dict[str, float]]:
 
 class Local:
     def __init__(self):
-        from Src.Services.servicos_scg import ServicosSCG
+        from Src.Services.apuracao.servicos_scg import ServicosSCG
         self.s = ServicosSCG()
 
     def gravado(self, p):
