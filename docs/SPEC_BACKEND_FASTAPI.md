@@ -209,8 +209,7 @@ para eliminar a divergência já sinalizada na auditoria.
 | Rota | Método | Fonte | Request | Response |
 |---|---|---|---|---|
 | `/pr/{periodo}` | GET | `ServicosPR.buscar_dados_periodo` | — | `PRResultado` (`scg, sr, vp, pr`) ou 404 |
-| `/pr/trimestral` | POST | `ServicosPR.buscar_dados_trimestral` | `{periodos: list[str]}` | `{scg, sr, vp, pr, meses, meses_sem_vp}` |
-| `/pr/salvar` | POST | `ServicosPR.salvar_valores` | `{periodo, scg, sr, vp}` | `{pr}` |
+| `/pr/salvar` | POST | `ServicosPR.salvar_apurado` (refaz a apuração; 422 com pendências) | `{periodo}` (scg/sr/vp opcionais e ignorados) | `{pr, pv_automatico}` |
 | `/pr/periodos` | GET | `ServicosPR.obter_todos_periodos` | — | `list[str]` |
 
 ### 4.8 PV

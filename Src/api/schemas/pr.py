@@ -18,10 +18,11 @@ class PRTrimestralRequest(BaseModel):
 
 
 class PRSalvarRequest(BaseModel):
-    periodo: str
-    scg: float
-    sr: float
-    vp: float
+    periodo: str  # chave do trimestre da tarifa, ex.: "Fev - Abr/2026"
+    # Ignorados: o servidor refaz a conta. Ficam opcionais só para o site atual não levar 422.
+    scg: float | None = None
+    sr: float | None = None
+    vp: float | None = None
 
 
 class PRSalvarResponse(BaseModel):

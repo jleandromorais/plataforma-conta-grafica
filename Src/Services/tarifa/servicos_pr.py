@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from Src.application.use_cases.sr_use_cases import vp_do_mes
+from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, periodos_do_trimestre
 from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import PRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqlitePRRepository, SqliteSRRepository
@@ -16,6 +17,18 @@ def meses_apurados_do_pr(meses_pr: list[str]) -> list[str]:
     mes, ano = meses_pr[0].split("/")
     base = int(ano) * 12 + _MESES.index(mes)
     return [f"{_MESES[(base - k) % 12]}/{(base - k) // 12}" for k in (4, 3, 2)]
+
+
+def meses_da_chave_pr(chave_pr: str) -> list[str]:
+    """Chave do PR → os 3 meses em que ele é aplicado. A chave usa o ano do ÚLTIMO mês:
+    "Fev - Abr/2026" → Fev/2026, Mar/2026, Abr/2026; "Nov - Jan/2026" → Nov/2025, Dez/2025, Jan/2026.
+    Chave fora desse formato (ex.: "Jan/2026") → ValueError (vira 422)."""
+    label, _, ano = (chave_pr or "").strip().rpartition("/")
+    if label not in {nome for nome, _ in TRIMESTRES_FISCAIS_ABREVS} or not ano.isdigit():
+        raise ValueError(f"“{chave_pr}” não é um trimestre da tarifa. Use Nov - Jan, Fev - Abr, Mai - Jul ou "
+                         "Ago - Out com o ano do último mês, por exemplo Fev - Abr/2026.")
+    ano_inicio = int(ano) - 1 if label == "Nov - Jan" else int(ano)  # o Nov - Jan começa no ano anterior
+    return periodos_do_trimestre(label, ano_inicio)
 
 
 class ServicosPR:
@@ -200,6 +213,10 @@ class ServicosPR:
                 dados = cons.buscar_consolidacao(p)
                 if not dados:
                     pendencias.append(f"Sem SCG gravado para {p}.")
+                if sr_salvo and p not in sr_salvo:
+                    # SR salvo pela metade: o mês que falta entraria como 0 no PR.
+                    pendencias.append(f"Falta o SR de {p} no SR salvo de {apurados[0]} a {apurados[-1]}: "
+                                      "salve o SR do trimestre de novo na tela SR.")
                 linha = sr_salvo.get(p) or {}
                 meses.append({"periodo": p, "scg": float((dados or {}).get("scg") or 0.0),
                               "selic": float(linha.get("selic_mensal") or 0.0),
@@ -216,6 +233,20 @@ class ServicosPR:
             pendencias.append(f"Sem PMPV para {meses_pr[0]}.")
         return {**self.apurar_pr_nt(meses, vps, pmpv), "meses_pr": meses_pr,
                 "meses_apurados": apurados, "vps": vps, "pendencias": pendencias}
+
+    def salvar_apurado(self, chave_pr: str) -> float:
+        """Refaz a apuração do PR de `chave_pr` ("Fev - Abr/2026") com o que está no banco e grava
+        o valor do SERVIDOR (nunca números vindos da tela). Se faltar algo (SR, SCG, VP, PMPV) ou o
+        VP der zero, levanta ValueError (422) com as pendências, uma por linha, e NADA é gravado."""
+        meses_pr = meses_da_chave_pr(chave_pr)
+        apuracao = self.apurar_trimestre(meses_pr)
+        if apuracao["pendencias"]:
+            raise ValueError(f"O PR de {chave_pr} não foi salvo. Resolva antes:\n"
+                             + "\n".join(f"- {p}" for p in apuracao["pendencias"]))
+        if apuracao["vp"] <= 0:
+            raise ValueError(f"O PR de {chave_pr} não foi salvo: o VP de {meses_pr[0]} a {meses_pr[-1]} "
+                             "está zerado. Salve o PMPV deste trimestre.")
+        return self.salvar_valores(chave_pr, apuracao["scg_selic"], apuracao["sr"], apuracao["vp"])
 
     def salvar_valores(self, periodo: str, scg: float, sr: float, vp: float) -> float:
         """Calcula e persiste o PR final para o período."""

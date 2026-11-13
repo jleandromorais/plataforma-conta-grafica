@@ -59,13 +59,18 @@ def test_virada_de_ano(banco):
             assert db.buscar_pv(chave)["pv"] == pytest.approx(1.95)
 
 
-def test_api_pr_salvar_regrava_pv(banco):
+def test_api_pr_salvar_regrava_pv(banco, monkeypatch):
+    # O /pr/salvar agora refaz a apuração no servidor (banco vazio daria 422): aqui a apuração é
+    # trocada por uma pronta, sem pendência, porque o que se testa é o PV regravado junto.
+    from Src.Services.tarifa.servicos_pr import ServicosPR
+    monkeypatch.setattr(ServicosPR, "apurar_trimestre", lambda self, meses: {
+        "scg_selic": 1000.0, "sr": 0.0, "vp": 10000.0, "pendencias": []})
     with DatabasePMPV(db_path=str(banco)) as db:
         for p in ("Ago/2026", "Set/2026", "Out/2026"):
             db.salvar_pmpv_mensal(p, 2.0)
     from Src.api.main import app
     with TestClient(app) as c:
-        resp = c.post("/api/pr/salvar", json={"periodo": "Ago - Out/2026", "scg": 1000.0, "sr": 0.0, "vp": 10000.0})
+        resp = c.post("/api/pr/salvar", json={"periodo": "Ago - Out/2026"})
     assert resp.status_code == 200, resp.text
     pv = resp.json()["pv_automatico"]
     assert pv["trimestre"] == "Ago - Out/2026" and pv["atualizado"] is True

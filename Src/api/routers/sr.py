@@ -85,7 +85,9 @@ def salvar_trimestre(
     payload: SRTrimestreSalvarRequest,
     uc: SRUseCases = Depends(get_sr_use_cases),
 ) -> SRTrimestreSalvarResponse:
-    total = uc.salvar_trimestre(
+    """Grava o SR do trimestre civil. O servidor recalcula cada mês a partir de VP, VF, PR, SELIC
+    e SR anterior e grava a conta DELE. PR ou VP zerado, ou SELIC 0% → 422, e nada é gravado."""
+    total = uc.salvar_trimestre_conferido(
         payload.labels_meses,
         payload.periodo_referencia,
         [l.model_dump() for l in payload.linhas],

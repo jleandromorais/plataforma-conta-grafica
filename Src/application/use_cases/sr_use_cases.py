@@ -13,7 +13,9 @@ SR TOTAL = soma de sr_selic de todos os meses do trimestre.
 """
 from __future__ import annotations
 
+import logging
 import re
+from datetime import date
 from typing import Any
 
 from Src.common.periodos import (
@@ -24,6 +26,8 @@ from Src.domain.ports.repositories import SRRepository
 from Src.infrastructure.repositories.sqlite_repositories import SqliteSRRepository
 from Src.Services.tarifa import servicos_selic
 from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
+
+logger = logging.getLogger(__name__)
 
 
 def labels_trimestre(meses: list[str], ano: int) -> list[str]:
@@ -321,6 +325,54 @@ class SRUseCases:
 
         self.repo.salvar_sr_trimestre(_trimestre_label(labels_meses), linhas_calculadas)
         return total
+
+    def salvar_trimestre_conferido(
+        self,
+        labels_meses: list[str],
+        periodo_referencia: str,
+        entradas: list[dict[str, Any]],
+        hoje: date | None = None,
+    ) -> float:
+        """Grava o SR que a tela mandou, mas com a conta do SERVIDOR: cada linha é recalculada
+        por `calcular_trimestre` a partir das entradas (vp, vf, pr, selic_mensal, sr_anterior);
+        diferenca/sr_parcela/sr_selic/total vindos da tela são ignorados.
+
+        Recusa (ValueError → 422, uma frase por mês) quando o PR ou o VP do mês é zero, ou a
+        SELIC é zero: num trimestre fechado é erro; num aberto, o trimestre ainda não fechou
+        (a SELIC parcial não vale). SELIC digitada à mão (≠ 0) é aceita."""
+        if not entradas or len(entradas) != len(labels_meses):
+            raise ValueError(f"O SR não foi salvo: vieram {len(entradas)} linhas para {len(labels_meses)} meses. "
+                             "Carregue o trimestre de novo na tela SR.")
+        problemas: list[str] = []
+        fecha_em: date | None = None
+        try:
+            fecha_em = servicos_selic.fim_do_trimestre(labels_meses)
+        except ValueError:
+            pass  # meses que não formam um trimestre civil: sem data de fechamento para citar
+        aberto = fecha_em is not None and (hoje or date.today()) <= fecha_em
+        for e in entradas:
+            mes = e.get("mes", "")
+            if not float(e.get("pr") or 0):
+                problemas.append(f"{mes}: o PR está zerado ou ausente. Salve o PR do trimestre "
+                                 f"{chave_pr_do_mes(mes)} na tela PR e carregue o SR de novo.")
+            if not float(e.get("vp") or 0):
+                problemas.append(f"{mes}: o VP está zerado. Salve o PMPV do trimestre que contém {mes}.")
+            if not float(e.get("selic_mensal") or 0):
+                if aberto:
+                    problemas.append(f"{mes}: a SELIC está 0% porque o trimestre ainda não fechou "
+                                     f"(fecha em {_data_br(fecha_em.isoformat())}). Salve o SR depois disso.")
+                else:
+                    problemas.append(f"{mes}: a SELIC está 0%. Busque a SELIC do Banco Central ou digite-a à mão.")
+        if problemas:
+            raise ValueError("O SR não foi salvo. Corrija:\n" + "\n".join(f"- {p}" for p in problemas))
+
+        calculadas = self.calcular_trimestre(entradas)["linhas"]
+        for e, c in zip(entradas, calculadas):
+            enviado = e.get("sr_selic")
+            if enviado is not None and abs(float(enviado) - c["sr_selic"]) > TOL_CONTA_SR:
+                logger.warning("SR de %s: a tela mandou %.2f, o servidor calculou %.2f; gravado o do servidor.",
+                               c["mes"], float(enviado), c["sr_selic"])
+        return self.salvar_trimestre(labels_meses, periodo_referencia, calculadas)
 
     def buscar_trimestre(self, labels_meses: list[str]) -> list[dict[str, Any]]:
         return self.repo.buscar_sr_trimestre(_trimestre_label(labels_meses))

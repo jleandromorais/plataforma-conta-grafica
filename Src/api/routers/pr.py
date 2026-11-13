@@ -43,14 +43,6 @@ def buscar_periodo(
     return PRResultado(periodo=periodo, **dados)
 
 
-@router.post("/trimestral")
-def buscar_trimestral(
-    payload: PRTrimestralRequest,
-    servico: ServicosPR = Depends(get_servicos_pr),
-) -> dict:
-    return servico.buscar_dados_trimestral(payload.periodos)
-
-
 @router.post("/apurar")
 def apurar(
     payload: PRTrimestralRequest,
@@ -66,6 +58,9 @@ def salvar(
     payload: PRSalvarRequest,
     servico: ServicosPR = Depends(get_servicos_pr),
 ) -> PRSalvarResponse:
-    pr = servico.salvar_valores(payload.periodo, payload.scg, payload.sr, payload.vp)
+    """Grava o PR do trimestre da tarifa `periodo` ("Fev - Abr/2026"). O servidor refaz a apuração
+    (SCG com SELIC + SR do trimestre civil ÷ VP) e grava o valor DELE: scg/sr/vp do pedido são
+    ignorados. Faltou SR, SCG, VP ou PMPV → 422 com as pendências, e nada é gravado."""
+    pr = servico.salvar_apurado(payload.periodo)
     # PV do mesmo trimestre refeito com o PR recém-salvo (None se a chave não é de trimestre).
     return PRSalvarResponse(pr=pr, pv_automatico=atualizar_pv_do_pr(payload.periodo))

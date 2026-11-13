@@ -75,10 +75,19 @@ class SRTrimestreCalcularResponse(BaseModel):
     total: float
 
 
+class SRTrimestreLinhaSalvar(SRTrimestreLinhaEntrada):
+    """Linha enviada ao salvar. O servidor refaz a conta com as entradas: os campos
+    calculados abaixo são opcionais e ignorados (só servem para registrar divergência no log)."""
+    diferenca: float | None = None
+    sr_parcela: float | None = None
+    sr_selic: float | None = None
+    total: float | None = None
+
+
 class SRTrimestreSalvarRequest(BaseModel):
     labels_meses: list[str]
     periodo_referencia: str
-    linhas: list[SRTrimestreLinhaCalculada]
+    linhas: list[SRTrimestreLinhaSalvar]
 
 
 class SRTrimestreSalvarResponse(BaseModel):
