@@ -107,7 +107,7 @@ def main():
     alvo.add_argument("--api")
     ap.add_argument("--email")
     ap.add_argument("--planilha", type=Path,
-                    default=next(iter(glob.glob(str(RAIZ / "Novo modelo Alexandre*.xlsx"))), None))
+                    default=next(iter(glob.glob(str(RAIZ / "Excel" / "referencia" / "Novo modelo Alexandre*.xlsx"))), None))
     ap.add_argument("--aplicar", action="store_true")
     ap.add_argument("--diagnostico", action="store_true",
                     help="só compara CGR/RP calculados pelos módulos com a planilha")

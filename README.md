@@ -274,7 +274,20 @@ plataforma-conta-grafica/
 ├── Dockerfile                       # Imagem da API (Railway): python -m Src.api.serve
 ├── requirements.txt                 # Dependências do desktop
 ├── requirements-api.txt             # Dependências da API web
-├── DEPLOY.md                        # Como publicar a API (variáveis, volume /data)
+├── ARCHITECTURE.md                  # Camadas do Src/ (Clean Architecture)
+├── config.env                       # Configuração do pipeline (pastas, Memória de Cálculo)
+│
+├── docs/                            # DEPLOY, DOCUMENTACAO_CONTA_GRAFICA, SPEC_BACKEND_FASTAPI,
+│                                    # MODULOS, COMANDOS, COMO_USAR_AUTOMACAO, estudo/
+├── scripts/                         # Scripts de manutenção (reparos, gerar .exe)
+├── seed/                            # Banco inicial da API (pmpv_data.db)
+│
+│   — só nesta máquina (fora do git) —
+├── Excel/                           # Planilhas: referencia/ (NT, Alexandre, Memória), NF jan-26/
+├── SCG-26 - Copia/, SCG-26 origin/  # Pastas reais de notas (usadas por testes)
+├── _dados_referencia/               # Dados antigos (ex.: SCG-25 out-dez)
+├── backups/                         # Cópias do pmpv_data.db antes de mudanças
+├── _local/                          # Saídas, testes soltos, zips e análises
 │
 ├── Src/
 │   ├── api/                         # API FastAPI: main.py, routers/, schemas/, auth.py, errors.py, serve.py
@@ -329,10 +342,7 @@ plataforma-conta-grafica/
 │   │   ├── servicos_pr.py           # PR = (SGR + SR) / VP
 │   │   ├── servicos_pv.py           # PV = PMPV + PR
 │   │   ├── servicos_consolidacao.py
-│   │   ├── comparador_conta_grafica.py
-│   │   ├── excel_concilia.py
-│   │   ├── excel_auditoria.py
-│   │   └── excel_ret.py
+│   │   └── comparacao/              # Comparadores da Auditoria (NT, Alexandre, Apuração) e explicador de diferenças
 │   ├── Database/
 │   │   └── database.py              # DatabasePMPV — 12 tabelas
 │   ├── application/use_cases/
@@ -344,6 +354,7 @@ plataforma-conta-grafica/
 │   │   │   ├── excel_consolidado.py # ExcelConsolidado (tela Excel Final)
 │   │   │   ├── excel_handler_pmpv.py
 │   │   │   ├── excel_styles.py
+│   │   │   ├── excel_auditoria.py, excel_concilia.py, excel_ret.py  # Excel de cada módulo
 │   │   │   └── excel_sheets/        # sheet_sr, sheet_pr, sheet_pv, sheet_progresso, sheet_dashboard
 │   │   ├── ocr/
 │   │   │   ├── ocr_pdf.py           # OCR com Tesseract
@@ -443,7 +454,7 @@ python -m uvicorn Src.api.main:app --port 8080
 ### Produção (Railway)
 
 - A imagem roda `python -m Src.api.serve`. O banco fica no **volume persistente** `/data/pmpv_data.db`: um deploy troca o programa, **não** o banco. Na primeira subida, se o arquivo não existir, ele é criado (`serve.py`); se existir, é usado como está.
-- Variáveis: `JWT_SECRET`, `CORS_ORIGINS` (URL do site na Vercel), `PERMITIR_CADASTRO`, `PLATAFORMA_DB`. Detalhes em [DEPLOY.md](DEPLOY.md).
+- Variáveis: `JWT_SECRET`, `CORS_ORIGINS` (URL do site na Vercel), `PERMITIR_CADASTRO`, `PLATAFORMA_DB`. Detalhes em [DEPLOY.md](docs/DEPLOY.md).
 - **Deploy = push na `main`.** O trabalho é feito numa branch (`feat/...`) e vai para a `main` quando aprovado.
 
 ---
@@ -536,7 +547,7 @@ DEZ/25   →   Dez/2025
 > ⚠️ **DESCONTINUADO (jun/2026).** Esta stack (Airflow + PostgreSQL) foi **arquivada** em
 > `_arquivado/backend/` por duplicar — e divergir de — os cálculos oficiais em `Src/Services/*`.
 > A automação suportada hoje é `pipeline.py` + Windows Task Scheduler + SQLite
-> (ver [COMO_USAR_AUTOMACAO.md](COMO_USAR_AUTOMACAO.md)). As instruções abaixo ficam apenas
+> (ver [COMO_USAR_AUTOMACAO.md](docs/COMO_USAR_AUTOMACAO.md)). As instruções abaixo ficam apenas
 > como referência histórica; troque `backend/` por `_arquivado/backend/` nos caminhos.
 
 A stack de backend é **opcional** e fornece automação, qualidade de dados e relatórios agendados.
@@ -713,7 +724,7 @@ Lista original (jul/2026):
 1. Verifique se o Docker Desktop está rodando
 2. Libere as portas `5432` e `8080`
 3. Execute `docker-compose down -v` e tente novamente
-4. Consulte `COMANDOS.md` para mais receitas de troubleshooting
+4. Consulte [`docs/COMANDOS.md`](docs/COMANDOS.md) para mais receitas de troubleshooting
 
 </details>
 

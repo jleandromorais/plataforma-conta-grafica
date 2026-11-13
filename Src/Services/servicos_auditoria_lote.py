@@ -22,7 +22,7 @@ from typing import Callable
 
 from Src.common.periodos import ano_do_caminho
 from Src.common.duplicatas import possiveis_duplicatas_por_valor
-from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
+from Src.Services.comparacao.comparador_conta_grafica import _normalizar_numero_nota
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
 
 logger = logging.getLogger(__name__)
@@ -307,8 +307,8 @@ def comparar_com_planilha(itens: list[XMLItem], caminho: str, periodo: str):
 
     Usa o primeiro modelo conhecido que reconhece a planilha (Src/Services/
     comparacao_registro.py); se nenhum reconhece, o comparador genérico (só presença)."""
-    from Src.Services.comparacao_registro import comparar_com_modelo
-    from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
+    from Src.Services.comparacao.comparacao_registro import comparar_com_modelo
+    from Src.Services.comparacao.comparador_conta_grafica import ComparadorContaGrafica
 
     resultado = comparar_com_modelo(itens, caminho, periodo)
     if resultado is not None:
@@ -329,8 +329,8 @@ def conferir_planilha(caminho: str, meses: list[str]) -> dict:
     Usa a mesma detecção de modelo da comparação (comparacao_registro); sem modelo conhecido,
     procura o mês no nome das abas, como o comparador genérico. Planilha que não abre
     vira `ok: False` com o motivo, nunca exceção."""
-    from Src.Services.comparacao_registro import reconhecer_modelo
-    from Src.Services.comparador_conta_grafica import _sheet_corresponde_periodo
+    from Src.Services.comparacao.comparacao_registro import reconhecer_modelo
+    from Src.Services.comparacao.comparador_conta_grafica import _sheet_corresponde_periodo
 
     try:
         achado = reconhecer_modelo(caminho)
@@ -584,7 +584,7 @@ def ler_planilha_para_comparar(caminho: str):
     """Lê a planilha UMA vez e devolve (modelo, lido) para comparar vários meses; None se nenhum
     modelo conhecido a reconhece (aí cada mês usa o comparador genérico). Ler é a parte cara:
     a planilha traz todos os meses do ano, e cada modelo percorre as abas."""
-    from Src.Services.comparacao_registro import reconhecer_modelo
+    from Src.Services.comparacao.comparacao_registro import reconhecer_modelo
 
     return reconhecer_modelo(caminho)
 

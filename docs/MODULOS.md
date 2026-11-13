@@ -97,7 +97,7 @@ Todos os resultados são persistidos na tabela de consolidação.
 |---|---|
 | Serviço | `Src/Services/servicos_ret.py` |
 | View | `Src/Views/tela_ret.py` |
-| Exportação | `Src/Services/excel_ret.py` |
+| Exportação | `Src/infrastructure/exporters/excel_ret.py` |
 
 - Processa PDFs via OCR (`Src/infrastructure/ocr/ocr_pdf.py`, `gemini_pdf.py`).
 - Aplica taxa EUR→BRL (`TAXA_EUR_BRL = 6.0`) e alíquota PIS/COFINS (`0.0925`).

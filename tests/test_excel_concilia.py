@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from Src.Services.excel_concilia import ExcelConcilia
+from Src.infrastructure.exporters.excel_concilia import ExcelConcilia
 from Src.Services.servicos_concilia import PdfItem
 
 

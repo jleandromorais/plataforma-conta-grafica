@@ -5,7 +5,7 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from Src.Services.comparador_conta_grafica import (
+from Src.Services.comparacao.comparador_conta_grafica import (
     ComparadorContaGrafica,
     ResultadoComparacaoNotas,
     _normalizar_numero_nota,

@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from Src.Services.excel_auditoria import ExcelAuditoria
-from Src.Services.comparador_conta_grafica import ResultadoComparacaoNotas
+from Src.infrastructure.exporters.excel_auditoria import ExcelAuditoria
+from Src.Services.comparacao.comparador_conta_grafica import ResultadoComparacaoNotas
 from Src.Services.servicos_auditoria import XMLItem
 
 

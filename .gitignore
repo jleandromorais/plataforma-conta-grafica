@@ -89,3 +89,8 @@ RET_dados.db
 
 *.spec
 *.ps1
+
+# Organização local (13/11/2026): saídas, testes soltos, zips, análises e backups do banco
+_local/
+backups/
+build_log.txt

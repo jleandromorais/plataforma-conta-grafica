@@ -229,13 +229,13 @@ O backend é um projeto Python que expõe os cálculos por uma API FastAPI e man
 | --- | --- |
 | `servicos_pmpv.py` | PMPV e VP do trimestre |
 | `servicos_auditoria.py`, `servicos_auditoria_lote.py` | Lê NF-e/CT-e (XML e PDF) e calcula o CGR por empresa e por mês |
-| `diferencas_auditoria.py`, `explicador_diferencas.py` | Aponta onde o CGR processado difere do gravado ou da planilha, por empresa e por nota, e explica o motivo |
-| `comparador_modelo_nt.py`, `comparador_modelo_apuracao.py`, `comparador_modelo_alexandre.py`, `comparador_conta_grafica.py`, `comparacao_registro.py` | Compara os resultados com a NT, com a planilha de Apuração de Custos e com a planilha oficial de referência |
+| `comparacao/diferencas_auditoria.py`, `comparacao/explicador_diferencas.py` | Aponta onde o CGR processado difere do gravado ou da planilha, por empresa e por nota, e explica o motivo |
+| `comparacao/` (`comparador_modelo_nt.py`, `comparador_modelo_apuracao.py`, `comparador_modelo_alexandre.py`, `comparador_conta_grafica.py`, `comparacao_registro.py`) | Compara os resultados com a NT, com a planilha de Apuração de Custos e com a planilha oficial de referência |
 | `supridores.py` | Cadastro e identificação dos supridores |
 | `servicos_cgf.py` | Volume faturado (faturadas − canceladas − devoluções − consumo próprio) e CGF em R$ |
 | `servicos_rpv.py` | RPV = CGR − CGF |
-| `servicos_ret.py`, `servicos_ret_lote.py`, `excel_ret.py` | Lê PDFs de encargos e classifica em EAT, EC, TOP e penalidades |
-| `servicos_concilia.py`, `servicos_concilia_lote.py`, `excel_concilia.py` | RP: receitas e despesas de penalidade |
+| `servicos_ret.py`, `servicos_ret_lote.py` (Excel em `infrastructure/exporters/excel_ret.py`) | Lê PDFs de encargos e classifica em EAT, EC, TOP e penalidades |
+| `servicos_concilia.py`, `servicos_concilia_lote.py` (Excel em `infrastructure/exporters/excel_concilia.py`) | RP: receitas e despesas de penalidade |
 | `servicos_scg.py`, `servicos_consolidacao.py` | SCG = RPV + RET + RP e consolidação mensal |
 | `servicos_sr.py` | SR do trimestre civil, mês a mês (Quadro 6) |
 | `servicos_selic.py` | Busca a SELIC no Banco Central (série SGS 11, fator diário) e acumula por período |

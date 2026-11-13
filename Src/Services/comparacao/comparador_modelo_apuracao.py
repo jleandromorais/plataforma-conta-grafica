@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import re
 
-from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
-from Src.Services.comparador_modelo_alexandre import (
+from Src.Services.comparacao.comparador_conta_grafica import _normalizar_numero_nota
+from Src.Services.comparacao.comparador_modelo_alexandre import (
     ModeloAlexandre, NotaPlanilha, _achar_aba, _num, _periodo_bloco, abas_por_periodo, comparar as _comparar_notas,
     conferir_mes as _conferir_mes,
 )

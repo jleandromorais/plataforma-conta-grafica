@@ -24,8 +24,8 @@ from datetime import date, datetime
 from typing import Any
 
 from Src.common.periodos import normalizar_periodo
-from Src.Services.comparador_conta_grafica import ResultadoComparacaoNotas, _normalizar_numero_nota
-from Src.Services import explicador_diferencas as exp
+from Src.Services.comparacao.comparador_conta_grafica import ResultadoComparacaoNotas, _normalizar_numero_nota
+from Src.Services.comparacao import explicador_diferencas as exp
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem, empresa_integra_cgr
 from Src.Services.supridores import supridor_canonico, token as _token  # noqa: F401 — supridor_canonico é usado por quem importa deste módulo
 

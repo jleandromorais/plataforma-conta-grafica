@@ -1,4 +1,4 @@
-"""Backend FastAPI sobre Src/Services — ver SPEC_BACKEND_FASTAPI.md.
+"""Backend FastAPI sobre Src/Services — ver docs/SPEC_BACKEND_FASTAPI.md.
 
 Rodar localmente (a partir da raiz do repo `plataforma-conta-grafica`):
     uvicorn Src.api.main:app --reload --port 8080

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from Src.Services.excel_ret import ExcelRET, _mes_abrev_para_num, _trimestre_do_mes, _chave_trimestre
+from Src.infrastructure.exporters.excel_ret import ExcelRET, _mes_abrev_para_num, _trimestre_do_mes, _chave_trimestre
 
 
 class TestHelpersInternos:

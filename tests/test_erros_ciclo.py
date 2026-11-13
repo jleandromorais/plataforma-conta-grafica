@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from Src.api import erros_ciclo
 from Src.Database.database import DatabasePMPV
 from Src.Services import servicos_auditoria_lote as lote
-from Src.Services.diferencas_auditoria import comparar_com_gravado
+from Src.Services.comparacao.diferencas_auditoria import comparar_com_gravado
 from Src.Services.servicos_auditoria import XMLItem
 
 

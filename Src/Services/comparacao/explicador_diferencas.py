@@ -11,7 +11,7 @@ from collections import defaultdict
 from itertools import combinations
 from typing import Any, Callable
 
-from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
+from Src.Services.comparacao.comparador_conta_grafica import _normalizar_numero_nota
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem
 from Src.Services.supridores import supridor_canonico
 

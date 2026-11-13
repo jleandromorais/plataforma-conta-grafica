@@ -6,8 +6,8 @@ from datetime import datetime
 import openpyxl
 import pytest
 
-from Src.Services import comparacao_registro as registro
-from Src.Services import comparador_modelo_apuracao as ap
+from Src.Services.comparacao import comparacao_registro as registro
+from Src.Services.comparacao import comparador_modelo_apuracao as ap
 from Src.Services import servicos_auditoria_lote as lote
 from Src.Services.servicos_auditoria import RegrasAuditoria, XMLItem
 

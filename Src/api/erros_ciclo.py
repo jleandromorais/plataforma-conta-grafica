@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from Src.Services.explicador_diferencas import TOL_VALOR, brl
+from Src.Services.comparacao.explicador_diferencas import TOL_VALOR, brl
 
 _NUMEROS_VAZIOS = {"", "0", "n/a", "na", "s/n", "s/nº"}
 

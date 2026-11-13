@@ -17,9 +17,10 @@ from Src.Database.database import DatabasePMPV
 from Src.Services.servicos_cgf import ServicosCGF
 
 RAIZ = Path(__file__).resolve().parents[1]
-REAIS = [RAIZ / "NF Faturadas e complementares 01.26.xlsx",
-         RAIZ / "NF Canceladas e denegadas 01.26.xlsx",
-         RAIZ / "NF Devolvidas 01.26.xlsx"]
+NF_JAN = RAIZ / "Excel" / "NF jan-26"
+REAIS = [NF_JAN / "NF Faturadas e complementares 01.26.xlsx",
+         NF_JAN / "NF Canceladas e denegadas 01.26.xlsx",
+         NF_JAN / "NF Devolvidas 01.26.xlsx"]
 
 
 @pytest.fixture()

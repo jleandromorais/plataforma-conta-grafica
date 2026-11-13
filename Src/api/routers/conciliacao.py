@@ -28,7 +28,7 @@ from Src.api.uploads import MAX_ARQUIVOS, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services import servicos_concilia_lote as lote_concilia
 from Src.Services import servicos_pr_automatico
-from Src.Services.excel_concilia import ExcelConcilia
+from Src.infrastructure.exporters.excel_concilia import ExcelConcilia
 from Src.Services.servicos_concilia import PdfItem
 
 router = APIRouter(prefix="/conciliacao", tags=["Conciliação"])

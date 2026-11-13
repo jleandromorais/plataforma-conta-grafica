@@ -4,7 +4,7 @@ from __future__ import annotations
 import openpyxl
 import pytest
 
-from Src.Services import comparador_modelo_nt as nt
+from Src.Services.comparacao import comparador_modelo_nt as nt
 from Src.Services.servicos_auditoria import XMLItem
 
 

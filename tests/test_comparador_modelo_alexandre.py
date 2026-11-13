@@ -6,9 +6,9 @@ import openpyxl
 import pandas as pd
 import pytest
 
-from Src.Services import comparador_modelo_alexandre as alex
+from Src.Services.comparacao import comparador_modelo_alexandre as alex
 from Src.Services import servicos_auditoria_lote as lote
-from Src.Services.comparador_conta_grafica import ComparadorContaGrafica, _periodo_de_data
+from Src.Services.comparacao.comparador_conta_grafica import ComparadorContaGrafica, _periodo_de_data
 from Src.Services.servicos_auditoria import XMLItem
 
 

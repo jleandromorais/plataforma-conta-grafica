@@ -9,10 +9,10 @@ import pandas as pd
 
 from Src.config import ui_theme as ui
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
-from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
+from Src.Services.comparacao.comparador_conta_grafica import ComparadorContaGrafica
 from Src.Services.servicos_auditoria import XMLItem
 from Src.Services import servicos_auditoria_lote as lote
-from Src.Services.excel_auditoria import ExcelAuditoria
+from Src.infrastructure.exporters.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_consolidacao import ServicosConsolidacao
 from Src.common.excel_final_destino import registrar_execucao_excel_final, obter_periodos_trimestre
 from Src.common.formatting import format_brl as _fmt_brl
@@ -1003,7 +1003,7 @@ class TelaAuditoria(ctk.CTkFrame):
             self.lbl_status.configure(text="Comparando notas com o Excel...", text_color=ui.COR_AVISO)
             self.update_idletasks()
 
-            from Src.Services.comparador_conta_grafica import ComparadorContaGrafica
+            from Src.Services.comparacao.comparador_conta_grafica import ComparadorContaGrafica
             comparacao = ComparadorContaGrafica.comparar(
                 resultados=self.resultados,
                 df_excel=self.df_excel,

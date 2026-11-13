@@ -20,8 +20,8 @@ from datetime import date, datetime
 from typing import Any
 
 from Src.common.periodos import normalizar_periodo
-from Src.Services import explicador_diferencas as exp
-from Src.Services.comparador_conta_grafica import ResultadoComparacaoNotas
+from Src.Services.comparacao import explicador_diferencas as exp
+from Src.Services.comparacao.comparador_conta_grafica import ResultadoComparacaoNotas
 from Src.Services.servicos_auditoria import XMLItem
 from Src.Services.supridores import supridor_canonico, token as _token
 

@@ -21,10 +21,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from Src.Services import comparador_modelo_alexandre as _alexandre
-from Src.Services import comparador_modelo_apuracao as _apuracao
-from Src.Services import comparador_modelo_nt as _nt
-from Src.Services.comparador_conta_grafica import ResultadoComparacaoNotas
+from Src.Services.comparacao import comparador_modelo_alexandre as _alexandre
+from Src.Services.comparacao import comparador_modelo_apuracao as _apuracao
+from Src.Services.comparacao import comparador_modelo_nt as _nt
+from Src.Services.comparacao.comparador_conta_grafica import ResultadoComparacaoNotas
 from Src.Services.servicos_auditoria import XMLItem
 
 TIPOS = ("por_nota", "por_supridor", "generico")

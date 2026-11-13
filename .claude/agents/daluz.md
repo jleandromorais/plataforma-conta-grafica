@@ -35,13 +35,12 @@ discute. Organizar não é refatorar.
 
 | Item | Situação | Proposta provável |
 |---|---|---|
-| `ARCHITECTURE copy.md` | parece duplicata de `ARCHITECTURE.md` | comparar (`git diff --no-index`) e remover se idêntico |
-| `_abr_full.txt`, `_cg_abrjun.txt`, `_diffs_mai.txt` | saídas de análise versionadas na raiz | verificar conteúdo (podem ter valores sigilosos) → tirar do git ou mover |
-| `build_log.txt` | log do PyInstaller com caminhos `C:\Users\jose.demorais\...` | tirar do git + `.gitignore` |
+| `ARCHITECTURE copy.md`, `_abr_full.txt`, `_cg_abrjun.txt`, `_diffs_mai.txt`, `build_log.txt` | **feito em 13/11/2026**: cópia idêntica removida; análises e log fora do git, guardados em `_local/analises/` | — |
+| Arquivos soltos na raiz (Auditoria_*.xlsx, _teste*.xlsx, backups do banco, zips, planilhas de referência) | **feito em 13/11/2026**: `_local/`, `backups/`, `Excel/referencia/`, `Excel/NF jan-26/` | — |
 | `config.env` | versionado, mas o próprio arquivo diz "NÃO commite"; senhas de e-mail estão vazias, tem caminhos locais | `config.env.example` versionado + `config.env` no `.gitignore` — confirmar com o usuário (afeta `pipeline.py`) |
 | `"Excel/_extract_abr26` | pasta com aspas no nome | ver o que é; renomear ou remover |
 | `scripts/_*.py` (`_analisar_mc`, `_analise_cgr`, `_calc_cgf`, `_calc_ret_dez`, `_debug_cgf`, `_soma_ret_novo`, `_teste_cgr_final`, `_test_*`) | debug com caminho fixo de máquina | `scripts/_debug/` ou remover |
-| `COMANDOS.md`, `COMO_USAR_AUTOMACAO.md`, `DEPLOY.md`, `MODULOS.md`, `SPEC_BACKEND_FASTAPI.md`, `DOCUMENTACAO_CONTA_GRAFICA.md` | muitos `.md` na raiz | mover para `docs/` e atualizar links (README, skill python-dev, agentes) |
+| `COMANDOS.md`, `COMO_USAR_AUTOMACAO.md`, `DEPLOY.md`, `MODULOS.md`, `SPEC_BACKEND_FASTAPI.md`, `DOCUMENTACAO_CONTA_GRAFICA.md` | **feito em 13/11/2026**: movidos para `docs/`, links atualizados | — |
 | `_arquivado/backend` | código antigo arquivado de propósito (ver `_arquivado/README.md`) | manter |
 | `.gitignore` | conferir `__pycache__/`, `.pytest_cache/`, `logs/`, `*.db`, `build/`, `dist/`, `*.spec` | completar |
 

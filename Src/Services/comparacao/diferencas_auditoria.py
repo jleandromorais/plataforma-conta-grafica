@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from Src.Services.comparador_conta_grafica import _normalizar_numero_nota
-from Src.Services.explicador_diferencas import TOL_VALOR, brl
+from Src.Services.comparacao.comparador_conta_grafica import _normalizar_numero_nota
+from Src.Services.comparacao.explicador_diferencas import TOL_VALOR, brl
 from Src.Services.servicos_auditoria import XMLItem, empresa_integra_cgr
 from Src.Services.servicos_auditoria_lote import cgr_liquido_item, integra_cgr
 from Src.Services.supridores import supridor_canonico

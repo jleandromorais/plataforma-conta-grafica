@@ -50,7 +50,7 @@ Sucesso = **bater centavo a centavo** com a planilha oficial (modelo do Alexandr
 
 - **Ordem no trimestre:** CGR → CGF → RPV → RET → RP → SCG → VP → SR → PR(t) → SR(t+1). O SR atual usa o PR do trimestre **anterior**.
 - **Dois trimestres que não se misturam:** SCG/CGR/CGF/RET/RP/SR usam o **civil** (Jan–Mar, Abr–Jun…); PMPV/PR/PV usam o **do ciclo tarifário** (Nov–Jan, Fev–Abr, Mai–Jul, Ago–Out). O civil apurado define o PR 2 meses depois (Abr–Jun → Ago–Out). Utilitários em `Src/common/periodos.py`.
-- **Comparadores** (`comparador_*.py`, `diferencas_auditoria.py`, `explicador_diferencas.py`): confrontam o resultado com a NT, a planilha do Alexandre e a apuração, **por nota e por supridor** — nunca só "bate/não bate".
+- **Comparadores** (`Src/Services/comparacao/`: `comparador_*.py`, `diferencas_auditoria.py`, `explicador_diferencas.py`): confrontam o resultado com a NT, a planilha do Alexandre e a apuração, **por nota e por supridor** — nunca só "bate/não bate".
 - **Precisão:** `Src/common/precisao.py`. Não arredonde no meio do cálculo.
 - Supridores conhecidos em `Src/Services/supridores.py` (Petrobras, Brava, Eneva, Galp, GNLink, Orizon, Petrorecôncavo, TAG, Mastergás…).
 
@@ -81,7 +81,7 @@ tests/                      # pytest; test_api_* (rotas), test_servicos_* (regra
 ```
 
 Documentos de referência (abra quando o assunto aparecer, não repita):
-`ARCHITECTURE.md` · `SPEC_BACKEND_FASTAPI.md` (contrato e regra View→Endpoint) · `MODULOS.md` (dependências entre módulos) · `DOCUMENTACAO_CONTA_GRAFICA.md` (regras de negócio, como mudar um cálculo) · `DEPLOY.md` · `COMANDOS.md` · `docs/estudo/` · skill `.claude/skills/python-dev/SKILL.md` (padrões de código).
+`ARCHITECTURE.md` · `docs/SPEC_BACKEND_FASTAPI.md` (contrato e regra View→Endpoint) · `docs/MODULOS.md` (dependências entre módulos) · `docs/DOCUMENTACAO_CONTA_GRAFICA.md` (regras de negócio, como mudar um cálculo) · `docs/DEPLOY.md` · `docs/COMANDOS.md` · `docs/estudo/` · skill `.claude/skills/python-dev/SKILL.md` (padrões de código).
 
 ## 4. Regras inegociáveis
 

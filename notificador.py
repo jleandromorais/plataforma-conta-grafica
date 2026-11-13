@@ -222,4 +222,4 @@ if __name__ == "__main__":
         print("✅ E-mail enviado com sucesso! Configuração correta.")
     else:
         print("❌ Falha. Verifique EMAIL_REMETENTE e EMAIL_SENHA_APP no config.env")
-        print("   Consulte COMO_USAR_AUTOMACAO.md para o passo a passo.")
+        print("   Consulte docs/COMO_USAR_AUTOMACAO.md para o passo a passo.")

@@ -1,4 +1,4 @@
-"""Onde o CGR processado difere do gravado (Src/Services/diferencas_auditoria.py)."""
+"""Onde o CGR processado difere do gravado (Src/Services/comparacao/diferencas_auditoria.py)."""
 from __future__ import annotations
 
 import pytest
@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from Src.Database.database import DatabasePMPV
 from Src.Services import servicos_auditoria_lote as lote
-from Src.Services.diferencas_auditoria import comparar_com_gravado
+from Src.Services.comparacao.diferencas_auditoria import comparar_com_gravado
 from Src.Services.servicos_auditoria import XMLItem
 
 

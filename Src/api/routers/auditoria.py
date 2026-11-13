@@ -36,8 +36,8 @@ from Src.api.schemas.auditoria import (
 )
 from Src.Services import servicos_auditoria_lote as lote
 from Src.Services import servicos_pr_automatico
-from Src.Services.diferencas_auditoria import comparar_com_gravado
-from Src.Services.excel_auditoria import ExcelAuditoria
+from Src.Services.comparacao.diferencas_auditoria import comparar_com_gravado
+from Src.infrastructure.exporters.excel_auditoria import ExcelAuditoria
 from Src.Services.servicos_auditoria import XMLItem
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
 
