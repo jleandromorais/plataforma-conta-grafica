@@ -1,7 +1,9 @@
-"""PR e PV regravados ao salvar Auditoria, CGF, RET ou RP.
+"""SR, PR e PV depois de salvar Auditoria, CGF, RET ou RP.
 
-Esses módulos mudam o SCG da consolidação e o PR sai dele; antes, o PR e o PV gravados
-ficavam velhos até alguém salvar o SCG ou o SR de novo. Valores fictícios; banco temporário."""
+Esses módulos mudam o SCG da consolidação e o PR sai dele. Desde 13/11 o "salvar" NÃO regrava mais
+o SR, o PR e o PV: devolve a prévia em `cascata` (ver tests/test_cascata.py). As funções
+`atualizar_*` abaixo continuam sendo a conta usada pela prévia e pelo `aplicar`.
+Valores fictícios; banco temporário."""
 from __future__ import annotations
 
 import pytest
@@ -32,6 +34,20 @@ def chamadas(monkeypatch):
     return visto
 
 
+@pytest.fixture()
+def previas(monkeypatch):
+    """Registra os períodos para os quais a rota pediu a prévia da cascata (sem calcular nada)."""
+    from Src.Services.tarifa import servicos_cascata
+    visto: list[list[str]] = []
+
+    def falsa(periodos, a_partir_de="sr"):
+        visto.append(list(periodos))
+        return {"periodos": list(periodos), "a_partir_de": a_partir_de, "desatualizado": False,
+                "trimestres": [], "pendencias": []}
+    monkeypatch.setattr(servicos_cascata, "previa_sem_falhar", falsa)
+    return visto
+
+
 # ── atualizar_dos_meses ──────────────────────────────────────────────────────
 
 def test_meses_do_mesmo_trimestre_atualizam_uma_vez(chamadas):
@@ -54,40 +70,41 @@ def test_periodo_invalido_ou_vazio_e_ignorado(chamadas):
     assert chamadas == []
 
 
-# ── os quatro "salvar" chamam a atualização ──────────────────────────────────
+# ── os "salvar" devolvem a prévia da cascata (não regravam nada) ─────────────────
 
-def test_api_conciliacao_salvar_atualiza_pr_e_pv(client, chamadas):
+def test_api_conciliacao_salvar_traz_a_previa(client, previas):
     itens = [{"arquivo": "d.pdf", "caminho": "despesas/d.pdf", "categoria": "Despesa", "valor": 500.0,
               "status": "OK", "metodo": "x"}]
     resp = client.post("/api/conciliacao/salvar", json={"periodo": "Jul/2026", "itens": itens})
     assert resp.status_code == 200, resp.text
-    assert chamadas == ["Jul/2026"]
+    assert previas == [["Jul/2026"]]
+    assert resp.json()["cascata"]["trimestres"] == []
 
 
-def test_api_cgf_salvar_atualiza_pr_e_pv(client, chamadas):
+def test_api_cgf_salvar_traz_a_previa(client, previas):
     corpo = {"periodo": "Ago/2026", "pmpv": 2.5, "volume_faturado": 1000.0, "volume_canceladas": 0.0,
              "volume_devolucoes": 100.0, "volume_consumo_proprio": 0.0, "volume_final": 900.0}
     resp = client.post("/api/cgf/salvar", json=corpo)
     assert resp.status_code == 200, resp.text
-    assert chamadas == ["Ago/2026"]
+    assert previas == [["Ago/2026"]]
 
 
-def test_cgf_recusado_nao_atualiza(client, chamadas):
+def test_cgf_recusado_nao_pede_previa(client, previas):
     corpo = {"periodo": "Ago/2026", "pmpv": 0, "volume_faturado": 1000.0, "volume_canceladas": 0.0,
              "volume_devolucoes": 100.0, "volume_consumo_proprio": 0.0, "volume_final": 900.0}
     assert client.post("/api/cgf/salvar", json=corpo).status_code == 422  # sem PMPV: nada foi gravado
-    assert chamadas == []
+    assert previas == []
 
 
-def test_api_auditoria_salvar_atualiza_pr_e_pv(client, chamadas, monkeypatch):
+def test_api_auditoria_salvar_traz_a_previa(client, previas, monkeypatch):
     from Src.api.routers import auditoria
     monkeypatch.setattr(auditoria.lote, "salvar", lambda periodo, itens: {"cgr_liquido": 1.0, "rpv": 1.0, "qtd_itens": 0})
     resp = client.post("/api/auditoria/salvar", json={"periodo": "Set/2026", "itens": []})
     assert resp.status_code == 200, resp.text
-    assert chamadas == ["Set/2026"]
+    assert previas == [["Set/2026"]]
 
 
-def test_api_ret_salvar_atualiza_os_meses_salvos(client, chamadas, monkeypatch):
+def test_api_ret_salvar_traz_a_previa_dos_meses_salvos(client, previas, monkeypatch):
     from Src.api.routers import ret
     monkeypatch.setattr(ret.lote_ret, "agrupar_por_mes", lambda docs, periodo_padrao="": {})
     monkeypatch.setattr(ret.lote_ret, "salvar_meses", lambda grupos: [
@@ -98,7 +115,8 @@ def test_api_ret_salvar_atualiza_os_meses_salvos(client, chamadas, monkeypatch):
            "numero_nd": "1", "data_vencimento": "01/08/2026", "valor_total": 10.0}
     resp = client.post("/api/ret/salvar", json={"documentos": [doc]})
     assert resp.status_code == 200, resp.text
-    assert chamadas == ["Jul/2026"]  # Jul e Ago são do mesmo trimestre civil: uma atualização só
+    assert previas == [["Jul/2026", "Ago/2026"]]  # uma prévia só, a mesma em cada item
+    assert all(item["cascata"] is not None for item in resp.json())
 
 
 # ── SR automático: o SR do trimestre civil é recalculado antes do PR ─────────
@@ -205,13 +223,14 @@ def test_api_salvar_scg_traz_sr_automatico(client):
     sr = resp.json()["pr_automatico"]["sr_automatico"]
     assert sr["trimestre"] == "Jul/2026_Set/2026"
     assert sr["atualizado"] is False and sr["pendencias"]   # banco vazio: falta VP, CGF, PR; nada vira zero
+    assert resp.json()["cascata"]["pendencias"]
 
 
-# ── a cadeia inteira, gravando de verdade no banco temporário ────────────────
+# ── salvar um módulo NÃO regrava o PR velho; só o /cascata/aplicar grava ─────
 
-def test_salvar_cgf_regrava_o_pr_velho_e_o_pv(client, tmp_path):
-    """PR velho no banco + salvar um módulo do trimestre → PR e PV novos gravados.
-    Só a apuração (leitura do SCG/SR/VP) é fixa; a gravação do PR e do PV é a real."""
+def test_salvar_cgf_nao_regrava_o_pr_velho_e_o_pv(client, tmp_path):
+    """PR velho no banco + salvar um módulo do trimestre → PR e PV continuam como estavam;
+    o PR novo aparece só na prévia."""
     from unittest.mock import patch
 
     from Src.Services.tarifa.servicos_pr import ServicosPR
@@ -229,7 +248,9 @@ def test_salvar_cgf_regrava_o_pr_velho_e_o_pv(client, tmp_path):
         resp = client.post("/api/cgf/salvar", json=corpo)
     assert resp.status_code == 200, resp.text
 
-    novo_pr = round((-300000.0 + 41053.09) / 135000000.0, 4)
     with DatabasePMPV(db_path=caminho) as db:
-        assert db.buscar_pr("Nov - Jan/2027")["pr"] == pytest.approx(novo_pr)   # o PR velho foi trocado
-        assert db.buscar_pv("Nov - Jan/2026")["pv"] == pytest.approx(2.0 + novo_pr)  # e o PV foi gravado
+        assert db.buscar_pr("Nov - Jan/2027")["pr"] == pytest.approx(-0.0069)  # o PR velho ficou como estava
+        assert not db.buscar_pv("Nov - Jan/2026")                               # e nenhum PV foi gravado
+    # a prévia existe e mostra o PR que sairia (a do SR fica pendente: banco sem VP, CGF e PR do SR)
+    item = resp.json()["cascata"]["trimestres"][0]
+    assert item["chave_pr"] == "Nov - Jan/2027" and item["pr_antes"] == pytest.approx(-0.0069)

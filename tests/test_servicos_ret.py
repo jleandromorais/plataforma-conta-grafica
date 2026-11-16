@@ -97,10 +97,17 @@ class TestExtrairMesCaminho:
         assert mes == 2
 
     def test_sem_mes(self):
-        from datetime import date
-        mes, ano = _extrair_mes_caminho(r"C:\xyz\arq.pdf")
-        assert mes == 0
-        assert ano == date.today().year
+        assert _extrair_mes_caminho(r"C:\xyz\arq.pdf") == (0, 0)
+
+    def test_mes_sem_ano_no_caminho_nao_usa_o_ano_de_hoje(self):
+        # achou "FEV" mas nenhum ano: o mês fica sem referência (o analista escolhe), em vez de virar o ano atual
+        assert _extrair_mes_caminho(r"C:\dados\EAT FEV\x.pdf") == (0, 0)
+
+    def test_ano_de_dois_digitos_colado_ao_mes_continua_valendo(self):
+        assert _extrair_mes_caminho(r"C:\dados\EAT fev25\x.pdf") == (2, 2025)
+
+    def test_documento_sem_ano_no_caminho_fica_sem_mes_ref(self):
+        assert RegrasRET.extrair_dados_pdf(r"C:\dados\EAT FEV\inexistente.pdf")["mes_ref"] == ""
 
 
 # ════════════════════════════════════════════════════════════════════════════

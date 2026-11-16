@@ -1,5 +1,7 @@
 import logging
 import sqlite3
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Dict, List
 
@@ -11,6 +13,21 @@ from Src.common.periodos import (
 
 logger = logging.getLogger(__name__)
 
+# De onde veio a gravação, para a trilha de alterações (`historico_alteracoes.origem`).
+# "salvar" é o padrão; o /cascata/aplicar troca para "cascata" enquanto grava.
+_ORIGEM_ALTERACAO: ContextVar[str] = ContextVar("origem_alteracao", default="salvar")
+_TOLERANCIA_ALTERACAO = 1e-9
+
+
+@contextmanager
+def origem_da_alteracao(origem: str):
+    """Dentro do `with`, as alterações gravadas na trilha levam esta `origem` (ex.: "cascata")."""
+    token = _ORIGEM_ALTERACAO.set(origem)
+    try:
+        yield
+    finally:
+        _ORIGEM_ALTERACAO.reset(token)
+
 
 class DatabasePMPV:
     # Allow-list de tabelas: nomes de tabela/coluna NÃO podem ser parametrizados
@@ -20,8 +37,11 @@ class DatabasePMPV:
         "sessoes", "dados_mes", "resultados", "consolidacao", "pmpv_mensal", "vp_mensal",
         "auditoria_itens", "ret_itens", "concilia_itens", "sr_resultados",
         "sr_trimestre", "cgf_resumo", "pr_resultados", "pv_resultados",
-        "excel_final_sessoes", "excel_final_execucoes", "config",
+        "excel_final_sessoes", "excel_final_execucoes", "config", "historico_alteracoes",
     })
+
+    # Tabelas e campos que a trilha de alterações acompanha (GET /trilha).
+    TABELAS_DA_TRILHA = ("consolidacao", "sr_resultados", "pr_resultados", "pv_resultados", "pmpv_mensal")
 
     @classmethod
     def _validar_tabela(cls, tabela: str) -> str:
@@ -321,8 +341,22 @@ class DatabasePMPV:
                 data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Trilha de alterações: o que mudou, de quanto para quanto e quando. Não guarda quem mudou.
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historico_alteracoes (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                tabela        TEXT NOT NULL,
+                periodo       TEXT NOT NULL,
+                campo         TEXT NOT NULL,
+                valor_antigo  REAL,
+                valor_novo    REAL,
+                origem        TEXT NOT NULL DEFAULT 'salvar',
+                data_hora     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         # Índices para consultas frequentes por período e empresa
         _indexes = [
+            ("idx_historico_periodo",    "historico_alteracoes", "periodo"),
             ("idx_dados_mes_sessao",     "dados_mes",        "sessao_id"),
             ("idx_auditoria_periodo",    "auditoria_itens",  "periodo"),
             ("idx_auditoria_empresa",    "auditoria_itens",  "empresa"),
@@ -559,11 +593,48 @@ class DatabasePMPV:
         self.cursor.execute("SELECT id FROM consolidacao WHERE periodo = ?", (periodo,))
         return self.cursor.fetchone()[0]
     
+    def _registrar_alteracoes(self, tabela: str, periodo: str, antigo: Dict | None, novos: Dict[str, float]):
+        """Anota na trilha cada campo cujo valor MUDOU (valor antigo lido antes de gravar).
+        Sem alteração, nada é anotado. Não faz commit: segue a transação do salvar que a chamou."""
+        origem = _ORIGEM_ALTERACAO.get()
+        for campo, novo in novos.items():
+            if novo is None:
+                continue
+            ant = (antigo or {}).get(campo)
+            ant = None if ant is None else float(ant)
+            if ant is not None and abs(ant - float(novo)) <= _TOLERANCIA_ALTERACAO:
+                continue
+            self.cursor.execute(
+                "INSERT INTO historico_alteracoes (tabela, periodo, campo, valor_antigo, valor_novo, origem) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (tabela, periodo, campo, ant, float(novo), origem),
+            )
+
+    def listar_alteracoes(self, periodo: str | None = None, tabela: str | None = None, limite: int = 200) -> List[Dict]:
+        """Trilha de alterações, da mais recente para a mais antiga. `periodo` e `tabela` filtram (opcionais)."""
+        filtros, valores = [], []
+        if periodo:
+            variantes = self._variantes_periodo(periodo)
+            filtros.append(f"periodo IN ({', '.join('?' for _ in variantes)})")
+            valores.extend(variantes)
+        if tabela:
+            filtros.append("tabela = ?")
+            valores.append(tabela)
+        where = f"WHERE {' AND '.join(filtros)} " if filtros else ""
+        self.cursor.execute(
+            f"SELECT id, tabela, periodo, campo, valor_antigo, valor_novo, origem, data_hora "
+            f"FROM historico_alteracoes {where}ORDER BY data_hora DESC, id DESC LIMIT ?",
+            (*valores, int(limite)),
+        )
+        return [dict(r) for r in self.cursor.fetchall()]
+
     def _update_consolidacao(self, periodo: str, **campos):
         """
         UPDATE seguro: usa IN (variantes) para encontrar a linha
         independente do formato salvo ("Jan/26" ou "Jan/2026").
         """
+        self._registrar_alteracoes("consolidacao", self._normalizar_periodo(periodo),
+                                   self.buscar_consolidacao_bruta(periodo), campos)
         atribuicoes = ", ".join(f"{campo} = ?" for campo in campos)
         valores = list(campos.values())
         variantes = self._variantes_periodo(periodo)
@@ -797,6 +868,8 @@ class DatabasePMPV:
     def salvar_pmpv_mensal(self, periodo: str, pmpv: float):
         """Grava (ou substitui) o PMPV em R$/m³ para um período mensal."""
         periodo = self._normalizar_periodo(periodo)
+        self._registrar_alteracoes("pmpv_mensal", periodo, self._primeiro_por_periodo("pmpv_mensal", periodo),
+                                   {"pmpv": pmpv})
         self.cursor.execute("""
             INSERT OR REPLACE INTO pmpv_mensal (periodo, pmpv, data_atualizacao)
             VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -1039,6 +1112,8 @@ class DatabasePMPV:
 
     def salvar_sr(self, periodo: str, vp: float, vf: float, pr: float, sr: float):
         periodo = self._normalizar_periodo(periodo)
+        self._registrar_alteracoes("sr_resultados", periodo, self._primeiro_por_periodo("sr_resultados", periodo),
+                                   {"vp": vp, "vf": vf, "pr": pr, "sr": sr})
         self.cursor.execute("""
             INSERT OR REPLACE INTO sr_resultados (periodo, vp, vf, pr, sr, data_atualizacao)
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1101,6 +1176,8 @@ class DatabasePMPV:
 
     def salvar_pr(self, periodo: str, scg: float, sr: float, vp: float, pr: float):
         periodo = self._normalizar_periodo(periodo)
+        self._registrar_alteracoes("pr_resultados", periodo, self._primeiro_por_periodo("pr_resultados", periodo),
+                                   {"scg": scg, "sr": sr, "vp": vp, "pr": pr})
         self.cursor.execute("""
             INSERT OR REPLACE INTO pr_resultados (periodo, scg, sr, vp, pr, data_atualizacao)
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1109,6 +1186,34 @@ class DatabasePMPV:
 
     def buscar_pr(self, periodo: str) -> Dict:
         return self._primeiro_por_periodo("pr_resultados", periodo)
+
+    def contar_pr(self, periodo: str) -> int:
+        """Quantas linhas de `pr_resultados` têm esta chave (com as variantes do período). NÃO apaga nada."""
+        variantes = self._variantes_periodo(periodo)
+        if not variantes:
+            return 0
+        self.cursor.execute(
+            f"SELECT COUNT(*) FROM pr_resultados WHERE periodo IN ({', '.join('?' for _ in variantes)})", variantes)
+        return int(self.cursor.fetchone()[0])
+
+    def apagar_pr(self, periodo: str) -> int:
+        """Apaga o PR desta chave (só `pr_resultados`; o PV não é tocado). Devolve quantas linhas saíram."""
+        variantes = self._variantes_periodo(periodo)
+        if not variantes:
+            return 0
+        antigo = self._primeiro_por_periodo("pr_resultados", periodo)
+        self.cursor.execute(
+            f"DELETE FROM pr_resultados WHERE periodo IN ({', '.join('?' for _ in variantes)})", variantes)
+        apagadas = int(self.cursor.rowcount or 0)
+        if apagadas and antigo and antigo.get("pr") is not None:
+            # Apagar também fica na trilha: o PR foi de X para "sem valor" (valor_novo vazio).
+            self.cursor.execute(
+                "INSERT INTO historico_alteracoes (tabela, periodo, campo, valor_antigo, valor_novo, origem) "
+                "VALUES ('pr_resultados', ?, 'pr', ?, NULL, 'apagar')",
+                (self._normalizar_periodo(periodo), float(antigo["pr"])),
+            )
+        self.conn.commit()
+        return apagadas
 
     def listar_pr(self) -> List[Dict]:
         self.cursor.execute("SELECT * FROM pr_resultados ORDER BY data_atualizacao DESC")
@@ -1120,6 +1225,8 @@ class DatabasePMPV:
 
     def salvar_pv(self, periodo: str, pmpv: float, pr: float, pv: float):
         periodo = self._normalizar_periodo(periodo)
+        self._registrar_alteracoes("pv_resultados", periodo, self._primeiro_por_periodo("pv_resultados", periodo),
+                                   {"pmpv": pmpv, "pr": pr, "pv": pv})
         self.cursor.execute("""
             INSERT OR REPLACE INTO pv_resultados (periodo, pmpv, pr, pv, data_atualizacao)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1130,8 +1237,13 @@ class DatabasePMPV:
         return self._primeiro_por_periodo("pv_resultados", periodo)
 
     def salvar_pv_lote(self, periodos: List[str], pmpv: float, pr: float, pv: float):
-        """Grava o mesmo PV em vários períodos numa transação só (tudo ou nada)."""
+        """Grava o mesmo PV em vários períodos numa transação só (tudo ou nada).
+        A trilha anota só o 1º período (a chave do trimestre): os meses repetem o mesmo valor."""
         try:
+            if periodos:
+                primeiro = self._normalizar_periodo(periodos[0])
+                self._registrar_alteracoes("pv_resultados", primeiro, self._primeiro_por_periodo("pv_resultados", primeiro),
+                                           {"pmpv": pmpv, "pr": pr, "pv": pv})
             for periodo in periodos:
                 self.cursor.execute("""
                     INSERT OR REPLACE INTO pv_resultados (periodo, pmpv, pr, pv, data_atualizacao)

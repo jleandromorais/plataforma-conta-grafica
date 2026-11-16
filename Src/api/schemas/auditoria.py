@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from Src.api.schemas.comum import ProblemaArquivo
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.duplicatas import PossivelDuplicataValor
 
 
@@ -107,6 +108,7 @@ class SalvarAuditoriaResponse(BaseModel):
     cgr_liquido: float
     rpv: float
     qtd_itens: int
+    cascata: Cascata | None = None  # prévia do SR, PR e PV (nada foi regravado); aprovar em /cascata/aplicar
 
 
 class ProvaRealEmpresa(BaseModel):

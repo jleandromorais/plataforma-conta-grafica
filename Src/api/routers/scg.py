@@ -14,7 +14,7 @@ from Src.api.schemas.scg import (
     SCGSalvoResponse,
     SCGValores,
 )
-from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.tarifa import servicos_cascata
 from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.apuracao.servicos_scg import ServicosSCG
 from Src.common.periodos import is_periodo_valido, normalizar_periodo
@@ -85,14 +85,15 @@ def salvar(
     payload: SalvarManualRequest,
     servico: ServicosSCG = Depends(get_servicos_scg),
 ) -> SCGSalvoResponse:
-    """Grava CGR/CGF/RET/RP escolhidos, recalcula RPV e SCG e regrava o PR e o PV
-    do trimestre que usa este mês (servicos_pr_automatico)."""
+    """Grava CGR/CGF/RET/RP escolhidos e recalcula RPV e SCG. O SR, o PR e o PV NÃO são regravados:
+    a prévia deles vem em `cascata` e só é gravada em POST /cascata/aplicar, depois da aprovação."""
     if not is_periodo_valido(payload.periodo):
         raise ValueError(f'O período “{payload.periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     dados = servico.salvar_e_calcular(payload.periodo, payload.cgr, payload.cgf, payload.ret, payload.rp)
+    cascata = servicos_cascata.previa_sem_falhar([payload.periodo])
     return SCGSalvoResponse(
         periodo=payload.periodo, **{k: dados[k] for k in ("cgr", "cgf", "rpv", "ret", "rp", "scg")},
-        pr_automatico=servicos_pr_automatico.atualizar_sr_e_pr_sem_falhar(payload.periodo),
+        pr_automatico=servicos_cascata.pr_automatico_legado(cascata), cascata=cascata,
     )
 
 

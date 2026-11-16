@@ -147,11 +147,10 @@ class PlataformaFinanceira(ctk.CTk):
         _botao("📄 RET — Encargos", self.abrir_ret, COR_MOD2, COR_MOD2_H)
         _botao("📑 RP — Conciliação", self.abrir_ocr, COR_MOD2, COR_MOD2_H)
         _botao("💼 SCG — Consolidação", self.abrir_scg, COR_MOD2, COR_MOD2_H)
-        _botao("📈 SR — Saldo Regulatório", self.abrir_sr, COR_MOD2, COR_MOD2_H)
+        # SR e PR saíram do menu do desktop (13/11): agora são feitos no site, com prévia e aprovação.
 
         # ── MÓDULO 3 — CONSOLIDAÇÃO ───────────────────
         _separador("── MÓDULO 3  CONSOLIDAÇÃO ──────", COR_MOD3)
-        _botao("💡 PR — Preço Regulatório", self.abrir_pr, COR_MOD3, COR_MOD3_H)
         _botao("💰 PV Final", self.abrir_pv, COR_MOD3, COR_MOD3_H)
 
         # ── EXPORTAÇÃO ────────────────────────────────
@@ -256,7 +255,7 @@ class PlataformaFinanceira(ctk.CTk):
                     {"titulo": "📄 RET", "desc": "Encargos\nEAT + EC", "comando": self.abrir_ret},
                     {"titulo": "📑 RP", "desc": "Conciliação de\npenalidades (PDFs)", "comando": self.abrir_ocr},
                     {"titulo": "💼 SCG", "desc": "RPV + RET + RP", "comando": self.abrir_scg},
-                    {"titulo": "📈 SR", "desc": "(VP − VF) × PR", "comando": self.abrir_sr},
+                    {"titulo": "📈 SR", "desc": "(VP − VF) × PR", "comando": None},  # aposentado no desktop: Em breve
                 ],
             },
             {
@@ -264,7 +263,7 @@ class PlataformaFinanceira(ctk.CTk):
                 "titulo": "Consolidação — Parcela de Recuperação",
                 "subtitulo": "Agrega os 3 meses e calcula o Preço Regulatório e PV final.",
                 "cards": [
-                    {"titulo": "💡 PR", "desc": "Preço Regulatório\n(SCG + SR) ÷ VP", "comando": self.abrir_pr},
+                    {"titulo": "💡 PR", "desc": "Preço Regulatório\n(SCG + SR) ÷ VP", "comando": None},  # aposentado no desktop: Em breve
                     {"titulo": "💰 PV Final", "desc": "PMPV + PR\npor período", "comando": self.abrir_pv},
                     {"titulo": "📊 Excel Final", "desc": "Exporta todos os módulos\nconsolidados", "comando": self.exportar_relatorio_consolidado},
                 ],

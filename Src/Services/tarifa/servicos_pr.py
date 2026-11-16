@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from Src.application.use_cases.sr_use_cases import vp_do_mes
+from Src.application.use_cases.sr_use_cases import mensagem_selic_zero, vp_do_mes
 from Src.common.periodos import TRIMESTRES_FISCAIS_ABREVS, periodos_do_trimestre
 from Src.common.precisao import arredondar_tarifa
 from Src.domain.ports.repositories import PRRepository
@@ -195,17 +195,21 @@ class ServicosPR:
         return {"meses": detalhe, "scg_selic": scg_selic, "sr": sr, "saldo_total": saldo,
                 "vp": vp, "pr": pr, "pmpv": pmpv, "pv": arredondar_tarifa(pmpv + pr) if pmpv else 0.0}
 
-    def apurar_trimestre(self, meses_pr: list[str]) -> dict:
+    def apurar_trimestre(self, meses_pr: list[str], sr_linhas: list[dict] | None = None) -> dict:
         """Lê do banco o que o PR de `meses_pr` precisa e aplica `apurar_pr_nt`:
         SCG da consolidação e SELIC/SR do SR salvo do trimestre civil apurado,
-        VP do PMPV de cada mês do PR. `pendencias` diz o que falta."""
+        VP do PMPV de cada mês do PR. `pendencias` diz o que falta.
+
+        `sr_linhas` (opcional) são linhas de SR ainda NÃO gravadas ({mes, selic_mensal, sr_selic}):
+        a prévia da cascata as usa no lugar do SR salvo, para mostrar o PR que sairia do SR novo."""
         apurados = meses_apurados_do_pr(meses_pr)
         label_sr = f"{apurados[0]}_{apurados[-1]}"
         pendencias = []
         repo_sr = SqliteSRRepository()
         cons = ServicosConsolidacao()
         try:
-            sr_salvo = {r["mes"]: r for r in (repo_sr.buscar_sr_trimestre(label_sr) or [])}
+            sr_salvo = {r["mes"]: r for r in (sr_linhas if sr_linhas is not None
+                                              else repo_sr.buscar_sr_trimestre(label_sr) or [])}
             if not sr_salvo:
                 pendencias.append(f"Salve o SR de {apurados[0]} a {apurados[-1]} na tela SR.")
             meses = []
@@ -218,6 +222,9 @@ class ServicosPR:
                     pendencias.append(f"Falta o SR de {p} no SR salvo de {apurados[0]} a {apurados[-1]}: "
                                       "salve o SR do trimestre de novo na tela SR.")
                 linha = sr_salvo.get(p) or {}
+                if p in sr_salvo and not float(linha.get("selic_mensal") or 0):
+                    # SELIC 0% no SR salvo: o PR sairia sem a correção. Mesma recusa do SR.
+                    pendencias.append(mensagem_selic_zero(p, apurados))
                 meses.append({"periodo": p, "scg": float((dados or {}).get("scg") or 0.0),
                               "selic": float(linha.get("selic_mensal") or 0.0),
                               "sr": float(linha.get("sr_selic") or 0.0)})
@@ -256,6 +263,20 @@ class ServicosPR:
         pr = arredondar_tarifa(self.calcular_pr(scg, sr, vp))  # ROUND(...;4), como a planilha
         self._repo.salvar_pr(periodo, scg, sr, vp, pr)
         return pr
+
+    def apagar_pr(self, chave_pr: str, aplicar: bool = False) -> dict:
+        """Apaga o PR salvo de `chave_pr` ("Fev - Abr/2026"), para o analista refazê-lo depois.
+
+        Sem `aplicar` só SIMULA: diz quantas linhas sairiam e NÃO apaga nada. O PV do trimestre não é
+        tocado. Chave fora do formato → ValueError (422); chave sem PR salvo → LookupError (404)."""
+        meses_da_chave_pr(chave_pr)  # recusa chave que não é de trimestre da tarifa
+        linhas = self._repo.contar_pr(chave_pr)
+        if not linhas:
+            raise LookupError(f"Não há PR salvo para {chave_pr}. Confira o nome do trimestre, por exemplo Fev - Abr/2026.")
+        if aplicar:
+            linhas = self._repo.apagar_pr(chave_pr)
+        return {"periodo": chave_pr, "aplicado": aplicar, "total_linhas": linhas,
+                "tabelas": [{"tabela": "pr_resultados", "linhas": linhas}]}
 
     def gerar_texto_historico(self) -> str:
         periodos = self._repo.listar_pr()

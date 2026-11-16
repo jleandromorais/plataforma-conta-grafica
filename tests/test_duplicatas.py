@@ -17,7 +17,17 @@ def _achar(itens, **kw):
 class TestHelper:
     def test_mesmo_valor_no_mesmo_grupo_avisa(self):
         r = _achar([{"g": "Receita", "v": 25243.08, "n": "a.pdf", "id": 7}, {"g": "Receita", "v": 25243.08, "n": "b.pdf", "id": 9}])
-        assert r == [{"grupo": "Receita", "valor": 25243.08, "qtd": 2, "notas": ["a.pdf", "b.pdf"], "ids": [7, 9]}]
+        assert r == [{"grupo": "Receita", "valor": 25243.08, "qtd": 2, "notas": ["a.pdf", "b.pdf"], "ids": [7, 9],
+                      "detalhes": [{"id": 7, "nome": "a.pdf", "numero": None, "valor": 25243.08},
+                                   {"id": 9, "nome": "b.pdf", "numero": None, "valor": 25243.08}]}]
+
+    def test_detalhes_trazem_numero_volume_e_vencimento(self):
+        itens = [{"g": "R", "v": 100.0, "n": "a", "id": 1, "num": 265, "vol": 1000.0, "venc": "10/08/2026"},
+                 {"g": "R", "v": 100.0, "n": "b", "id": 2, "num": 255}]
+        r = _achar(itens, contexto=lambda i: {"numero": i["num"], "volume": i.get("vol"), "vencimento": i.get("venc")})
+        assert r[0]["detalhes"] == [
+            {"id": 1, "nome": "a", "numero": "265", "valor": 100.0, "volume": 1000.0, "vencimento": "10/08/2026"},
+            {"id": 2, "nome": "b", "numero": "255", "valor": 100.0}]
 
     def test_grupos_diferentes_nao_avisam(self):
         assert _achar([{"g": "Receita", "v": 10.0, "n": "a"}, {"g": "Despesa", "v": 10.0, "n": "b"}]) == []
@@ -76,6 +86,9 @@ def test_rp_cópia_renomeada_da_klabin_avisa_por_valor(client):
     # a tabela de notas destaca exatamente essas duas
     marcadas = [i["nome"] for i in d["itens"] if i["possivel_duplicata"]]
     assert sorted(marcadas) == sorted(g["notas"]) and len(marcadas) == 2
+    # o contexto de cada nota: o RP só tem número e valor
+    assert [d["valor"] for d in g["detalhes"]] == [25243.08, 25243.08]
+    assert all("volume" not in d or d["volume"] is None for d in g["detalhes"])
 
 
 def test_rp_sem_valores_repetidos_nao_avisa(client):
@@ -111,6 +124,17 @@ def test_ret_mesmo_valor_mesma_empresa_e_tipo_avisa(client):
     [g] = p["possiveis_duplicatas_valor"]
     assert (g["grupo"], g["valor"], g["qtd"]) == ("EAT · Empresa A", 1000.0, 2)
     assert sorted(g["notas"]) == ["eat1 copia.pdf", "eat1.pdf"]
+
+
+def test_ret_detalhes_trazem_numero_e_vencimento(client):
+    docs = [{**_doc("EAT", 1000.0, "Empresa A", "eat1.pdf"), "numero_nd": "77", "data_vencimento": "10/01/2026"},
+            {**_doc("EAT", 1000.0, "Empresa A", "eat1 copia.pdf"), "numero_nd": "78", "data_vencimento": "15/01/2026"}]
+    client.post("/api/ret/salvar", json={"documentos": docs})
+    [g] = client.get("/api/ret/prova-real", params={"periodo": "Jan/2026"}).json()["possiveis_duplicatas_valor"]
+    por_nome = {d["nome"]: d for d in g["detalhes"]}
+    assert por_nome["eat1.pdf"]["numero"] == "77" and por_nome["eat1.pdf"]["vencimento"] == "10/01/2026"
+    assert por_nome["eat1 copia.pdf"]["vencimento"] == "15/01/2026" and por_nome["eat1.pdf"]["valor"] == 1000.0
+    assert "volume" not in {k for d in g["detalhes"] for k, v in d.items() if v is not None}  # RET não tem volume
 
 
 def test_ret_sem_repeticao_nao_avisa(client):
@@ -286,6 +310,20 @@ def test_auditoria_mesmo_valor_mesma_empresa_e_tipo_avisa(client):
     [g] = p["possiveis_duplicatas_valor"]
     assert (g["grupo"], g["valor"], g["qtd"]) == ("NF-e · PETROBRAS", 50000.0, 2)
     assert sorted(g["notas"]) == ["NF-e 10", "NF-e 11"]
+
+
+def test_auditoria_detalhes_trazem_numero_e_volume(client):
+    itens = [{"empresa": "GNLINK", "tipo": "NF-e", "numero": "265", "valor_total": 25000.0, "cgr_liquido": 20000.0,
+              "volume_total": 1000.0},
+             {"empresa": "GNLINK", "tipo": "NF-e", "numero": "255", "valor_total": 25000.0, "cgr_liquido": 20000.0,
+              "volume_total": 900.0}]
+    with DatabasePMPV() as db:
+        db.salvar_auditoria_itens("Mar/2026", itens)
+    resposta = client.get("/api/auditoria/prova-real", params={"periodo": "Mar/2026"}).json()
+    [g] = resposta["possiveis_duplicatas_valor"]
+    por_numero = {d["numero"]: d for d in g["detalhes"]}
+    assert por_numero["265"]["volume"] == 1000.0 and por_numero["255"]["volume"] == 900.0
+    assert all(d["valor"] == 25000.0 and d["id"] is not None for d in g["detalhes"])
 
 
 def test_auditoria_sem_notas_nao_avisa(client):

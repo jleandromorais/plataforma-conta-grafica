@@ -187,6 +187,12 @@ class SqlitePRRepository(PRRepository):
     def salvar_pr(self, periodo: str, scg: float, sr: float, vp: float, pr: float):
         return self.db.salvar_pr(periodo, scg, sr, vp, pr)
 
+    def contar_pr(self, periodo: str) -> int:
+        return self.db.contar_pr(periodo)
+
+    def apagar_pr(self, periodo: str) -> int:
+        return self.db.apagar_pr(periodo)
+
     def listar_pr(self):
         return self.db.listar_pr()
 

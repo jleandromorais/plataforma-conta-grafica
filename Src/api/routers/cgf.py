@@ -20,7 +20,7 @@ from Src.api.schemas.cgf import (
     ProvaRealCGF,
 )
 from Src.api.schemas.comum import ProblemaArquivo
-from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.tarifa import servicos_cascata
 from Src.Services.cgf.servicos_cgf import ServicosCGF
 from Src.common.periodos import normalizar_periodo
 
@@ -92,9 +92,8 @@ def calcular_rs(payload: CGFCalcularRSRequest) -> CGFCalcularRSResponse:
 def salvar(payload: CGFSalvarRequest) -> CGFSalvarResponse:
     """Grava CGF em R$ (volume final × PMPV) e o resumo de volumes. Exige PMPV."""
     salvo = ServicosCGF().salvar_com_pmpv(payload.periodo, payload.model_dump(), payload.pmpv)
-    # O CGF mudou o RPV e o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
-    return CGFSalvarResponse(**salvo)
+    # O CGF mudou o RPV e o SCG do mês: SR, PR e PV ficam como estão; a prévia vai em `cascata`.
+    return CGFSalvarResponse(**salvo, cascata=servicos_cascata.previa_sem_falhar([payload.periodo]))
 
 
 @router.get("/prova-real", response_model=ProvaRealCGF)

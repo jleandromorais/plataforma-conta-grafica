@@ -49,9 +49,10 @@ def _trimestre_do_ciclo(periodo: str) -> tuple[str, int]:
     return _FISCAIS[_MESES[inicio % 12]], inicio // 12
 
 
-def _gravar_pv(repo, label: str, ano_pv: int, pr: float | None = None) -> dict:
+def _gravar_pv(repo, label: str, ano_pv: int, pr: float | None = None, gravar: bool = True) -> dict:
     """Regrava o PV (PMPV + PR) de um trimestre do ciclo. `pr` None = usa o PR SALVO.
-    Devolve {trimestre, atualizado, pv_antes, pv, pendencias}; com pendência nada é gravado."""
+    Devolve {trimestre, atualizado, pv_antes, pv, pendencias}; com pendência nada é gravado.
+    Com `gravar=False` só calcula: `pv` traz o valor novo e `atualizado` fica False (prévia da cascata)."""
     servico_pv = ServicosPV(repo)
     trimestre = servico_pv.buscar_trimestre(label, ano_pv)
     periodos = trimestre["periodos"]
@@ -71,23 +72,30 @@ def _gravar_pv(repo, label: str, ano_pv: int, pr: float | None = None) -> dict:
         resultado["pendencias"].append(f"PV não atualizado: falta o PMPV de {periodos[0]}.")
     if resultado["pendencias"]:
         return resultado
+    if not gravar:
+        resultado["pv"] = servico_pv.calcular_pv(trimestre["pmpv"], pr)
+        return resultado
     resultado["pv"] = servico_pv.salvar_trimestre(label, ano_pv, trimestre["pmpv"], pr)["pv"]
     resultado["atualizado"] = True
     return resultado
 
 
-def atualizar_do_mes(periodo: str, repo: SqlitePRRepository | None = None) -> dict:
+def atualizar_do_mes(periodo: str, repo: SqlitePRRepository | None = None, gravar: bool = True,
+                     sr_linhas: list[dict] | None = None) -> dict:
     """Recalcula e grava o PR e o PV que dependem do trimestre civil de `periodo`.
 
     Devolve {meses_pr, atualizado, pr_antes, pr, pv_antes, pv, pendencias}.
-    `atualizado` False = nada gravado (ver `pendencias`)."""
+    `atualizado` False = nada gravado (ver `pendencias`).
+
+    Com `gravar=False` só calcula: `pr` e `pv` trazem os valores novos, nada é escrito.
+    `sr_linhas` (só para a prévia) são as linhas do SR novo, ainda não gravado: o PR é calculado com elas."""
     meses_pr = meses_do_pr_do_civil(periodo)
     label = _FISCAIS[meses_pr[0].split("/")[0]]
     proprio = repo is None
     repo = repo or SqlitePRRepository()
     try:
         servico_pr = ServicosPR(repo)
-        apuracao = servico_pr.apurar_trimestre(meses_pr)
+        apuracao = servico_pr.apurar_trimestre(meses_pr, sr_linhas=sr_linhas) if sr_linhas is not None             else servico_pr.apurar_trimestre(meses_pr)
         resultado = {"meses_pr": meses_pr, "atualizado": False, "pr_antes": None, "pr": None,
                      "pv_antes": None, "pv": None, "pendencias": list(apuracao["pendencias"])}
         if resultado["pendencias"]:
@@ -98,11 +106,15 @@ def atualizar_do_mes(periodo: str, repo: SqlitePRRepository | None = None) -> di
         chave_pr = f"{label}/{meses_pr[-1].split('/')[1]}"
         antes = repo.buscar_pr(chave_pr)
         resultado["pr_antes"] = float(antes["pr"]) if antes and antes.get("pr") is not None else None
-        pr = servico_pr.salvar_valores(chave_pr, apuracao["scg_selic"], apuracao["sr"], apuracao["vp"])
-        resultado.update(atualizado=True, pr=pr)
+        if gravar:
+            pr = servico_pr.salvar_valores(chave_pr, apuracao["scg_selic"], apuracao["sr"], apuracao["vp"])
+            resultado.update(atualizado=True, pr=pr)
+        else:
+            pr = apuracao["pr"]  # mesma conta, já arredondada em 4 casas por `apurar_pr_nt`
+            resultado.update(pr=pr)
 
-        # PV do mesmo trimestre, com o PR que acabou de ser gravado.
-        pv = _gravar_pv(repo, label, int(meses_pr[0].split("/")[1]), pr)
+        # PV do mesmo trimestre, com o PR (gravado ou, na prévia, calculado).
+        pv = _gravar_pv(repo, label, int(meses_pr[0].split("/")[1]), pr, gravar=gravar)
         resultado.update(pv_antes=pv["pv_antes"], pv=pv["pv"])
         resultado["pendencias"].extend(pv["pendencias"])
         return resultado
@@ -135,15 +147,19 @@ def meses_do_trimestre_civil(periodo: str) -> list[str]:
 _CAMPOS_SR = ("mes", "vp", "vf", "pr", "selic_mensal", "diferenca", "sr_parcela", "sr_selic", "sr_anterior", "total")
 
 
-def atualizar_sr_do_mes(periodo: str) -> dict:
+def atualizar_sr_do_mes(periodo: str, gravar: bool = True) -> dict:
     """Recalcula e grava o SR do trimestre civil de `periodo`, pela regra de sempre: a mesma
     proposta da tela SR (VP do PMPV, VF do CGF, PR do trimestre fiscal do próprio mês, SELIC do BC).
 
-    Devolve {trimestre, atualizado, sr_antes, sr, pendencias}. Se faltar algo (VP, CGF, PR de
-    do mês ou SELIC), NADA é gravado e o motivo vem em `pendencias`: a falta nunca vira zero."""
+    Devolve {trimestre, atualizado, sr_antes, sr, linhas, pendencias}. Se faltar algo (VP, CGF, PR
+    do mês ou SELIC), NADA é gravado e o motivo vem em `pendencias`: a falta nunca vira zero.
+
+    Ao gravar, usa `salvar_trimestre_conferido`: a mesma recusa do "Salvar" da tela SR (PR, VP ou SELIC
+    zerados). Com `gravar=False` só calcula: `sr` é o valor novo, `atualizado` fica False e `linhas`
+    traz {mes, selic_mensal, sr_selic} de cada mês, para a prévia do PR usar o SR novo."""
     labels = meses_do_trimestre_civil(periodo)
     resultado = {"trimestre": f"{labels[0]}_{labels[-1]}", "atualizado": False,
-                 "sr_antes": None, "sr": None, "pendencias": []}
+                 "sr_antes": None, "sr": None, "linhas": [], "pendencias": []}
     with SRUseCases() as uc:
         gravados = uc.buscar_trimestre(labels)
         if gravados:
@@ -154,7 +170,18 @@ def atualizar_sr_do_mes(periodo: str) -> dict:
                                        for b in proposta["bloqueios"]]
             return resultado
         linhas = [{c: linha[c] for c in _CAMPOS_SR} for linha in proposta["linhas"]]
-        resultado["sr"] = uc.salvar_trimestre(labels, labels[-1], linhas)  # mesma referência da tela SR
+        resultado["linhas"] = [{"mes": l["mes"], "selic_mensal": l["selic_mensal"], "sr_selic": l["sr_selic"]}
+                               for l in linhas]
+        if not gravar:
+            resultado["sr"] = sum(l["sr_selic"] for l in linhas)
+            return resultado
+        try:
+            # mesma referência da tela SR (último mês do trimestre)
+            resultado["sr"] = uc.salvar_trimestre_conferido(labels, labels[-1], linhas)
+        except ValueError as exc:  # recusa do conferido (PR, VP ou SELIC zerados): nada foi gravado
+            motivos = [l.lstrip("- ") for l in str(exc).splitlines()[1:] if l.strip()] or [str(exc)]
+            resultado["pendencias"] = [f"SR de {labels[0]} a {labels[-1]} não atualizado: {m}" for m in motivos]
+            return resultado
         resultado["atualizado"] = True
     return resultado
 

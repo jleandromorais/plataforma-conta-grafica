@@ -218,6 +218,7 @@ def prova_real(periodo: str) -> dict:
         (i for i in itens if i["lado"] != "ja_no_ret"),
         grupo=lambda i: "Receita" if i["lado"] == "receita" else "Despesa",
         valor=lambda i: i["valor"], nome=lambda i: i["nome"], ja_avisada=lambda i: i["repetida"],
+        contexto=lambda i: {"numero": i.get("numero") or None},  # RP: só número e valor
     )
     # A tabela de notas destaca essas notas (e o filtro "Só repetidas" as mostra).
     ids_em_duplicata = {i for g in por_valor for i in g["ids"]}

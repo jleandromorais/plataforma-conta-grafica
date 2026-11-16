@@ -35,7 +35,7 @@ from Src.api.schemas.auditoria import (
     TotaisAuditoria,
 )
 from Src.Services.auditoria import servicos_auditoria_lote as lote
-from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.tarifa import servicos_cascata
 from Src.Services.comparacao.diferencas_auditoria import comparar_com_gravado
 from Src.infrastructure.exporters.excel_auditoria import ExcelAuditoria
 from Src.Services.auditoria.servicos_auditoria import XMLItem
@@ -198,9 +198,8 @@ def salvar(payload: SalvarAuditoriaRequest) -> SalvarAuditoriaResponse:
     if not is_periodo_valido(payload.periodo):
         raise ValueError("Período inválido. Escolha o mês e o ano, por exemplo Jan/2026.")
     salvo = lote.salvar(payload.periodo, [_item_da_api(i) for i in payload.itens])
-    # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
-    return SalvarAuditoriaResponse(**salvo)
+    # O CGR mudou o SCG do mês: SR, PR e PV ficam como estão; a prévia vai em `cascata`.
+    return SalvarAuditoriaResponse(**salvo, cascata=servicos_cascata.previa_sem_falhar([payload.periodo]))
 
 
 @router.post("/remover-nota", response_model=RemoverNotaResponse)
@@ -208,9 +207,8 @@ def remover_nota(payload: RemoverNotaRequest) -> RemoverNotaResponse:
     """Tira UMA nota gravada do mês (o aviso "Possível duplicata" da prova real) e regrava o CGR sem ela."""
     periodo = normalizar_periodo(payload.periodo) or payload.periodo
     salvo = lote.remover_nota(periodo, payload.id)
-    # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([periodo])
-    return RemoverNotaResponse(**salvo)
+    # O CGR mudou o SCG do mês: SR, PR e PV ficam como estão; a prévia vai em `cascata`.
+    return RemoverNotaResponse(**salvo, cascata=servicos_cascata.previa_sem_falhar([periodo]))
 
 
 @router.post("/incluir-nota", response_model=RemoverNotaResponse)
@@ -222,9 +220,8 @@ def incluir_nota(payload: IncluirNotaRequest) -> RemoverNotaResponse:
         motivo=payload.motivo, valor_total=payload.valor_total, volume_total=payload.volume_total,
         linha_excel=payload.linha_excel, tipo=payload.tipo,
     )
-    # O CGR mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([periodo])
-    return RemoverNotaResponse(**salvo)
+    # O CGR mudou o SCG do mês: SR, PR e PV ficam como estão; a prévia vai em `cascata`.
+    return RemoverNotaResponse(**salvo, cascata=servicos_cascata.previa_sem_falhar([periodo]))
 
 
 @router.post("/diferencas", response_model=DiferencasAuditoriaResponse)

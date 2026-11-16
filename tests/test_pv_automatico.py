@@ -72,19 +72,26 @@ def test_api_pr_salvar_regrava_pv(banco, monkeypatch):
     with TestClient(app) as c:
         resp = c.post("/api/pr/salvar", json={"periodo": "Ago - Out/2026"})
     assert resp.status_code == 200, resp.text
+    # O PV não é mais regravado em silêncio: o campo antigo vem com atualizado=false e a prévia vai em `cascata`.
     pv = resp.json()["pv_automatico"]
-    assert pv["trimestre"] == "Ago - Out/2026" and pv["atualizado"] is True
-    assert pv["pv"] == pytest.approx(2.0 + resp.json()["pr"])
+    assert pv["trimestre"] == "Ago - Out/2026" and pv["atualizado"] is False and pv["pv"] is None
+    previa = resp.json()["cascata"]["trimestres"][0]
+    assert previa["pv_novo"] == pytest.approx(2.0 + resp.json()["pr"]) and previa["desatualizado"] is True
+    with DatabasePMPV(db_path=str(banco)) as db:
+        assert not db.buscar_pv("Ago - Out/2026")  # nada gravado
 
 
-def test_api_pmpv_mensal_continua_204_e_regrava_pv(banco):
+def test_api_pmpv_mensal_devolve_a_previa_e_nao_regrava_o_pv(banco):
     with DatabasePMPV(db_path=str(banco)) as db:
         db.salvar_pr("Fev - Abr/2026", 0.0, 0.0, 0.0, 0.1)
     from Src.api.main import app
     with TestClient(app) as c:
-        assert c.post("/api/pmpv/mensal/Fev/2026", json={"pmpv": 2.0}).status_code == 204
+        resp = c.post("/api/pmpv/mensal/Fev/2026", json={"pmpv": 2.0})
+    assert resp.status_code == 200, resp.text
+    item = resp.json()["cascata"]["trimestres"][0]
+    assert item["chave_pv"] == "Fev - Abr/2026" and item["pv_novo"] == pytest.approx(2.1)
     with DatabasePMPV(db_path=str(banco)) as db:
-        assert db.buscar_pv("Fev - Abr/2026")["pv"] == pytest.approx(2.1)
+        assert not db.buscar_pv("Fev - Abr/2026")  # só a prévia: nada foi regravado
 
 
 def test_falha_vira_pendencia(monkeypatch):

@@ -165,6 +165,7 @@ def prova_real(periodo: str) -> dict:
             grupo=lambda d: f"{d['tipo_encargo']} · {d.get('empresa') or '(sem empresa)'}",
             valor=lambda d: d["valor_total"],
             nome=lambda d: Path(str(d.get("arquivo") or d.get("numero_nd") or "(sem nome)")).name,
+            contexto=lambda d: {"numero": d.get("numero_nd") or None, "vencimento": d.get("data_vencimento")},
         ),
         "data_atualizacao": (cons.get("data_atualizacao") or "")[:16],
     }

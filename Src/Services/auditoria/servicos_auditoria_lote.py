@@ -539,6 +539,7 @@ def prova_real(periodo: str) -> dict:
             grupo=lambda g: f"{g.get('tipo') or '?'} · {g.get('empresa') or '(sem empresa)'}",
             valor=lambda g: g.get("valor_total"),
             nome=lambda g: f"{g.get('tipo') or 'Nota'} {g.get('numero') or '(sem número)'}",
+            contexto=lambda g: {"numero": g.get("numero") or None, "volume": g.get("volume_total")},
         ),
         # Notas incluídas à mão (não vieram nos arquivos): a tela mostra com o motivo e deixa tirar.
         "notas_digitadas": [

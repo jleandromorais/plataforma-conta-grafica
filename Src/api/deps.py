@@ -10,6 +10,7 @@ from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.application.use_cases.sr_use_cases import SRUseCases
 from Src.Services.apuracao.servicos_periodos import ServicosPeriodos
 from Src.Services.apuracao.servicos_scg import ServicosSCG
+from Src.Services.tarifa.servicos_cascata import ServicosCascata
 from Src.Services.tarifa.servicos_pr import ServicosPR
 from Src.Services.tarifa.servicos_pv import ServicosPV
 from Src.Services.apuracao.servicos_rpv import ServicosRPV
@@ -36,6 +37,14 @@ def get_servicos_pr() -> Iterator[ServicosPR]:
         yield servico
     finally:
         servico._repo.fechar()
+
+
+def get_servicos_cascata() -> Iterator[ServicosCascata]:
+    servico = ServicosCascata()
+    try:
+        yield servico
+    finally:
+        servico.fechar()
 
 
 def get_servicos_pv() -> Iterator[ServicosPV]:

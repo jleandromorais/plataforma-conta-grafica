@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.pr import PRAutomatico
 
 
@@ -16,7 +17,8 @@ class SCGPeriodo(BaseModel):
 
 
 class SCGSalvoResponse(SCGPeriodo):
-    pr_automatico: PRAutomatico  # PR e PV do trimestre, regravados junto
+    pr_automatico: PRAutomatico  # LEGADO: sempre atualizado=false (nada é regravado); use `cascata`
+    cascata: Cascata | None = None  # prévia do SR, PR e PV; aprovar em /cascata/aplicar
 
 
 class SCGReparoMes(BaseModel):

@@ -52,6 +52,22 @@ class DashboardEmpresas(BaseModel):
     meses: list[EmpresasDoMes] = []     # as mesmas contas mês a mês, em ordem cronológica
 
 
+class ConferenciaEtapa(BaseModel):
+    etapa: str                          # "CGR", "CGF", "RET" ou "RP"
+    total: float | None = None          # None = o mês não tem esse valor gravado
+    total_anterior: float | None = None
+    variacao_pct: float | None = None   # (total − anterior) ÷ |anterior| × 100; None = sem como comparar
+    fora_do_normal: bool = False        # |variação| acima de limite_pct
+    empresas_faltando: list[str] = []   # só CGR e RET: mandaram no mês anterior e não neste
+
+
+class DashboardConferencia(BaseModel):
+    periodo: str
+    periodo_anterior: str
+    limite_pct: float                   # 20.0
+    etapas: list[ConferenciaEtapa]      # CGR, CGF, RET, RP, nessa ordem
+
+
 class RetMes(BaseModel):
     periodo: str
     total: float

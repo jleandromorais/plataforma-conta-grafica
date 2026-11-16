@@ -27,7 +27,7 @@ from Src.common.periodos import normalizar_periodo
 from Src.api.uploads import MAX_ARQUIVOS, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
 from Src.Services.rp import servicos_concilia_lote as lote_concilia
-from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.tarifa import servicos_cascata
 from Src.infrastructure.exporters.excel_concilia import ExcelConcilia
 from Src.Services.rp.servicos_concilia import PdfItem
 
@@ -78,9 +78,8 @@ async def processar(request: Request) -> ProcessarConciliacaoResponse:
 def salvar(payload: SalvarConciliacaoRequest) -> SalvarConciliacaoResponse:
     """Grava o RP (recalculado aqui) e os itens do período."""
     salvo = lote_concilia.salvar(payload.periodo, [_item_da_api(i) for i in payload.itens])
-    # O RP mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([payload.periodo])
-    return SalvarConciliacaoResponse(**salvo)
+    # O RP mudou o SCG do mês: SR, PR e PV ficam como estão; a prévia vai em `cascata`.
+    return SalvarConciliacaoResponse(**salvo, cascata=servicos_cascata.previa_sem_falhar([payload.periodo]))
 
 
 @router.post("/remover-nota", response_model=RemoverNotaResponse)
@@ -88,9 +87,8 @@ def remover_nota(payload: RemoverNotaRequest) -> RemoverNotaResponse:
     """Tira UMA nota gravada do mês (o aviso "Possível duplicata" da prova real) e regrava o RP sem ela."""
     periodo = normalizar_periodo(payload.periodo) or payload.periodo
     salvo = lote_concilia.remover_nota(periodo, payload.id)
-    # O RP mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([periodo])
-    return RemoverNotaResponse(**salvo)
+    # O RP mudou o SCG do mês: SR, PR e PV ficam como estão; a prévia vai em `cascata`.
+    return RemoverNotaResponse(**salvo, cascata=servicos_cascata.previa_sem_falhar([periodo]))
 
 
 @router.post("/relatorio")

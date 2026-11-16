@@ -5,7 +5,9 @@ from typing import Iterator
 from fastapi import APIRouter, Depends
 
 from Src.api import dashboard_extra
-from Src.api.schemas.dashboard import DashboardEmpresas, DashboardResponse, DashboardRet, DashboardVolumes
+from Src.api.schemas.dashboard import (
+    DashboardConferencia, DashboardEmpresas, DashboardResponse, DashboardRet, DashboardVolumes,
+)
 from Src.application.use_cases.dashboard_use_cases import DashboardUseCases
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -28,6 +30,13 @@ def resumo(
 def por_empresa(ano: str | None = None) -> DashboardEmpresas:
     """CGR líquido, notas e impostos por empresa (Auditoria)."""
     return DashboardEmpresas(**dashboard_extra.empresas(ano))
+
+
+@router.get("/conferencia", response_model=DashboardConferencia)
+def conferencia_do_mes(periodo: str) -> DashboardConferencia:
+    """Conferência do mês (Painel do Ciclo): CGR, CGF, RET e RP contra o mês anterior, com variação,
+    marca "fora do normal" (acima de 20%) e as empresas que sumiram. Só lê: NÃO grava nada."""
+    return DashboardConferencia(**dashboard_extra.conferencia(periodo))
 
 
 @router.get("/ret", response_model=DashboardRet)

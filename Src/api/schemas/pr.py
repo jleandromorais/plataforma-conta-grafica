@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.pv import PVAutomatico
 
 
@@ -27,7 +28,8 @@ class PRSalvarRequest(BaseModel):
 
 class PRSalvarResponse(BaseModel):
     pr: float
-    pv_automatico: PVAutomatico | None = None  # PV do mesmo trimestre, regravado junto
+    pv_automatico: PVAutomatico | None = None  # LEGADO: sempre atualizado=false; use `cascata`
+    cascata: Cascata | None = None  # prévia do PV (o PR acabou de ser gravado); aprovar em /cascata/aplicar
 
 
 class PRSrAnterior(BaseModel):

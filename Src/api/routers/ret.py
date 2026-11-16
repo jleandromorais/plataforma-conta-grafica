@@ -23,7 +23,7 @@ from Src.api.schemas.ret import (
 from Src.api.schemas.duplicatas import RemoverNotaRequest, RemoverNotaResponse
 from Src.api.uploads import MAX_ARQUIVOS, descer_pasta_unica, gravar_envio
 from Src.infrastructure.ocr.ocr_pdf import OCR_ENABLED
-from Src.Services.tarifa import servicos_pr_automatico
+from Src.Services.tarifa import servicos_cascata
 from Src.Services.ret import servicos_ret_lote as lote_ret
 from Src.Services.ret.servicos_ret import PIS_COFINS_RATE, RegrasRET
 from Src.common.periodos import normalizar_periodo
@@ -79,9 +79,9 @@ def salvar(payload: SalvarRETRequest) -> list[RETSalvo]:
     docs = [d.model_dump() for d in payload.documentos]
     grupos = lote_ret.agrupar_por_mes(docs, periodo_padrao=payload.periodo_padrao)
     salvos = lote_ret.salvar_meses(grupos)
-    # O RET mudou o SCG de cada mês salvo: o PR e o PV que os usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([s["periodo"] for s in salvos])
-    return [RETSalvo(**s) for s in salvos]
+    # O RET mudou o SCG de cada mês salvo: SR, PR e PV ficam como estão; a prévia (a mesma em cada item) vai em `cascata`.
+    cascata = servicos_cascata.previa_sem_falhar([s["periodo"] for s in salvos])
+    return [RETSalvo(**s, cascata=cascata) for s in salvos]
 
 
 @router.post("/remover-documento", response_model=RemoverNotaResponse)
@@ -89,9 +89,8 @@ def remover_documento(payload: RemoverNotaRequest) -> RemoverNotaResponse:
     """Tira UM documento gravado do mês (o aviso "Possível duplicata" da prova real) e regrava o RET sem ele."""
     periodo = normalizar_periodo(payload.periodo) or payload.periodo
     salvo = lote_ret.remover_documento(periodo, payload.id)
-    # O RET mudou o SCG do mês: o PR e o PV que o usam são regravados (em silêncio).
-    servicos_pr_automatico.atualizar_dos_meses([periodo])
-    return RemoverNotaResponse(**salvo)
+    # O RET mudou o SCG do mês: SR, PR e PV ficam como estão; a prévia vai em `cascata`.
+    return RemoverNotaResponse(**salvo, cascata=servicos_cascata.previa_sem_falhar([periodo]))
 
 
 @router.get("/prova-real", response_model=ProvaRealRET)

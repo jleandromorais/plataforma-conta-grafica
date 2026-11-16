@@ -48,8 +48,11 @@ def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
     Varre as partes do caminho em busca do nome de um mês (PT-BR).
     Retorna (mes_num 1-12, ano 4-digitos) ou (0, 0) se não encontrado.
     Prioriza a parte mais próxima do arquivo (subpasta imediata > pastas superiores).
+
+    Achou o mês mas NÃO o ano no caminho → (0, 0), como se não tivesse achado nada: nunca usa o ano
+    de hoje (isso lia a pasta "EAT fev" de 2025 como 2026). Sem mês de referência o documento cai no
+    mês que o analista escolher (`periodo_padrao`), ou o salvar pede para escolher o mês.
     """
-    from datetime import date
     partes = _split_path_parts(caminho)
     # Usa apenas as pastas (não o nome do arquivo) para determinar competência.
     partes_pastas = partes[:-1] if len(partes) > 1 else partes
@@ -79,13 +82,16 @@ def _extrair_mes_caminho(caminho: str) -> tuple[int, int]:
                 return mes_num, int(ano_str)
 
     # Procura ano de 4 dígitos no caminho completo (ex: "2026")
-    anos = re.findall(r'\b(20\d{2}|19\d{2})\b', caminho)
+    # Letras e dígitos delimitam o ano, mas o "_" não: com \b o "_" contava como letra e escondia o ano em
+    # "JANEIRO_2026" (esse caso só dava certo porque, sem achar o ano, o código usava o ano de hoje).
+    # "S2025-COM" (código dentro do nome do arquivo) continua não sendo ano.
+    anos = re.findall(r'(?<![A-Za-z0-9])(20\d{2}|19\d{2})(?![A-Za-z0-9])', caminho)
     if anos:
         ano = int(anos[0])
     elif ano_2dig:
         ano = 2000 + ano_2dig
     else:
-        ano = date.today().year
+        return 0, 0  # sem ano no caminho: não chuta o ano de hoje
 
     return mes_num, ano
 

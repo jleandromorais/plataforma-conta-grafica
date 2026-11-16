@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.pv import PVAutomatico
 
 
@@ -43,7 +44,8 @@ class ImportarMemoriaResponse(BaseModel):
 
 class SalvarPMPVResponse(BaseModel):
     sessao_id: int
-    pv_automatico: list[PVAutomatico] = []  # PV dos trimestres desses meses, regravado junto
+    pv_automatico: list[PVAutomatico] = []  # LEGADO: sempre atualizado=false; use `cascata`
+    cascata: Cascata | None = None  # prévia do PV dos trimestres desses meses; aprovar em /cascata/aplicar
 
 
 class SessaoDoTrimestre(BaseModel):
@@ -128,6 +130,11 @@ class PMPVMensalRequest(BaseModel):
 
 class PMPVMensalResponse(BaseModel):
     pmpv: float
+
+
+class PMPVMensalSalvoResponse(BaseModel):
+    """Resposta do POST /pmpv/mensal (antes 204, sem corpo)."""
+    cascata: Cascata | None = None  # prévia do PV do trimestre; aprovar em /cascata/aplicar
 
 
 class TrimestreAtivoRequest(BaseModel):

@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.duplicatas import PossivelDuplicataValor
 
 
@@ -51,6 +52,8 @@ class RETSalvo(BaseModel):
     periodo: str
     ret: float
     qtd_documentos: int
+    # Prévia do SR, PR e PV de TODOS os meses salvos (a mesma em cada item); aprovar em /cascata/aplicar
+    cascata: Cascata | None = None
 
 
 class ProvaRealEmpresaRET(BaseModel):

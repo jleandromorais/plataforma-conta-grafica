@@ -125,6 +125,19 @@ def _data_br(iso: str) -> str:
     return f"{dia}/{mes}/{ano}"
 
 
+def mensagem_selic_zero(mes: str, labels_meses: list[str], hoje: date | None = None) -> str:
+    """Frase para o mês de um trimestre civil com SELIC 0%: trimestre aberto (ainda não fechou) ou
+    fechado (falta buscar a SELIC). Usada pelo SR e pelo PR, para os dois dizerem a mesma coisa."""
+    try:
+        fecha_em = servicos_selic.fim_do_trimestre(labels_meses)
+    except ValueError:
+        fecha_em = None  # meses que não formam um trimestre civil: sem data de fechamento para citar
+    if fecha_em is not None and (hoje or date.today()) <= fecha_em:
+        return (f"{mes}: a SELIC está 0% porque o trimestre ainda não fechou "
+                f"(fecha em {_data_br(fecha_em.isoformat())}). Salve o SR depois disso.")
+    return f"{mes}: a SELIC está 0%. Busque a SELIC do Banco Central ou digite-a à mão."
+
+
 class SRUseCases:
     def __init__(self, repo: SRRepository | None = None):
         self.repo = repo or SqliteSRRepository()
@@ -344,12 +357,6 @@ class SRUseCases:
             raise ValueError(f"O SR não foi salvo: vieram {len(entradas)} linhas para {len(labels_meses)} meses. "
                              "Carregue o trimestre de novo na tela SR.")
         problemas: list[str] = []
-        fecha_em: date | None = None
-        try:
-            fecha_em = servicos_selic.fim_do_trimestre(labels_meses)
-        except ValueError:
-            pass  # meses que não formam um trimestre civil: sem data de fechamento para citar
-        aberto = fecha_em is not None and (hoje or date.today()) <= fecha_em
         for e in entradas:
             mes = e.get("mes", "")
             if not float(e.get("pr") or 0):
@@ -358,11 +365,7 @@ class SRUseCases:
             if not float(e.get("vp") or 0):
                 problemas.append(f"{mes}: o VP está zerado. Salve o PMPV do trimestre que contém {mes}.")
             if not float(e.get("selic_mensal") or 0):
-                if aberto:
-                    problemas.append(f"{mes}: a SELIC está 0% porque o trimestre ainda não fechou "
-                                     f"(fecha em {_data_br(fecha_em.isoformat())}). Salve o SR depois disso.")
-                else:
-                    problemas.append(f"{mes}: a SELIC está 0%. Busque a SELIC do Banco Central ou digite-a à mão.")
+                problemas.append(mensagem_selic_zero(mes, labels_meses, hoje))
         if problemas:
             raise ValueError("O SR não foi salvo. Corrija:\n" + "\n".join(f"- {p}" for p in problemas))
 

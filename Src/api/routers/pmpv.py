@@ -15,6 +15,7 @@ from Src.api.schemas.pmpv import (
     PMPVHistoricoLinha,
     PMPVMensalRequest,
     PMPVMensalResponse,
+    PMPVMensalSalvoResponse,
     ProvaRealPMPV,
     SalvarPMPVRequest,
     SessaoDoTrimestre,
@@ -25,7 +26,7 @@ from Src.api.schemas.pmpv import (
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
 from Src.Services.tarifa.servicos_margem import buscar_margem, salvar_margem, tarifa_media
 from Src.Services.tarifa.servicos_pmpv import prova_real_sessao
-from Src.Services.tarifa.servicos_pr_automatico import atualizar_pv_sem_falhar
+from Src.Services.tarifa import servicos_cascata
 
 router = APIRouter(prefix="/pmpv", tags=["PMPV"])
 
@@ -69,9 +70,10 @@ def salvar(
         resultado=payload.resultado,
         periodos=payload.periodos,
     )
-    # O PMPV mensal já foi gravado (commit): refaz o PV dos trimestres desses meses com o PR salvo.
-    pv = atualizar_pv_sem_falhar(payload.periodos) if payload.periodos else []
-    return SalvarPMPVResponse(sessao_id=sessao_id, pv_automatico=pv)
+    # O PMPV mensal já foi gravado (commit); o PV desses trimestres NÃO é regravado: a prévia vai em `cascata`.
+    cascata = servicos_cascata.previa_sem_falhar(payload.periodos or [], a_partir_de="pv")
+    return SalvarPMPVResponse(sessao_id=sessao_id, pv_automatico=servicos_cascata.pv_automatico_legado(cascata),
+                              cascata=cascata)
 
 
 @router.get("/mensal/{periodo:path}", response_model=PMPVMensalResponse)
@@ -83,14 +85,15 @@ def buscar_mensal(
     return PMPVMensalResponse(pmpv=pmpv or 0.0)
 
 
-@router.post("/mensal/{periodo:path}", status_code=204)
+@router.post("/mensal/{periodo:path}", response_model=PMPVMensalSalvoResponse)
 def salvar_mensal(
     periodo: str,
     payload: PMPVMensalRequest,
     uc: PMPVUseCases = Depends(get_pmpv_use_cases),
-) -> None:
+) -> PMPVMensalSalvoResponse:
+    """Grava o PMPV do mês. O PV do trimestre NÃO é regravado: a prévia vem em `cascata`."""
     uc.salvar_pmpv_mensal(periodo, payload.pmpv)
-    atualizar_pv_sem_falhar([periodo])  # regrava o PV em silêncio (resposta continua 204)
+    return PMPVMensalSalvoResponse(cascata=servicos_cascata.previa_sem_falhar([periodo], a_partir_de="pv"))
 
 
 @router.get("/periodos")

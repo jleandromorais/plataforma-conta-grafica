@@ -95,7 +95,11 @@ def test_salvar_com_tudo_grava_o_valor_do_servidor_mesmo_com_zeros(client, banco
     assert linha["scg"] == pytest.approx(-722_000.0)  # SCG com SELIC
     assert linha["sr"] == pytest.approx(-17_000.0)
     assert linha["vp"] == pytest.approx(30_000_000.0)
-    assert r.json()["pv_automatico"]["pv"] == pytest.approx(2.0 + PR_ESPERADO)
+    # O PV NÃO é regravado junto: só a prévia (campo novo `cascata`) e o campo legado, sempre atualizado=false.
+    assert r.json()["pv_automatico"]["atualizado"] is False and r.json()["pv_automatico"]["pv"] is None
+    assert r.json()["cascata"]["trimestres"][0]["pv_novo"] == pytest.approx(2.0 + PR_ESPERADO)
+    with DatabasePMPV(db_path=banco) as db:
+        assert not db.buscar_pv("Fev - Abr/2026")
 
 
 def test_salvar_aceita_pedido_so_com_a_chave(client, banco):
@@ -120,6 +124,49 @@ def test_salvar_com_sr_pela_metade_da_422(client, banco):
     r = client.post("/api/pr/salvar", json={"periodo": "Fev - Abr/2026"})
     assert r.status_code == 422
     assert "Falta o SR de Dez/2025" in r.json()["detail"]
+    assert not _pr_gravado(banco, "Fev - Abr/2026")
+
+
+def _zerar_selic_de(banco: str, mes: str) -> None:
+    """Refaz o SR salvo com SELIC 0% no mês pedido (os outros meses ficam como em `_popular`)."""
+    linhas = [{"mes": m, "selic_mensal": 0.0 if m == mes else s, "sr_selic": v}
+              for m, s, v in zip(CIVIL, SELIC, SR)]
+    with DatabasePMPV(db_path=banco) as db:
+        db.salvar_sr_trimestre("Out/2025_Dez/2025", linhas)
+
+
+def test_salvar_com_selic_zero_no_sr_da_422_e_nao_grava(client, banco):
+    _popular(banco)
+    _zerar_selic_de(banco, "Nov/2025")
+    r = client.post("/api/pr/salvar", json={"periodo": "Fev - Abr/2026"})
+    assert r.status_code == 422, r.text
+    detalhe = r.json()["detail"]
+    assert "Nov/2025: a SELIC está 0%. Busque a SELIC do Banco Central ou digite-a à mão." in detalhe
+    assert "Out/2025" not in detalhe  # só o mês com SELIC zero é citado
+    assert not _pr_gravado(banco, "Fev - Abr/2026")
+
+
+def test_salvar_com_selic_zero_em_trimestre_aberto_diz_quando_fecha(client, banco, monkeypatch):
+    # Trimestre Out–Dez/2025 "aberto": o aviso troca para o texto de "ainda não fechou".
+    from datetime import date as _date
+    from Src.application.use_cases import sr_use_cases
+    original = sr_use_cases.mensagem_selic_zero
+    monkeypatch.setattr("Src.Services.tarifa.servicos_pr.mensagem_selic_zero",
+                        lambda mes, labels, hoje=None: original(mes, labels, _date(2025, 12, 1)))
+    _popular(banco)
+    _zerar_selic_de(banco, "Dez/2025")
+    r = client.post("/api/pr/salvar", json={"periodo": "Fev - Abr/2026"})
+    assert r.status_code == 422
+    assert "Dez/2025: a SELIC está 0% porque o trimestre ainda não fechou (fecha em 31/12/2025)" in r.json()["detail"]
+
+
+def test_apurar_e_pr_automatico_tambem_recusam_selic_zero(client, banco):
+    _popular(banco)
+    _zerar_selic_de(banco, "Out/2025")
+    apuracao = client.post("/api/pr/apurar", json={"periodos": MESES_PR}).json()
+    assert any("Out/2025: a SELIC está 0%" in p for p in apuracao["pendencias"])
+    r = auto.atualizar_do_mes("Nov/2025")
+    assert r["atualizado"] is False and r["pr"] is None
     assert not _pr_gravado(banco, "Fev - Abr/2026")
 
 

@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.pr import PRAutomatico
 from Src.common.precisao import arredondar_tarifa
 
@@ -92,7 +93,8 @@ class SRTrimestreSalvarRequest(BaseModel):
 
 class SRTrimestreSalvarResponse(BaseModel):
     total: float
-    pr_automatico: PRAutomatico | None = None  # PR e PV do trimestre, regravados junto
+    pr_automatico: PRAutomatico | None = None  # LEGADO: sempre atualizado=false; use `cascata`
+    cascata: Cascata | None = None  # prévia do PR e do PV (nada foi regravado); aprovar em /cascata/aplicar
 
 
 class SRPropostaRequest(BaseModel):

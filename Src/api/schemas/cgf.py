@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.comum import ProblemaArquivo
 
 
@@ -43,6 +44,7 @@ class CGFCalcularRSResponse(BaseModel):
 class CGFSalvarResponse(BaseModel):
     cgf_rs: float
     rpv: float
+    cascata: Cascata | None = None  # prévia do SR, PR e PV (nada foi regravado); aprovar em /cascata/aplicar
 
 
 class ProvaRealCGF(BaseModel):

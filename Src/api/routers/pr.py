@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from Src.api.deps import get_servicos_pr
+from Src.api.schemas.periodos import LimpezaPeriodoResponse
 from Src.api.schemas.pr import (
     PRResultado,
     PRSalvarRequest,
@@ -11,7 +12,8 @@ from Src.api.schemas.pr import (
     PRTrimestralRequest,
 )
 from Src.Services.tarifa.servicos_pr import ServicosPR
-from Src.Services.tarifa.servicos_pr_automatico import atualizar_pv_do_pr
+from Src.Services.tarifa import servicos_cascata
+from Src.Services.tarifa.servicos_pr import meses_da_chave_pr
 
 router = APIRouter(prefix="/pr", tags=["PR"])
 
@@ -62,5 +64,23 @@ def salvar(
     (SCG com SELIC + SR do trimestre civil ÷ VP) e grava o valor DELE: scg/sr/vp do pedido são
     ignorados. Faltou SR, SCG, VP ou PMPV → 422 com as pendências, e nada é gravado."""
     pr = servico.salvar_apurado(payload.periodo)
-    # PV do mesmo trimestre refeito com o PR recém-salvo (None se a chave não é de trimestre).
-    return PRSalvarResponse(pr=pr, pv_automatico=atualizar_pv_do_pr(payload.periodo))
+    # O PR acabou de ser gravado; o PV do mesmo trimestre NÃO é regravado: a prévia vai em `cascata`.
+    cascata = servicos_cascata.previa_sem_falhar(meses_da_chave_pr(payload.periodo), a_partir_de="pv")
+    legado = servicos_cascata.pv_automatico_legado(cascata)
+    return PRSalvarResponse(pr=pr, pv_automatico=legado[0] if legado else None, cascata=cascata)
+
+
+@router.delete("", response_model=LimpezaPeriodoResponse)
+def apagar(
+    periodo: str,
+    aplicar: bool = False,
+    servico: ServicosPR = Depends(get_servicos_pr),
+) -> LimpezaPeriodoResponse:
+    """Apaga o PR salvo de um trimestre da tarifa (ex.: ?periodo=Fev - Abr/2026), para refazê-lo.
+
+    Por padrão é só SIMULAÇÃO (aplicar=false): diz o que seria apagado e NÃO apaga nada.
+    Só apaga com ?aplicar=true. O PV do trimestre não é tocado."""
+    try:
+        return LimpezaPeriodoResponse(**servico.apagar_pr(periodo, aplicar=aplicar))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))

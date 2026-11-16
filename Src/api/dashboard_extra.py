@@ -92,3 +92,63 @@ def volumes(ano: str | None) -> dict:
     meses = [{"periodo": r["periodo"], **{c: float(r[c] or 0) for c in campos}} for r in rows]
     totais = {"periodo": "Total", **{c: sum(m[c] for m in meses) for c in campos}}
     return {"ano_filtro": ano, "meses": meses, "totais": totais}
+
+
+# ── Conferência do mês: o mês parece normal perto do anterior? ───────────────
+
+LIMITE_VARIACAO_PCT = 20.0  # variação acima disso (para mais ou para menos) é marcada "fora do normal"
+
+
+def _empresas_do_mes(itens: list[dict]) -> dict[str, str]:
+    """{nome em minúsculas: nome como veio} das empresas que mandaram arquivo no mês (sem vazias)."""
+    nomes: dict[str, str] = {}
+    for i in itens:
+        nome = (i.get("empresa") or "").strip()
+        if nome:
+            nomes.setdefault(nome.casefold(), nome)
+    return nomes
+
+
+def _variacao(total: float | None, anterior: float | None) -> tuple[float | None, bool]:
+    """(variação em %, fora do normal?). Sem um dos dois totais, ou com o anterior zerado, não há comparação."""
+    if total is None or not anterior:
+        return None, False
+    pct = (total - anterior) / abs(anterior) * 100
+    return pct, abs(pct) > LIMITE_VARIACAO_PCT + 1e-9
+
+
+def conferencia(periodo: str) -> dict:
+    """Quadro "Conferência do mês": CGR, CGF, RET e RP do mês contra o mês anterior. Só leitura.
+
+    `fora_do_normal` = o total variou mais de 20% (para mais ou para menos). CGR e RET também trazem
+    `empresas_faltando`: empresas que mandaram arquivo no mês anterior e não neste. CGF e RP não têm
+    empresa por nota: só a variação do total. Mês sem consolidação gravada → total None (não é "−100%")."""
+    from Src.common.periodos import deslocar_periodo, is_periodo_valido, normalizar_periodo
+
+    atual = normalizar_periodo(periodo)
+    if not atual or not is_periodo_valido(atual):
+        raise ValueError(f"O período “{periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, "
+                         "por exemplo Set/2026.")
+    anterior = deslocar_periodo(atual, -1)
+    with DatabasePMPV() as db:
+        cons = {p: db.buscar_consolidacao(p) or {} for p in (atual, anterior)}
+        empresas = {
+            "CGR": [_empresas_do_mes(db.listar_auditoria_itens(p) or []) for p in (anterior, atual)],
+            "RET": [_empresas_do_mes(db.listar_ret_itens(p) or []) for p in (anterior, atual)],
+        }
+
+    def total(p: str, campo: str) -> float | None:
+        valor = cons[p].get(campo)
+        return None if valor is None else float(valor)
+
+    etapas = []
+    for etapa, campo in (("CGR", "cgr"), ("CGF", "cgf"), ("RET", "ret"), ("RP", "rp")):
+        t, ant = total(atual, campo), total(anterior, campo)
+        pct, fora = _variacao(t, ant)
+        faltando: list[str] = []
+        if etapa in empresas:
+            antes, agora = empresas[etapa]
+            faltando = sorted((nome for chave, nome in antes.items() if chave not in agora), key=str.casefold)
+        etapas.append({"etapa": etapa, "total": t, "total_anterior": ant, "variacao_pct": pct,
+                       "fora_do_normal": fora, "empresas_faltando": faltando})
+    return {"periodo": atual, "periodo_anterior": anterior, "limite_pct": LIMITE_VARIACAO_PCT, "etapas": etapas}

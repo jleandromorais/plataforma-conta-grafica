@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from Src.api.schemas.cascata import Cascata
 from Src.api.schemas.duplicatas import PossivelDuplicataValor
 
 
@@ -36,6 +37,7 @@ class SalvarConciliacaoRequest(BaseModel):
 class SalvarConciliacaoResponse(BaseModel):
     rp: float
     qtd_itens: int
+    cascata: Cascata | None = None  # prévia do SR, PR e PV (nada foi regravado); aprovar em /cascata/aplicar
 
 
 class LadoProvaRealRP(BaseModel):
