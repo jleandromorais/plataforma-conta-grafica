@@ -490,7 +490,13 @@ class DatabasePMPV:
         self.cursor.execute(f"PRAGMA table_info({tabela})")
         colunas = {row[1] for row in self.cursor.fetchall()}
         if coluna not in colunas:
-            self.cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao_sql}")
+            try:
+                self.cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao_sql}")
+            except sqlite3.OperationalError as erro:
+                # Várias requisições abrem o banco ao mesmo tempo (o Dashboard faz 5 de uma vez): todas veem a
+                # coluna faltando e só a primeira consegue criá-la. Quem perde a corrida não tem o que fazer.
+                if "duplicate column name" not in str(erro).lower():
+                    raise
 
     @staticmethod
     def _normalizar_periodo(periodo: str | None) -> str:
