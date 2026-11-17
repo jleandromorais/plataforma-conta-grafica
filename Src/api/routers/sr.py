@@ -20,6 +20,7 @@ from Src.api.schemas.sr import (
     SRTrimestreSalvarResponse,
     SRVpVfResponse,
 )
+from Src.api.perfis import anotar_motivo, escolha_com_motivo
 from Src.application.use_cases.sr_use_cases import SRUseCases
 from Src.Services.tarifa import servicos_cascata, servicos_selic
 from Src.Services.apuracao.servicos_sr import ServicosSR
@@ -86,7 +87,15 @@ def salvar_trimestre(
     uc: SRUseCases = Depends(get_sr_use_cases),
 ) -> SRTrimestreSalvarResponse:
     """Grava o SR do trimestre civil. O servidor recalcula cada mês a partir de VP, VF, PR, SELIC
-    e SR anterior e grava a conta DELE. PR ou VP zerado, ou SELIC 0% → 422, e nada é gravado."""
+    e SR anterior e grava a conta DELE. PR ou VP zerado, ou SELIC 0% → 422, e nada é gravado.
+    SR anterior diferente do gravado ou `selic_manual` é uma ESCOLHA: com PERFIS_ATIVOS=1 pede o perfil
+    analista e o `motivo`."""
+    gravado = {str(l.get("mes")): float(l.get("sr_anterior") or 0.0) for l in (uc.buscar_trimestre(payload.labels_meses) if payload.labels_meses else [])}
+    mudou_sr_anterior = any(abs(l.sr_anterior - gravado.get(l.mes, 0.0)) > 1e-9 for l in payload.linhas)
+    if mudou_sr_anterior or payload.selic_manual:
+        escolha_com_motivo(payload.motivo)
+    else:
+        anotar_motivo(payload.motivo)
     total = uc.salvar_trimestre_conferido(
         payload.labels_meses,
         payload.periodo_referencia,

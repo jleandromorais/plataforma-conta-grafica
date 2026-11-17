@@ -13,9 +13,9 @@ import os
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from Src.api.auth import usuario_atual
+from Src.api.perfis import controle_de_acesso
 from Src.api.errors import registrar_exception_handlers
-from Src.api.routers import auth as auth_router, auditoria, cgf, conciliacao, config, cascata, ciclo, dashboard, excel_final, nota_tecnica, periodos, pmpv, pr, pv, relatorio_trimestral, ret, rpv, scg, sr, trilha
+from Src.api.routers import auth as auth_router, auditoria, cgf, conciliacao, config, cascata, ciclo, dashboard, excel_final, nota_tecnica, periodos, pmpv, pr, pv, relatorio_trimestral, ret, rpv, scg, sr, tarifa, trilha, usuarios
 
 app = FastAPI(
     title="Plataforma Conta Gráfica — API",
@@ -38,7 +38,8 @@ app.add_middleware(
 registrar_exception_handlers(app)
 
 # Tudo exige login, exceto /api/auth/* e /api/health.
-_protegido = [Depends(usuario_atual)]
+# `controle_de_acesso` depende de `usuario_atual` (exige login) e confere o perfil quando PERFIS_ATIVOS=1.
+_protegido = [Depends(controle_de_acesso)]
 app.include_router(auth_router.router, prefix="/api")
 
 app.include_router(pmpv.router, prefix="/api", dependencies=_protegido)
@@ -60,6 +61,8 @@ app.include_router(nota_tecnica.router, prefix="/api", dependencies=_protegido)
 app.include_router(relatorio_trimestral.router, prefix="/api", dependencies=_protegido)
 app.include_router(periodos.router, prefix="/api", dependencies=_protegido)
 app.include_router(trilha.router, prefix="/api", dependencies=_protegido)
+app.include_router(tarifa.router, prefix="/api", dependencies=_protegido)
+app.include_router(usuarios.router, prefix="/api", dependencies=_protegido)
 
 @app.get("/api/health")
 def health() -> dict:

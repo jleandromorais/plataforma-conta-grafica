@@ -18,6 +18,29 @@ logger = logging.getLogger(__name__)
 _ORIGEM_ALTERACAO: ContextVar[str] = ContextVar("origem_alteracao", default="salvar")
 _TOLERANCIA_ALTERACAO = 1e-9
 
+# Quem está gravando, para a trilha (`historico_alteracoes.usuario_*`, `perfil`, `acao`, `motivo`).
+# A API define isto a cada requisição (Src/api/perfis.py); o app desktop e os scripts não definem
+# (None) e a trilha fica sem nome, como sempre foi. É um dicionário: id, nome, email, perfil, acao, motivo.
+_ATOR_ALTERACAO: ContextVar[dict | None] = ContextVar("ator_alteracao", default=None)
+
+# Campos que a trilha acompanha em cada tabela (para anotar o que um apagamento levou embora).
+_CAMPOS_DA_TRILHA = {
+    "consolidacao": ("cgr", "cgf", "rpv", "ret", "rp", "scg"),
+    "pmpv_mensal": ("pmpv",),
+    "sr_resultados": ("vp", "vf", "pr", "sr"),
+    "pr_resultados": ("scg", "sr", "vp", "pr"),
+    "pv_resultados": ("pmpv", "pr", "pv"),
+}
+
+
+def definir_ator_da_alteracao(ator: dict | None) -> None:
+    """Diz à trilha quem está gravando nesta requisição (None = ninguém identificado)."""
+    _ATOR_ALTERACAO.set(ator)
+
+
+def ator_da_alteracao() -> dict | None:
+    return _ATOR_ALTERACAO.get()
+
 
 @contextmanager
 def origem_da_alteracao(origem: str):
@@ -341,7 +364,9 @@ class DatabasePMPV:
                 data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # Trilha de alterações: o que mudou, de quanto para quanto e quando. Não guarda quem mudou.
+        # Trilha de alterações: o que mudou, de quanto para quanto e quando. As colunas usuario_*, perfil,
+        # acao e motivo dizem quem mudou e por quê; ficam vazias quando a gravação não veio da API com login
+        # (app desktop, scripts) e nas linhas antigas.
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS historico_alteracoes (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -351,9 +376,19 @@ class DatabasePMPV:
                 valor_antigo  REAL,
                 valor_novo    REAL,
                 origem        TEXT NOT NULL DEFAULT 'salvar',
-                data_hora     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                data_hora     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                usuario_id    INTEGER,
+                usuario_nome  TEXT,
+                usuario_email TEXT,
+                perfil        TEXT,
+                acao          TEXT,
+                motivo        TEXT
             )
         """)
+        # Bancos criados antes dos perfis ganham as colunas novas (todas opcionais).
+        for coluna, tipo in (("usuario_id", "INTEGER"), ("usuario_nome", "TEXT"), ("usuario_email", "TEXT"),
+                             ("perfil", "TEXT"), ("acao", "TEXT"), ("motivo", "TEXT")):
+            self._garantir_coluna("historico_alteracoes", coluna, tipo)
         # Índices para consultas frequentes por período e empresa
         _indexes = [
             ("idx_historico_periodo",    "historico_alteracoes", "periodo"),
@@ -604,11 +639,26 @@ class DatabasePMPV:
             ant = None if ant is None else float(ant)
             if ant is not None and abs(ant - float(novo)) <= _TOLERANCIA_ALTERACAO:
                 continue
-            self.cursor.execute(
-                "INSERT INTO historico_alteracoes (tabela, periodo, campo, valor_antigo, valor_novo, origem) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (tabela, periodo, campo, ant, float(novo), origem),
-            )
+            self._inserir_na_trilha(tabela, periodo, campo, ant, float(novo), origem)
+
+    def _inserir_na_trilha(self, tabela: str, periodo: str, campo: str, antigo: float | None,
+                           novo: float | None, origem: str) -> None:
+        """Uma linha da trilha, com quem gravou quando a API identificou o usuário. Sem commit."""
+        ator = _ATOR_ALTERACAO.get() or {}
+        self.cursor.execute(
+            "INSERT INTO historico_alteracoes (tabela, periodo, campo, valor_antigo, valor_novo, origem, "
+            "usuario_id, usuario_nome, usuario_email, perfil, acao, motivo) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (tabela, periodo, campo, antigo, novo, origem, ator.get("id"), ator.get("nome"), ator.get("email"),
+             ator.get("perfil"), ator.get("acao"), ator.get("motivo")),
+        )
+
+    def _registrar_apagamento(self, tabela: str, periodo: str, antigo: Dict | None) -> None:
+        """Anota na trilha cada valor que um apagamento levou embora (valor_novo vazio, origem "apagar")."""
+        for campo in _CAMPOS_DA_TRILHA.get(tabela, ()):
+            valor = (antigo or {}).get(campo)
+            if valor is not None:
+                self._inserir_na_trilha(tabela, periodo, campo, float(valor), None, "apagar")
 
     def listar_alteracoes(self, periodo: str | None = None, tabela: str | None = None, limite: int = 200) -> List[Dict]:
         """Trilha de alterações, da mais recente para a mais antiga. `periodo` e `tabela` filtram (opcionais)."""
@@ -622,7 +672,8 @@ class DatabasePMPV:
             valores.append(tabela)
         where = f"WHERE {' AND '.join(filtros)} " if filtros else ""
         self.cursor.execute(
-            f"SELECT id, tabela, periodo, campo, valor_antigo, valor_novo, origem, data_hora "
+            f"SELECT id, tabela, periodo, campo, valor_antigo, valor_novo, origem, data_hora, "
+            f"usuario_id, usuario_nome, usuario_email, perfil, acao, motivo "
             f"FROM historico_alteracoes {where}ORDER BY data_hora DESC, id DESC LIMIT ?",
             (*valores, int(limite)),
         )
@@ -804,6 +855,9 @@ class DatabasePMPV:
     def apagar_periodo(self, periodo: str):
         variantes = self._variantes_periodo(periodo)
         placeholders = ", ".join("?" for _ in variantes)
+        # Apagar também fica na trilha: o que estava gravado vai para "sem valor".
+        self._registrar_apagamento("consolidacao", self._normalizar_periodo(periodo),
+                                   self.buscar_consolidacao_bruta(periodo))
         self.cursor.execute(f"DELETE FROM consolidacao WHERE periodo IN ({placeholders})", variantes)
         self.conn.commit()
 
@@ -850,6 +904,11 @@ class DatabasePMPV:
 
         removidos: Dict[str, int] = {}
         try:
+            # Antes de apagar, anota na trilha o que as tabelas acompanhadas tinham (mesma transação).
+            for tabela in _CAMPOS_DA_TRILHA:
+                self.cursor.execute(f"SELECT * FROM {tabela} WHERE {filtro}", variantes)
+                for linha in [dict(r) for r in self.cursor.fetchall()]:
+                    self._registrar_apagamento(tabela, str(linha.get("periodo") or periodo), linha)
             for tabela in self.TABELAS_COM_PERIODO:
                 self.cursor.execute(f"DELETE FROM {tabela} WHERE {filtro}", variantes)
                 removidos[tabela] = int(self.cursor.rowcount or 0)
@@ -1207,11 +1266,8 @@ class DatabasePMPV:
         apagadas = int(self.cursor.rowcount or 0)
         if apagadas and antigo and antigo.get("pr") is not None:
             # Apagar também fica na trilha: o PR foi de X para "sem valor" (valor_novo vazio).
-            self.cursor.execute(
-                "INSERT INTO historico_alteracoes (tabela, periodo, campo, valor_antigo, valor_novo, origem) "
-                "VALUES ('pr_resultados', ?, 'pr', ?, NULL, 'apagar')",
-                (self._normalizar_periodo(periodo), float(antigo["pr"])),
-            )
+            self._inserir_na_trilha("pr_resultados", self._normalizar_periodo(periodo), "pr",
+                                    float(antigo["pr"]), None, "apagar")
         self.conn.commit()
         return apagadas
 

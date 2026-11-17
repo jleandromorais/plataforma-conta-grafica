@@ -24,6 +24,8 @@ class UsuarioOut(BaseModel):
     id: int
     nome: str
     email: str
+    perfis: list[str] = []            # consulta, operador, aprovador, analista, administrador
+    perfis_ativos: bool = False       # PERFIS_ATIVOS=1: a matriz de perfis está valendo
 
 
 class SessaoOut(BaseModel):
@@ -39,7 +41,8 @@ def cadastrar(payload: CadastroIn) -> SessaoOut:
     usuario = auth.criar_usuario(
         payload.nome, payload.email, payload.senha, payload.confirmar_senha
     )
-    return SessaoOut(access_token=auth.criar_token(usuario), usuario=usuario)
+    return SessaoOut(access_token=auth.criar_token(usuario),
+                     usuario=UsuarioOut(**usuario, perfis_ativos=auth.perfis_ativos()))
 
 
 @router.post("/login", response_model=SessaoOut)
@@ -47,9 +50,10 @@ def entrar(payload: LoginIn) -> SessaoOut:
     usuario = auth.autenticar(payload.email, payload.senha)
     if not usuario:
         raise HTTPException(401, "E-mail ou senha incorretos. Confira os dois e tente de novo.")
-    return SessaoOut(access_token=auth.criar_token(usuario), usuario=usuario)
+    return SessaoOut(access_token=auth.criar_token(usuario),
+                     usuario=UsuarioOut(**usuario, perfis_ativos=auth.perfis_ativos()))
 
 
 @router.get("/me", response_model=UsuarioOut)
 def eu(usuario: dict = Depends(auth.usuario_atual)) -> UsuarioOut:
-    return UsuarioOut(**usuario)
+    return UsuarioOut(**usuario, perfis_ativos=auth.perfis_ativos())

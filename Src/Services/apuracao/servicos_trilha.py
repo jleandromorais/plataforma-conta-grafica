@@ -1,4 +1,4 @@
-"""Trilha de alterações: lê `historico_alteracoes` (quem grava é o `DatabasePMPV`, só quando o valor muda)."""
+"""Trilha de alterações: lê `historico_alteracoes` (quem grava é o `DatabasePMPV`, só quando o valor muda; guarda também quem fez, quando a API identificou o usuário)."""
 from __future__ import annotations
 
 from Src.Database.database import DatabasePMPV

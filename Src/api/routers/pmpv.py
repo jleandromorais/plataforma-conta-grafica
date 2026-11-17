@@ -24,6 +24,7 @@ from Src.api.schemas.pmpv import (
     TrimestreAtivoResponse,
 )
 from Src.application.use_cases.pmpv_use_cases import PMPVUseCases
+from Src.api.perfis import escolha_com_motivo
 from Src.Services.tarifa.servicos_margem import buscar_margem, salvar_margem, tarifa_media
 from Src.Services.tarifa.servicos_pmpv import prova_real_sessao
 from Src.Services.tarifa import servicos_cascata
@@ -55,7 +56,9 @@ def buscar_margem_regulatoria(ano: int) -> MargemRegulatoria:
 
 @router.post("/margem-regulatoria", response_model=MargemRegulatoria)
 def salvar_margem_regulatoria(payload: MargemRegulatoriaRequest) -> MargemRegulatoria:
-    """O analista informa a margem de um ano (vale mais que a que o sistema conhece)."""
+    """O analista informa a margem de um ano (vale mais que a que o sistema conhece).
+    Com PERFIS_ATIVOS=1 só o perfil analista, e o `motivo` é obrigatório."""
+    escolha_com_motivo(payload.motivo)
     return MargemRegulatoria(**salvar_margem(payload.ano, payload.margem))
 
 

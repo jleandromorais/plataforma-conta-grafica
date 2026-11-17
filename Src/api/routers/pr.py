@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from Src.api.deps import get_servicos_pr
+from Src.api.perfis import anotar_motivo
 from Src.api.schemas.periodos import LimpezaPeriodoResponse
 from Src.api.schemas.pr import (
     PRResultado,
@@ -74,12 +75,14 @@ def salvar(
 def apagar(
     periodo: str,
     aplicar: bool = False,
+    motivo: str | None = None,
     servico: ServicosPR = Depends(get_servicos_pr),
 ) -> LimpezaPeriodoResponse:
     """Apaga o PR salvo de um trimestre da tarifa (ex.: ?periodo=Fev - Abr/2026), para refazê-lo.
 
     Por padrão é só SIMULAÇÃO (aplicar=false): diz o que seria apagado e NÃO apaga nada.
     Só apaga com ?aplicar=true. O PV do trimestre não é tocado."""
+    anotar_motivo(motivo)
     try:
         return LimpezaPeriodoResponse(**servico.apagar_pr(periodo, aplicar=aplicar))
     except LookupError as e:

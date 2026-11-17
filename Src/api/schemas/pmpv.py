@@ -122,6 +122,8 @@ class MargemRegulatoria(BaseModel):
 class MargemRegulatoriaRequest(BaseModel):
     ano: int
     margem: float
+    # Obrigatório quando PERFIS_ATIVOS=1 (a MB é uma escolha do analista); sempre vai para a trilha.
+    motivo: str | None = None
 
 
 class PMPVMensalRequest(BaseModel):

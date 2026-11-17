@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from Src.api.schemas.cascata import Cascata
@@ -46,6 +48,10 @@ class SalvarManualRequest(BaseModel):
     cgf: float
     ret: float
     rp: float
+    # Preencha quando o analista ESCOLHEU entre o SCG gravado e a soma dos módulos (tela de comparação).
+    # Com PERFIS_ATIVOS=1 a escolha pede o perfil analista e o `motivo`. Sem `escolha`, é só gravar o módulo.
+    escolha: Literal["gravado", "soma"] | None = None
+    motivo: str | None = None
 
 
 class RPVResponse(BaseModel):

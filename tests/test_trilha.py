@@ -100,7 +100,9 @@ def test_rota_trilha_filtra_por_periodo_e_tabela(client, banco):
     so_pr = client.get("/api/trilha", params={"periodo": "Fev - Abr/2026", "tabela": "pr_resultados"}).json()
     assert {l["campo"] for l in so_pr} == {"scg", "sr", "vp", "pr"}
     assert all(l["origem"] == "salvar" and l["valor_antigo"] is None for l in so_pr)
-    assert set(so_pr[0]) == {"id", "tabela", "periodo", "campo", "valor_antigo", "valor_novo", "origem", "data_hora"}
+    assert set(so_pr[0]) == {"id", "tabela", "periodo", "campo", "valor_antigo", "valor_novo", "origem", "data_hora",
+                             "usuario_id", "usuario_nome", "usuario_email", "perfil", "acao", "motivo"}
+    assert so_pr[0]["usuario_nome"] is None  # gravado direto no banco, sem a API: ninguém identificado
     assert client.get("/api/trilha", params={"periodo": "Mai - Jul/2026"}).json() == []
 
 

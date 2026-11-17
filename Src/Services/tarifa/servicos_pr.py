@@ -33,11 +33,17 @@ def meses_da_chave_pr(chave_pr: str) -> list[str]:
 
 class ServicosPR:
     """
-    PR = (SGR + SR) / VP
+    PR = ROUND((Σ SCG × (1 + SELIC acumulada) + Σ SR com SELIC) / Σ VP; 4)
 
-    Nomenclatura: SGR é tratado como SCG por compatibilidade com o restante do
-    sistema (o campo consolidacao.scg armazena o valor equivalente ao SGR).
-    PR = 0.0 quando VP = 0 para evitar divisão por zero.
+    Quem monta a conta é `apurar_pr_nt` (Quadro 7 da NT); `calcular_pr(scg, sr, vp)` é só a divisão final
+    e recebe o SCG JÁ com a SELIC e o SR JÁ com a SELIC, somados nos 3 meses.
+    - SCG e SR são os do trimestre civil que termina 2 meses antes do 1º mês do PR
+      (`meses_apurados_do_pr`): PR Nov–Jan/2027 usa Jul–Set/2026.
+    - O VP é o dos 3 meses do próprio PR. PR = 0.0 quando VP = 0, para evitar divisão por zero.
+    - O SR de cada mês usa o PR do trimestre da tarifa do PRÓPRIO mês (não o de 3 meses antes).
+    - Salvar o SCG ou o SR não grava o PR sozinho: a cascata mostra a prévia e só grava no
+      `POST /cascata/aplicar`, depois da aprovação.
+    - SGR é o mesmo que SCG por compatibilidade (o campo consolidacao.scg guarda esse valor).
     """
 
     def __init__(self, repo: PRRepository | None = None):
@@ -45,7 +51,7 @@ class ServicosPR:
 
     @staticmethod
     def calcular_pr(scg: float, sr: float, vp: float) -> float:
-        """PR = (SGR + SR) / VP. Retorna 0.0 se VP = 0."""
+        """Divisão final do PR: (SCG com SELIC + SR com SELIC) / VP, já somados nos 3 meses. 0.0 se VP = 0."""
         scg = scg or 0.0
         sr = sr or 0.0
         vp = vp or 0.0

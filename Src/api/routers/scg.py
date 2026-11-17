@@ -14,6 +14,7 @@ from Src.api.schemas.scg import (
     SCGSalvoResponse,
     SCGValores,
 )
+from Src.api.perfis import anotar_motivo, escolha_com_motivo
 from Src.Services.tarifa import servicos_cascata
 from Src.Services.apuracao.servicos_consolidacao import ServicosConsolidacao
 from Src.Services.apuracao.servicos_scg import ServicosSCG
@@ -29,6 +30,13 @@ def _diverge(modulos: dict, gravado: dict | None) -> bool:
     if gravado is None:
         return any(abs(modulos[c]) > _TOLERANCIA for c in _CAMPOS)
     return any(abs(modulos[c] - gravado[c]) > _TOLERANCIA for c in _CAMPOS)
+
+
+def _anotar_escolha(payload: SalvarManualRequest) -> None:
+    if payload.escolha:
+        escolha_com_motivo(payload.motivo)
+    else:
+        anotar_motivo(payload.motivo)
 
 
 @router.get("/periodos")
@@ -86,7 +94,10 @@ def salvar(
     servico: ServicosSCG = Depends(get_servicos_scg),
 ) -> SCGSalvoResponse:
     """Grava CGR/CGF/RET/RP escolhidos e recalcula RPV e SCG. O SR, o PR e o PV NÃO são regravados:
-    a prévia deles vem em `cascata` e só é gravada em POST /cascata/aplicar, depois da aprovação."""
+    a prévia deles vem em `cascata` e só é gravada em POST /cascata/aplicar, depois da aprovação.
+    Com `escolha` ("gravado" ou "soma") é uma ESCOLHA do analista: com PERFIS_ATIVOS=1 pede o perfil
+    analista e o `motivo`."""
+    _anotar_escolha(payload)
     if not is_periodo_valido(payload.periodo):
         raise ValueError(f'O período “{payload.periodo}” não é válido. Escreva o mês com 3 letras e o ano com 4 dígitos, por exemplo Jan/2026.')
     dados = servico.salvar_e_calcular(payload.periodo, payload.cgr, payload.cgf, payload.ret, payload.rp)
@@ -122,6 +133,7 @@ def salvar_manual(
     payload: SalvarManualRequest,
     servico: ServicosSCG = Depends(get_servicos_scg),
 ) -> RPVResponse:
+    _anotar_escolha(payload)
     rpv = servico.salvar_valores_manuais(
         payload.periodo, payload.cgr, payload.cgf, payload.ret, payload.rp
     )
@@ -131,8 +143,11 @@ def salvar_manual(
 @router.delete("", status_code=204)
 def apagar_periodo(
     periodo: str,
+    motivo: str | None = None,
     servico: ServicosSCG = Depends(get_servicos_scg),
 ) -> None:
+    """Apaga o SCG de um mês. Só administrador (com PERFIS_ATIVOS=1). Entra na trilha, com o `motivo` se vier."""
+    anotar_motivo(motivo)
     servico.apagar_periodo(periodo)
 
 

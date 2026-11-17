@@ -1,4 +1,4 @@
-"""Trilha de alterações dos valores gravados (SCG, SR, PR, PV e PMPV)."""
+"""Trilha de alterações dos valores gravados (SCG, SR, PR, PV e PMPV), com quem fez (docs/PERFIS.md)."""
 from __future__ import annotations
 
 from typing import Iterator
@@ -29,5 +29,6 @@ def listar(
     """O que mudou nos valores gravados, da alteração mais recente para a mais antiga. Só lê.
 
     Filtros opcionais: `periodo` (Jul/2026 ou Fev - Abr/2026) e `tabela` (consolidacao, sr_resultados,
-    pr_resultados, pv_resultados, pmpv_mensal). Não identifica quem alterou."""
+    pr_resultados, pv_resultados, pmpv_mensal). Cada linha traz quem alterou (usuario_nome, e-mail,
+    perfil), a ação e o motivo quando a gravação veio da API com login; nas linhas antigas ficam vazios."""
     return [TrilhaLinha(**l) for l in servico.listar(periodo, tabela, limite)]

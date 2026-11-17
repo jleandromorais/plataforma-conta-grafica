@@ -1,15 +1,15 @@
-"""PR e PV atualizados junto com o SCG e o SR.
+"""PR e PV da cascata SR → PR → PV (prévia e gravação).
 
-Depois do SCG, o SR do trimestre civil também é recalculado (`atualizar_sr_do_mes`).
+O PR de um trimestre do ciclo (Quadro 7 da NT) é
+    PR = ROUND((Σ SCG × (1 + SELIC acumulada) + Σ SR com SELIC) / Σ VP; 4)
+e o PV (Quadro 8) é PMPV + PR. O SCG e o SR são os do trimestre civil que termina 2 meses antes do 1º
+mês do PR (PR Nov–Jan/2027 usa Jul–Set/2026); o VP é o dos 3 meses do próprio PR. O SR de cada mês do
+trimestre civil usa o PR do trimestre da tarifa do PRÓPRIO mês (não o de 3 meses antes).
 
-O PR de um trimestre do ciclo (Quadro 7) sai do SCG e do SR do trimestre civil
-que termina 2 meses antes, e o PV (Quadro 8) sai desse PR. Quando o analista
-salva o SCG de um mês ou o SR de um trimestre, a API chama `atualizar_do_mes`:
-o PR e o PV do trimestre afetado são recalculados e gravados na mesma hora, e a
-resposta traz o antes e o depois para a tela mostrar.
-
-Se faltar algo (SCG de algum mês, SR, VP ou PMPV), nada é gravado e o motivo
-volta em `pendencias`, igual ao que a tela do PR mostra.
+Salvar o SCG de um mês ou o SR de um trimestre NÃO grava o PR nem o PV sozinho. A API devolve só a
+prévia (o valor de hoje ao lado do novo, com `gravar=False`) e quem grava é o `POST /cascata/aplicar`,
+depois da aprovação do analista (aí as funções daqui rodam com `gravar=True`). Se faltar algo (SCG de
+algum mês, SR, VP ou PMPV), nada é gravado e o motivo volta em `pendencias`, igual ao que a tela do PR mostra.
 """
 from __future__ import annotations
 

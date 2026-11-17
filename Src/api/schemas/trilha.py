@@ -13,3 +13,10 @@ class TrilhaLinha(BaseModel):
     valor_novo: float | None = None     # None = o valor foi apagado
     origem: str                     # "salvar", "cascata" (aprovação) ou "apagar"
     data_hora: str                  # "AAAA-MM-DD HH:MM:SS" (UTC, como as outras datas do banco)
+    # Quem fez. Vazios nas linhas antigas e nas gravações que não vieram da API com login (app desktop).
+    usuario_id: int | None = None
+    usuario_nome: str | None = None
+    usuario_email: str | None = None
+    perfil: str | None = None       # perfil que deu acesso à ação (com PERFIS_ATIVOS=0, os perfis da pessoa)
+    acao: str | None = None         # ex.: "salvar_modulo", "aprovar_sr", "apagar_pr", "escolher_mb"
+    motivo: str | None = None       # obrigatório nas escolhas (SCG, SR anterior, SELIC manual, MB) com PERFIS_ATIVOS=1

@@ -89,6 +89,11 @@ class SRTrimestreSalvarRequest(BaseModel):
     labels_meses: list[str]
     periodo_referencia: str
     linhas: list[SRTrimestreLinhaSalvar]
+    # Escolhas do analista. `selic_manual`: a SELIC das linhas foi digitada, não veio do Banco Central.
+    # O SR anterior diferente do gravado também conta como escolha. Com PERFIS_ATIVOS=1 as duas pedem
+    # o perfil analista e o `motivo`.
+    selic_manual: bool = False
+    motivo: str | None = None
 
 
 class SRTrimestreSalvarResponse(BaseModel):
