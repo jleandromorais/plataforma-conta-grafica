@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from Src.api.auth import usuario_atual
 from Src.api.errors import registrar_exception_handlers
-from Src.api.routers import auth as auth_router, auditoria, cgf, conciliacao, config, cascata, dashboard, excel_final, nota_tecnica, periodos, pmpv, pr, pv, relatorio_trimestral, ret, rpv, scg, sr, trilha
+from Src.api.routers import auth as auth_router, auditoria, cgf, conciliacao, config, cascata, ciclo, dashboard, excel_final, nota_tecnica, periodos, pmpv, pr, pv, relatorio_trimestral, ret, rpv, scg, sr, trilha
 
 app = FastAPI(
     title="Plataforma Conta Gráfica — API",
@@ -46,6 +46,7 @@ app.include_router(scg.router, prefix="/api", dependencies=_protegido)
 app.include_router(pr.router, prefix="/api", dependencies=_protegido)
 app.include_router(pv.router, prefix="/api", dependencies=_protegido)
 app.include_router(cascata.router, prefix="/api", dependencies=_protegido)
+app.include_router(ciclo.router, prefix="/api", dependencies=_protegido)
 app.include_router(rpv.router, prefix="/api", dependencies=_protegido)
 app.include_router(sr.router, prefix="/api", dependencies=_protegido)
 app.include_router(dashboard.router, prefix="/api", dependencies=_protegido)

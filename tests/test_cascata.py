@@ -47,7 +47,7 @@ def client(banco):
         yield c
 
 
-def _popular(banco: str, sem_vp_em: str | None = None) -> None:
+def _popular(banco: str, sem_vp_em: str | None = None, com_pmpv_novo: bool = True) -> None:
     with ServicosConsolidacao() as cons:
         for mes, scg in zip(CIVIL, SCG):
             cons.salvar_valores(mes, ret=scg)  # SCG = RPV + RET + RP: só o RET
@@ -58,7 +58,7 @@ def _popular(banco: str, sem_vp_em: str | None = None) -> None:
             db.salvar_cgf_resumo(mes, 0, 0, 0, 0, vf)
         for chave, pr in PR_DOS_MESES.items():
             db.salvar_pr(chave, 0, 0, 1, pr)
-        for mes in MESES_PR:
+        for mes in (MESES_PR if com_pmpv_novo else []):
             db.salvar_vp_periodo(mes, 10_000_000.0)
             db.salvar_pmpv_mensal(mes, 2.0)
 
@@ -274,3 +274,122 @@ def test_pendente_com_banco_vazio(client):
 def test_servico_fecha_a_conexao_que_abriu(banco):
     with ServicosCascata() as servico:
         assert servico.previa(["Jul/2026"])["periodos"] == ["Jul/2026"]
+
+
+# ── aprovação por etapa (`ate`) e trava 409 (`esperado`) ─────────────────────
+
+def _salvar_sr(client) -> None:
+    linhas = [{"mes": m, "vp": vp, "vf": vf, "pr": pr, "selic_mensal": SELIC[m]}
+              for m, vp, vf, pr in zip(CIVIL, VP, VF, (-0.02, -0.03, -0.03))]
+    r = client.post("/api/sr/trimestre/salvar", json={
+        "labels_meses": CIVIL, "periodo_referencia": "Set/2026", "linhas": linhas})
+    assert r.status_code == 200, r.text
+
+
+def test_aprovar_so_o_sr_sem_o_pmpv_seguinte_grava_so_o_sr(client, banco):
+    _popular(banco, com_pmpv_novo=False)
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], "ate": "sr"})
+    assert r.status_code == 200, r.text
+    corpo = r.json()
+    assert corpo["ate"] == "sr" and corpo["pendencias"] == []
+    t = corpo["trimestres"][0]
+    assert t["sr_novo"] == pytest.approx(SR_ESPERADO) and t["pr_novo"] is None and t["pv_novo"] is None
+    estado = _estado(banco)
+    assert sum(l["sr_selic"] for l in estado["sr"]) == pytest.approx(SR_ESPERADO)
+    assert estado["pr"] is None and estado["pv"] is None
+
+
+def test_sem_ate_e_sem_o_pmpv_seguinte_continua_recusando(client, banco):
+    """Compatibilidade: o pedido antigo (sem `ate`) vai até o PV e exige o PMPV novo."""
+    _popular(banco, com_pmpv_novo=False)
+    antes = _estado(banco)
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"]})
+    assert r.status_code == 422 and "PMPV" in r.json()["detail"]
+    assert _estado(banco) == antes
+
+
+def test_aprovar_o_pr_sem_sr_salvo_da_422_e_nao_grava(client, banco):
+    _popular(banco)
+    antes = _estado(banco)
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], "a_partir_de": "pr", "ate": "pr"})
+    assert r.status_code == 422 and "Salve o SR de Jul/2026 a Set/2026" in r.json()["detail"]
+    assert _estado(banco) == antes
+
+
+def test_aprovar_o_pr_sem_o_pmpv_novo_da_422(client, banco):
+    _popular(banco, com_pmpv_novo=False)
+    _salvar_sr(client)
+    antes = _estado(banco)
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], "a_partir_de": "pr", "ate": "pr"})
+    assert r.status_code == 422 and "Sem VP para Nov/2026" in r.json()["detail"]
+    assert _estado(banco) == antes
+
+
+def test_aprovar_o_pr_grava_so_o_pr_e_depois_o_pv_separado(client, banco):
+    _popular(banco)
+    _salvar_sr(client)
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], "a_partir_de": "pr", "ate": "pr"})
+    assert r.status_code == 200, r.text
+    t = r.json()["trimestres"][0]
+    assert t["pr_novo"] == PR_ESPERADO and t["pv_novo"] is None
+    estado = _estado(banco)
+    assert estado["pr"]["pr"] == PR_ESPERADO and estado["pv"] is None
+    # segunda aprovação, separada: o PV
+    r2 = client.post("/api/cascata/aplicar", json={"periodos": ["Dez/2026"], "a_partir_de": "pv", "ate": "pv"})
+    assert r2.status_code == 200, r2.text
+    assert _estado(banco)["pv"]["pv"] == pytest.approx(PV_ESPERADO)
+
+
+def test_aprovar_o_pv_sem_o_pr_da_422(client, banco):
+    _popular(banco)
+    antes = _estado(banco)
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Dez/2026"], "a_partir_de": "pv", "ate": "pv"})
+    assert r.status_code == 422 and "falta o PR salvo" in r.json()["detail"]
+    assert _estado(banco) == antes
+
+
+@pytest.mark.parametrize("corpo", [
+    {"a_partir_de": "pr", "ate": "sr"},   # ate antes de a_partir_de
+    {"ate": "xx"},                         # etapa que não existe
+])
+def test_ate_invalido_da_422(client, corpo):
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], **corpo})
+    assert r.status_code == 422
+
+
+def test_previa_com_ate_sr_nao_calcula_pr_nem_pv(client, banco):
+    _popular(banco, com_pmpv_novo=False)
+    r = client.get("/api/cascata/previa", params={"periodos": ["Ago/2026"], "ate": "sr"})
+    assert r.status_code == 200, r.text
+    t = r.json()["trimestres"][0]
+    assert r.json()["ate"] == "sr" and t["sr_novo"] == pytest.approx(SR_ESPERADO)
+    assert t["pr_novo"] is None and t["pendencias"] == []
+
+
+def test_esperado_igual_ao_calculo_grava(client, banco):
+    _popular(banco)
+    previa = client.get("/api/cascata/previa", params={"periodos": ["Ago/2026"]}).json()
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], "esperado": previa["trimestres"]})
+    assert r.status_code == 200, r.text
+    assert _estado(banco)["pr"]["pr"] == PR_ESPERADO
+
+
+def test_dado_alterado_entre_a_previa_e_o_aplicar_da_409_e_nao_grava(client, banco):
+    _popular(banco)
+    previa = client.get("/api/cascata/previa", params={"periodos": ["Ago/2026"]}).json()
+    antes = _estado(banco)
+    with DatabasePMPV(db_path=banco) as db:  # alguém muda o VP de Ago depois da prévia
+        db.salvar_vp_periodo("Ago/2026", 45_000_000.0)
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], "esperado": previa["trimestres"]})
+    assert r.status_code == 409, r.text
+    assert "mudaram desde a prévia" in r.json()["detail"] and "SR de Ago/2026" in r.json()["detail"]
+    assert _estado(banco) == antes
+
+
+def test_409_vale_so_para_as_etapas_pedidas(client, banco):
+    """Aprovando só o SR, uma diferença no PR visto não trava (o PR nem entra na aprovação)."""
+    _popular(banco)
+    previa = client.get("/api/cascata/previa", params={"periodos": ["Ago/2026"]}).json()
+    visto = [{**previa["trimestres"][0], "pr_novo": 0.5}]
+    r = client.post("/api/cascata/aplicar", json={"periodos": ["Ago/2026"], "ate": "sr", "esperado": visto})
+    assert r.status_code == 200, r.text

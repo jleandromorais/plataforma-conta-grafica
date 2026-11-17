@@ -16,7 +16,7 @@ import calendar
 import json
 import urllib.request
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Callable
 
 from Src.common.periodos import abrev_para_numero
@@ -106,3 +106,61 @@ def selic_do_trimestre(meses: list[str], hoje: date | None = None, buscar: Busca
     ano, mes = _ano_mes(meses[0])
     valores = selic_acumulada(fatores_mensais(buscar(date(ano, mes, 1), fim)), meses)
     return {"disponivel": True, "valores": valores, "fecha_em": fim.isoformat(), "fonte": "Banco Central (série 11)"}
+
+
+# ── "a SELIC do trimestre já fechou?" (para a situação do ciclo) ─────────────
+
+def _proximo_dia_util(dia: date) -> date:
+    while dia.weekday() >= 5:  # sábado e domingo
+        dia += timedelta(days=1)
+    return dia
+
+
+def ultimo_dia_util(fim: date) -> date:
+    """Último dia útil (seg–sex) até `fim`. Só considera fins de semana: feriados NÃO entram
+    (ver docs/SITUACAO_DO_CICLO.md, dúvida sobre 31/12 e a publicação do Banco Central)."""
+    while fim.weekday() >= 5:
+        fim -= timedelta(days=1)
+    return fim
+
+
+def fechamento_do_trimestre(meses: list[str], hoje: date | None = None, buscar: Buscador | None = None) -> dict:
+    """Diz se a SELIC do trimestre civil já fechou. SÓ LÊ (consulta o Banco Central).
+
+    Mais exigente que `selic_do_trimestre`: além de `hoje > fim do trimestre`, a série do BC precisa
+    trazer o último dia útil do trimestre e os 3 meses. Sem isso a SELIC acumulada sairia com os dias
+    finais faltando (SR errado, sem aviso).
+
+    `estado`: "aberta" (trimestre ainda não terminou), "aguardando_publicacao" (terminou, mas a série do BC
+    ainda não chegou ao último dia útil), "indisponivel" (o BC não respondeu) ou "fechada".
+    `libera_em` é uma ESTIMATIVA: o 1º dia útil depois do fim do trimestre."""
+    hoje = hoje or date.today()
+    buscar = buscar or buscar_bcb
+    fim = fim_do_trimestre(meses)
+    ultimo = ultimo_dia_util(fim)
+    libera = _proximo_dia_util(fim + timedelta(days=1))
+    resposta = {"fechada": False, "estado": "aberta", "fecha_em": fim.isoformat(),
+                "ultimo_dia_util": ultimo.isoformat(), "libera_em": libera.isoformat(),
+                "publicada_ate": None, "motivo": ""}
+    if hoje <= fim:
+        resposta["motivo"] = (f"O trimestre só fecha em {fim:%d/%m/%Y}; a SELIC deve estar disponível a partir "
+                              f"de {libera:%d/%m/%Y}.")
+        return resposta
+    ano, mes = _ano_mes(meses[0])
+    try:
+        diarios = buscar(date(ano, mes, 1), fim)
+    except SelicIndisponivel as exc:
+        resposta.update(estado="indisponivel", motivo=str(exc))
+        return resposta
+    datas = [datetime.strptime(d["data"], "%d/%m/%Y").date() for d in diarios]
+    ultima = max(datas) if datas else None
+    resposta["publicada_ate"] = ultima.isoformat() if ultima else None
+    meses_com_dado = {(d.year, d.month) for d in datas}
+    if ultima is None or ultima < ultimo or not set(_validar_trimestre(meses)) <= meses_com_dado:
+        ate = f"a série vai até {ultima:%d/%m/%Y}" if ultima else "a série veio vazia"
+        resposta.update(estado="aguardando_publicacao",
+                        motivo=f"O Banco Central ainda não publicou a SELIC de {ultimo:%d/%m/%Y} (último dia útil "
+                               f"do trimestre): {ate}. Tente de novo mais tarde.")
+        return resposta
+    resposta.update(fechada=True, estado="fechada", motivo="A SELIC do trimestre está fechada.")
+    return resposta

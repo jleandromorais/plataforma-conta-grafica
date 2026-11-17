@@ -14,6 +14,7 @@ _dados_referencia
 docs
 tests
 scripts
+!scripts/backup_banco.py
 backend
 *.md
 *.txt

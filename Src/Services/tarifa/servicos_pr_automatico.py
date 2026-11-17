@@ -81,14 +81,15 @@ def _gravar_pv(repo, label: str, ano_pv: int, pr: float | None = None, gravar: b
 
 
 def atualizar_do_mes(periodo: str, repo: SqlitePRRepository | None = None, gravar: bool = True,
-                     sr_linhas: list[dict] | None = None) -> dict:
+                     sr_linhas: list[dict] | None = None, com_pv: bool = True) -> dict:
     """Recalcula e grava o PR e o PV que dependem do trimestre civil de `periodo`.
 
     Devolve {meses_pr, atualizado, pr_antes, pr, pv_antes, pv, pendencias}.
     `atualizado` False = nada gravado (ver `pendencias`).
 
     Com `gravar=False` só calcula: `pr` e `pv` trazem os valores novos, nada é escrito.
-    `sr_linhas` (só para a prévia) são as linhas do SR novo, ainda não gravado: o PR é calculado com elas."""
+    `sr_linhas` (só para a prévia) são as linhas do SR novo, ainda não gravado: o PR é calculado com elas.
+    `com_pv=False` para no PR (aprovação por etapa): o PV não é calculado nem gravado."""
     meses_pr = meses_do_pr_do_civil(periodo)
     label = _FISCAIS[meses_pr[0].split("/")[0]]
     proprio = repo is None
@@ -113,6 +114,8 @@ def atualizar_do_mes(periodo: str, repo: SqlitePRRepository | None = None, grava
             pr = apuracao["pr"]  # mesma conta, já arredondada em 4 casas por `apurar_pr_nt`
             resultado.update(pr=pr)
 
+        if not com_pv:
+            return resultado
         # PV do mesmo trimestre, com o PR (gravado ou, na prévia, calculado).
         pv = _gravar_pv(repo, label, int(meses_pr[0].split("/")[1]), pr, gravar=gravar)
         resultado.update(pv_antes=pv["pv_antes"], pv=pv["pv"])

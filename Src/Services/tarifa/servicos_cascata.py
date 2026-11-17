@@ -46,8 +46,29 @@ def _atualizacao_pendente(item: dict) -> bool:
             or _mudou(item["pv_antes"], item["pv_novo"], TOL_TARIFA))
 
 
-def _montar(periodos: list[str], a_partir_de: str, itens: list[dict]) -> dict:
-    return {"periodos": [normalizar_periodo(p) or p for p in periodos], "a_partir_de": a_partir_de,
+_ETAPAS = ("sr", "pr", "pv")
+
+
+class CascataMudou(Exception):
+    """O cálculo de agora difere do que o analista viu na prévia: a rota devolve 409 e nada é gravado."""
+
+
+def _etapas(a_partir_de: str, ate: str | None) -> tuple[str, ...]:
+    """As etapas que o pedido cobre: de `a_partir_de` até `ate` (padrão: até o PV)."""
+    if a_partir_de not in _ETAPAS:
+        raise ValueError("`a_partir_de` deve ser sr, pr ou pv.")
+    if ate is not None and ate not in _ETAPAS:
+        raise ValueError("`ate` deve ser sr, pr ou pv.")
+    fim = _ETAPAS.index(ate or "pv")
+    inicio = _ETAPAS.index(a_partir_de)
+    if fim < inicio:
+        raise ValueError(f"Não dá para aprovar só até {ate} partindo de {a_partir_de}: "
+                         "`ate` não pode vir antes de `a_partir_de`.")
+    return _ETAPAS[inicio:fim + 1]
+
+
+def _montar(periodos: list[str], a_partir_de: str, itens: list[dict], ate: str | None = None) -> dict:
+    return {"periodos": [normalizar_periodo(p) or p for p in periodos], "a_partir_de": a_partir_de, "ate": ate,
             "desatualizado": any(i["desatualizado"] for i in itens), "trimestres": itens,
             "pendencias": [p for i in itens for p in i["pendencias"]]}
 
@@ -94,7 +115,8 @@ class ServicosCascata:
             guias.setdefault(chave, canonico)
         return sorted(guias.values(), key=periodo_sort_key)
 
-    def _item(self, guia: str, a_partir_de: str) -> dict:
+    def _item(self, guia: str, a_partir_de: str, ate: str | None = None) -> dict:
+        etapas = _etapas(a_partir_de, ate)
         pendencias: list[str] = []
         sr: dict = {"trimestre": None, "sr_antes": None, "sr": None, "linhas": [], "pendencias": []}
         trimestre_sr = None
@@ -116,12 +138,16 @@ class ServicosCascata:
                 pendencias += sr["pendencias"]
             meses_pr = auto.meses_do_pr_do_civil(guia)
             chave_pr, chave_pv = _chaves(meses_pr)
-            # Com o SR novo calculado, o PR da prévia sai dele (e não do SR velho que está gravado).
-            sr_linhas = sr["linhas"] if sr["sr"] is not None and not sr["pendencias"] else None
             vazio = {"pr_antes": None, "pr": None, "pv_antes": None, "pv": None, "pendencias": []}
-            r = _seguro(lambda: auto.atualizar_do_mes(guia, self._repo, gravar=False, sr_linhas=sr_linhas),
-                        "o PR e o PV", vazio)
-            pendencias += r["pendencias"]
+            if "pr" in etapas:
+                # Com o SR novo calculado, o PR da prévia sai dele (e não do SR velho que está gravado).
+                sr_linhas = sr["linhas"] if sr["sr"] is not None and not sr["pendencias"] else None
+                r = _seguro(lambda: auto.atualizar_do_mes(guia, self._repo, gravar=False, sr_linhas=sr_linhas,
+                                                         com_pv="pv" in etapas),
+                            "o PR e o PV" if "pv" in etapas else "o PR", vazio)
+                pendencias += r["pendencias"]
+            else:
+                r = vazio  # aprovação só do SR: PR e PV nem entram (o PMPV seguinte não é exigido)
             pr, pv = r, r
         item = {
             "periodo": guia, "trimestre_sr": trimestre_sr,
@@ -133,13 +159,16 @@ class ServicosCascata:
         item["desatualizado"] = _atualizacao_pendente(item)
         return item
 
-    def previa(self, periodos: list[str], a_partir_de: str = "sr") -> dict:
+    def previa(self, periodos: list[str], a_partir_de: str = "sr", ate: str | None = None) -> dict:
         """O que mudaria em cada trimestre afetado por `periodos`. NÃO grava nada.
 
         `a_partir_de`: "sr" (Auditoria, CGF, RET, RP, SCG: SR, PR e PV), "pr" (o SR acabou de ser salvo:
-        PR e PV) ou "pv" (o PMPV ou o PR acabou de ser salvo: só o PV)."""
-        itens = [self._item(g, a_partir_de) for g in self._guias(periodos, a_partir_de)]
-        return _montar(periodos, a_partir_de, itens)
+        PR e PV) ou "pv" (o PMPV ou o PR acabou de ser salvo: só o PV).
+        `ate` (opcional) corta no meio: "sr" só o SR (não exige o PMPV seguinte), "pr" até o PR (exige SR
+        salvo e PMPV novo), "pv" até o PV (exige o PR). Sem `ate`, vai até o PV."""
+        _etapas(a_partir_de, ate)
+        itens = [self._item(g, a_partir_de, ate) for g in self._guias(periodos, a_partir_de)]
+        return _montar(periodos, a_partir_de, itens, ate)
 
     def pendente(self, limite: int = 4) -> dict:
         """Só os trimestres desatualizados entre os `limite` mais recentes que têm SCG gravado:
@@ -155,20 +184,50 @@ class ServicosCascata:
 
     # ── aplicar (grava) ─────────────────────────────────────────────────────
 
-    def aplicar(self, periodos: list[str], a_partir_de: str = "sr") -> dict:
-        """Aprovado pelo analista: recalcula de novo e grava SR → PR → PV, nessa ordem, por trimestre.
+    def aplicar(self, periodos: list[str], a_partir_de: str = "sr", ate: str | None = None,
+                esperado: list[dict] | None = None) -> dict:
+        """Aprovado pelo analista: recalcula de novo e grava SR → PR → PV, nessa ordem, por trimestre
+        (só as etapas de `a_partir_de` até `ate`).
 
         Com qualquer pendência levanta ValueError (422) e NADA é gravado. Os números gravados são
-        os do servidor; o que a tela mostrou na prévia não entra. Devolve a cascata como ficou gravada."""
-        previa = self.previa(periodos, a_partir_de)
+        os do servidor; o que a tela mostrou na prévia não entra. Se `esperado` (o que o analista viu)
+        difere do cálculo de agora, levanta CascataMudou (409) e também NADA é gravado.
+        Devolve a cascata como ficou gravada."""
+        previa = self.previa(periodos, a_partir_de, ate)
         if previa["pendencias"]:
             raise ValueError("A cascata não foi aplicada e nada foi gravado. Resolva antes:\n"
                              + "\n".join(f"- {p}" for p in previa["pendencias"]))
+        if esperado:
+            self._conferir_esperado(previa, a_partir_de, ate, esperado)
         with origem_da_alteracao("cascata"):  # a trilha de alterações registra que foi a aprovação da cascata
-            itens = [self._gravar_item(i, a_partir_de) if i["desatualizado"] else i for i in previa["trimestres"]]
-        return _montar(periodos, a_partir_de, itens)
+            itens = [self._gravar_item(i, a_partir_de, ate) if i["desatualizado"] else i
+                     for i in previa["trimestres"]]
+        return _montar(periodos, a_partir_de, itens, ate)
 
-    def _gravar_item(self, item: dict, a_partir_de: str) -> dict:
+    def _conferir_esperado(self, previa: dict, a_partir_de: str, ate: str | None, esperado: list[dict]) -> None:
+        """409 se algum valor que o analista viu (sr_novo, pr_novo, pv_novo) mudou desde a prévia."""
+        etapas = _etapas(a_partir_de, ate)
+        por_guia = {i["periodo"]: i for i in previa["trimestres"]}
+        tolerancia = {"sr": TOL_SR, "pr": TOL_TARIFA, "pv": TOL_TARIFA}
+        mudancas: list[str] = []
+        for visto in esperado:
+            guia = self._guias([visto["periodo"]], a_partir_de)[0]
+            item = por_guia.get(guia)
+            if item is None:
+                raise ValueError(f"O trimestre de {visto['periodo']} não faz parte deste pedido de aprovação.")
+            for etapa in etapas:
+                valor_visto = visto.get(f"{etapa}_novo")
+                if valor_visto is None:
+                    continue
+                agora = item[f"{etapa}_novo"]
+                if agora is None or abs(agora - valor_visto) > tolerancia[etapa]:
+                    mudancas.append(f"{etapa.upper()} de {guia}: você viu {valor_visto}, agora o cálculo dá {agora}")
+        if mudancas:
+            raise CascataMudou("Os dados mudaram desde a prévia e nada foi gravado. Confira a prévia de novo "
+                               "e aprove outra vez:\n" + "\n".join(f"- {m}" for m in mudancas))
+
+    def _gravar_item(self, item: dict, a_partir_de: str, ate: str | None = None) -> dict:
+        etapas = _etapas(a_partir_de, ate)
         guia = item["periodo"]
         gravado = dict(item)
         if a_partir_de == "pv":
@@ -181,9 +240,10 @@ class ServicosCascata:
                 sr = auto.atualizar_sr_do_mes(guia, gravar=True)
                 self._exigir(sr["atualizado"], sr["pendencias"])
                 gravado["sr_novo"] = sr["sr"]
-            r = auto.atualizar_do_mes(guia, self._repo, gravar=True)
-            self._exigir(r["atualizado"], r["pendencias"])
-            gravado["pr_novo"], gravado["pv_novo"] = r["pr"], r["pv"]
+            if "pr" in etapas:
+                r = auto.atualizar_do_mes(guia, self._repo, gravar=True, com_pv="pv" in etapas)
+                self._exigir(r["atualizado"], r["pendencias"])
+                gravado["pr_novo"], gravado["pv_novo"] = r["pr"], r["pv"]
         gravado["pendencias"] = []
         gravado["desatualizado"] = False  # acabou de ser gravado
         return gravado
